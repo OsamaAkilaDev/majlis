@@ -119,9 +119,35 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 }
 
+/**
+ * This script writes placeholder accounts carrying a fake password hash, plus
+ * a PUBLISHED event. It must never reach a real database.
+ *
+ * The test harness refuses any connection string not naming `majlis_test`;
+ * this is the reciprocal guard for the development path. A `.env` pointed at
+ * a deployed database is an ordinary mistake, and without this the only
+ * symptom would be placeholder credentials appearing in production.
+ */
+export function assertSafeToSeed(url: string, env: NodeJS.ProcessEnv): void {
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed: NODE_ENV is production.');
+  }
+
+  const { hostname } = new URL(url);
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+  if (!isLocal && env.ALLOW_REMOTE_SEED !== 'yes') {
+    throw new Error(
+      `Refusing to seed the non-local database at ${hostname}. ` +
+        'Set ALLOW_REMOTE_SEED=yes if that is genuinely what you want.',
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set.');
+  assertSafeToSeed(url, process.env);
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
   try {
