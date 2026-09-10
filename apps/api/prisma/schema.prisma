@@ -16,3 +16,52 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PlatformRole {
+  STUDENT
+  ADMIN
+}
+
+/// A person. There is no separate university identifier — the verified email
+/// is the identity key, and Operations verifies a scanned pass against name + email.
+model User {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  fullName     String       @map("full_name")
+  avatarUrl    String?      @map("avatar_url")
+  status       UserStatus   @default(ACTIVE)
+  platformRole PlatformRole @default(STUDENT) @map("platform_role")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+
+  @@map("user")
+}
+
+/// One row per issued refresh token. Rotation replaces a row and links it via
+/// replacedById; presenting an already-rotated token revokes the whole family.
+model RefreshToken {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  familyId    String    @map("family_id") @db.Uuid
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?  @map("replaced_by_id") @db.Uuid
+  userAgent   String?   @map("user_agent")
+  ip          String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_token")
+}
