@@ -23,6 +23,8 @@
 - **Never log or persist** a raw QR token, password, session token, or refresh token.
 - **English only.** No localisation fields.
 - Database object naming is `snake_case` (via `@@map` / `@map`); TypeScript is `camelCase`.
+- **Enums need `@@map` too.** Without one, Prisma emits a PascalCase Postgres type (`"UserStatus"`) sitting beside snake_case tables, and every raw-SQL reference to it then needs double-quoting to survive case-folding. Every enum in this plan carries an explicit `@@map`.
+- **Subjects get a foreign key; actors do not.** A `userId` naming the *subject* of a record (the member, the registrant, the certificate holder) declares a real `User` relation, so Postgres enforces referential integrity. A `*ById` field naming the *actor* who performed an action (`invitedById`, `decidedById`, `cancelledById`, `checkedInById`, `revokedById`, `createdById`, `auditLog.actorUserId`) is stored as a plain UUID with no FK — the historical record of who did something must outlive the account that did it. Deletes are `Restrict` except `QrPass` and `RefreshToken`, which are meaningless without their user and so `Cascade`.
 - Every task ends with a passing test run and a commit. Conventional commit messages.
 - Commit trailer for every commit: `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
 
@@ -1061,11 +1063,15 @@ Append to `apps/api/prisma/schema.prisma`:
 enum UserStatus {
   ACTIVE
   SUSPENDED
+
+  @@map("user_status")
 }
 
 enum PlatformRole {
   STUDENT
   ADMIN
+
+  @@map("platform_role")
 }
 
 /// A person. There is no separate university identifier — the verified email
@@ -1302,6 +1308,15 @@ describe('ClubMembership — one open membership per (user, club)', () => {
     await expect(join(club.id, user.id, 'PENDING')).rejects.toMatchObject({ code: 'P2002' });
   });
 
+  it('scopes the rule per user — two students may both hold open memberships in one club', async () => {
+    // Without this, a (club_id)-only index would pass every other test in
+    // this block while capping each club at one member platform-wide.
+    const club = await aClub();
+    const [a, b] = [await aUser(), await aUser()];
+    await join(club.id, a.id, 'ACTIVE');
+    await expect(join(club.id, b.id, 'ACTIVE')).resolves.toBeDefined();
+  });
+
   it('allows re-joining after LEFT, and keeps the historic row', async () => {
     const club = await aClub();
     const user = await aUser();
@@ -1326,6 +1341,8 @@ enum ClubStatus {
   ACTIVE
   SUSPENDED
   ARCHIVED
+
+  @@map("club_status")
 }
 
 enum MembershipPolicy {
@@ -1333,6 +1350,8 @@ enum MembershipPolicy {
   APPROVAL_REQUIRED
   INVITE_ONLY
   CLOSED
+
+  @@map("membership_policy")
 }
 
 enum ClubRole {
@@ -1341,6 +1360,8 @@ enum ClubRole {
   MARKETING
   CTO
   OPERATIONS
+
+  @@map("club_role")
 }
 
 enum AppointmentStatus {
@@ -1349,6 +1370,8 @@ enum AppointmentStatus {
   DECLINED
   EXPIRED
   ENDED
+
+  @@map("appointment_status")
 }
 
 enum MembershipStatus {
@@ -1357,6 +1380,8 @@ enum MembershipStatus {
   REJECTED
   LEFT
   REMOVED
+
+  @@map("membership_status")
 }
 
 model Department {
@@ -1416,6 +1441,7 @@ model ClubTeamAppointment {
   createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([clubId, status])
   @@index([userId, status])
@@ -1435,11 +1461,19 @@ model ClubMembership {
   decisionReason String?          @map("decision_reason")
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([clubId, status])
   @@index([userId, status])
   @@map("club_membership")
 }
+```
+
+Add the matching back-relations to `User` (modify the existing model):
+
+```prisma
+  memberships  ClubMembership[]
+  appointments ClubTeamAppointment[]
 ```
 
 - [ ] **Step 4: Generate the migration and add the partial unique indexes**
@@ -1477,7 +1511,7 @@ pnpm prisma generate
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/organisation.integration.test.ts`
-Expected: PASS — 12 tests.
+Expected: PASS — 13 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1636,6 +1670,22 @@ describe('EventRegistration — one open registration per (user, event)', () => 
     return prisma.eventRegistration.create({ data: { eventId, userId, status } });
   }
 
+  it('scopes the rule per user and per event', async () => {
+    // Without this, an index on (event_id) alone would cap each event at one
+    // registrant, and one on (user_id) alone would let a student register
+    // only once ever — both would pass every other test in this block.
+    const event = await anEvent();
+    const [a, b] = [await aUser(), await aUser()];
+    await register(event.id, a.id, 'CONFIRMED');
+
+    // a different student may register for the same event
+    await expect(register(event.id, b.id, 'CONFIRMED')).resolves.toBeDefined();
+
+    // and the same student may register for a different event
+    const other = await anEvent();
+    await expect(register(other.id, a.id, 'CONFIRMED')).resolves.toBeDefined();
+  });
+
   it('rejects a second CONFIRMED registration', async () => {
     const event = await anEvent();
     const user = await aUser();
@@ -1711,18 +1761,24 @@ enum EventStatus {
   COMPLETED
   CERTIFIED
   CANCELLED
+
+  @@map("event_status")
 }
 
 /// Extensible. CHECK_IN_AND_OUT and MINIMUM_DURATION are a later additive
 /// stage; no columns for them are added now.
 enum AttendancePolicy {
   CHECK_IN_ONLY
+
+  @@map("attendance_policy")
 }
 
 enum EventResponsibility {
   EVENT_LEAD
   OPERATIONS
   MARKETING
+
+  @@map("event_responsibility")
 }
 
 enum RegistrationStatus {
@@ -1733,11 +1789,15 @@ enum RegistrationStatus {
   ATTENDED
   NO_SHOW
   REMOVED
+
+  @@map("registration_status")
 }
 
 enum RegistrationSource {
   SELF
   ADMIN_OVERRIDE
+
+  @@map("registration_source")
 }
 
 /// A Lead publishing an event makes it live immediately — there is no approval
@@ -1798,6 +1858,7 @@ model EventAssignment {
   createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([eventId, userId, responsibility])
   @@index([userId])
@@ -1818,12 +1879,20 @@ model EventRegistration {
   overrideReason  String?            @map("override_reason")
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([eventId, status])
   @@index([userId, status])
   @@index([eventId, waitlistPosition])
   @@map("event_registration")
 }
+```
+
+Add the matching back-relations to `User` (modify the existing model):
+
+```prisma
+  registrations    EventRegistration[]
+  eventAssignments EventAssignment[]
 ```
 
 - [ ] **Step 4: Generate the migration and add the CHECK constraints and partial index**
@@ -1874,7 +1943,7 @@ pnpm prisma generate
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/events.integration.test.ts`
-Expected: PASS — 17 tests.
+Expected: PASS — 18 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2096,11 +2165,15 @@ Append to `apps/api/prisma/schema.prisma`:
 enum AttendanceMethod {
   QR_SCAN
   MANUAL
+
+  @@map("attendance_method")
 }
 
 enum CertificateStatus {
   ACTIVE
   REVOKED
+
+  @@map("certificate_status")
 }
 
 /// One persistent identity pass per user. The QR carries a signed token of
@@ -2114,6 +2187,8 @@ model QrPass {
   tokenVersion  Int       @default(1) @map("token_version")
   issuedAt      DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
   lastRotatedAt DateTime? @map("last_rotated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("qr_pass")
 }
@@ -2136,6 +2211,7 @@ model AttendanceRecord {
   correctionReason  String?          @map("correction_reason")
 
   registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([eventId])
   @@index([userId])
@@ -2164,6 +2240,7 @@ model Certificate {
   revokedReason       String?           @map("revoked_reason")
 
   registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, status])
   @@index([eventId])
@@ -2174,7 +2251,15 @@ model Certificate {
 Add the back-relations to `EventRegistration` (modify the existing model):
 
 ```prisma
-  attendance  AttendanceRecord?
+  attendance   AttendanceRecord?
+  certificates Certificate[]
+```
+
+And to `User`:
+
+```prisma
+  qrPass       QrPass?
+  attendance   AttendanceRecord[]
   certificates Certificate[]
 ```
 
@@ -2379,11 +2464,15 @@ enum EmailStatus {
   SENT
   FAILED
   SKIPPED
+
+  @@map("email_status")
 }
 
 enum AuditOutcome {
   SUCCESS
   DENIED
+
+  @@map("audit_outcome")
 }
 
 /// Written in the same transaction as the action that triggers it. dedupeKey
