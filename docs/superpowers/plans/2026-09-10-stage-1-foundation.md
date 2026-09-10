@@ -2912,7 +2912,86 @@ export const ConfigModule = NestConfigModule.forRoot({
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `pnpm --filter @majlis/api test`
-Expected: PASS — 6 tests.
+Expected: PASS — 6 tests (the redaction tests arrive in Step 4b).
+
+- [ ] **Step 4b: Make log redaction provable**
+
+Redaction is a security control, not formatting: a missing or mis-keyed path means a session cookie or password in the logs. Put the paths in their own module so a test can exercise them against real pino output.
+
+`apps/api/src/config/log-redaction.ts`:
+
+```ts
+/**
+ * Paths stripped from every log line. A missing entry here means a secret in
+ * the logs, so this is a security control rather than formatting.
+ *
+ * The shapes match what pino-http actually serialises: request headers live
+ * under `req.headers`, and response headers come from `res.getHeaders()`.
+ */
+export const LOG_REDACT_PATHS = [
+  'req.headers.cookie',
+  'req.headers.authorization',
+  'req.body.password',
+  'req.body.token',
+  'res.headers["set-cookie"]',
+] as const;
+```
+
+`apps/api/src/config/log-redaction.spec.ts`:
+
+```ts
+import pino from 'pino';
+import { Writable } from 'node:stream';
+import { describe, expect, it } from 'vitest';
+import { LOG_REDACT_PATHS } from './log-redaction';
+
+describe('LOG_REDACT_PATHS', () => {
+  it('covers every path a secret is known to travel', () => {
+    // Pinned explicitly: silently dropping a path is exactly the regression
+    // this guards against, and a laxer assertion would not notice.
+    expect([...LOG_REDACT_PATHS]).toEqual([
+      'req.headers.cookie',
+      'req.headers.authorization',
+      'req.body.password',
+      'req.body.token',
+      'res.headers["set-cookie"]',
+    ]);
+  });
+
+  it('actually strips those values from an emitted log line', () => {
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+
+    logger.info(
+      {
+        req: {
+          headers: {
+            cookie: 'majlis_session=LEAKED',
+            authorization: 'Bearer LEAKED',
+          },
+          body: { password: 'LEAKED', token: 'LEAKED' },
+        },
+        res: { headers: { 'set-cookie': 'majlis_session=LEAKED' } },
+      },
+      'request completed',
+    );
+
+    const output = lines.join('');
+    expect(output).toContain('request completed');
+    expect(output).not.toContain('LEAKED');
+  });
+});
+```
+
+Run: `pnpm --filter @majlis/api test`
+Expected: PASS — 8 tests (6 env + 2 redaction).
 
 - [ ] **Step 5: Write the failing health test**
 
@@ -3054,6 +3133,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
 import { ConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
+import { LOG_REDACT_PATHS } from './config/log-redaction';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -3070,17 +3150,9 @@ import { PrismaModule } from './prisma/prisma.module';
             res.setHeader('x-request-id', id);
             return id;
           },
-          // Nothing secret ever reaches a log line.
-          redact: {
-            paths: [
-              'req.headers.cookie',
-              'req.headers.authorization',
-              'req.body.password',
-              'req.body.token',
-              'res.headers["set-cookie"]',
-            ],
-            remove: true,
-          },
+          // Nothing secret ever reaches a log line. The paths live in their
+          // own module so they can be tested against real pino output.
+          redact: { paths: [...LOG_REDACT_PATHS], remove: true },
           transport:
             config.get('NODE_ENV', { infer: true }) === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true } }
