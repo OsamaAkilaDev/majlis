@@ -601,7 +601,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ## Task 4: Prisma wiring and the integration test harness
 
 **Files:**
-- Create: `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/vitest.config.ts`, `apps/api/vitest.integration.config.ts`
+- Create: `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/tsconfig.build.json`, `apps/api/vitest.config.ts`, `apps/api/vitest.integration.config.ts`
 - Create: `apps/api/prisma/schema.prisma`, `apps/api/prisma.config.ts`
 - Create: `apps/api/test/db.ts`, `apps/api/test/global-setup.ts`
 - Test: `apps/api/test/harness.integration.test.ts`
@@ -623,8 +623,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
-    "start:dev": "nest start --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "start:dev": "tsx watch src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test prisma",
     "test": "vitest run --config vitest.config.ts",
@@ -654,7 +654,6 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@nestjs/cli": "12.0.0",
     "@nestjs/testing": "12.0.1",
     "@swc/core": "1.16.2",
     "@types/express": "5.0.3",
@@ -693,14 +692,16 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 }
 ```
 
-`apps/api/nest-cli.json`:
+**There is deliberately no `@nestjs/cli` and no `nest-cli.json`.** `@nestjs/cli@12.0.0` is the only stable 12.x release and it is broken: it pins `ora@9.4.1`, which is ESM-only, and `@angular-devkit/schematics@22.1.5` `require()`s it in a cycle, so *any* invocation — even `nest --version` — dies with `ERR_REQUIRE_CYCLE_MODULE` on Node 22. Verified directly, not assumed. `@nestjs/cli@11.0.24` works (it uses the CJS `ora@5.4.1`) but mixes majors and drags in a large Angular-derived dependency tree this project never otherwise uses.
+
+So the build is plain `tsc` and the dev loop is `tsx watch`. Nothing here needs schematics or asset copying, both are faster, and `tsx` is already a pinned dependency.
+
+`apps/api/tsconfig.build.json`:
 
 ```json
 {
-  "$schema": "https://json.schemastore.org/nest-cli",
-  "collection": "@nestjs/schematics",
-  "sourceRoot": "src",
-  "compilerOptions": { "deleteOutDir": true }
+  "extends": "./tsconfig.json",
+  "exclude": ["dist", "node_modules", "test", "src/**/*.spec.ts", "prisma/seed.ts"]
 }
 ```
 
