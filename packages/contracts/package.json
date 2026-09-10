@@ -1,0 +1,16 @@
+{
+  "name": "@majlis/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:integration": "echo \"no integration tests in contracts\""
+  },
+  "dependencies": { "zod": "4.6.1" },
+  "devDependencies": { "typescript": "5.9.3", "vitest": "5.0.0" }
+}
