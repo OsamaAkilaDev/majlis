@@ -136,6 +136,15 @@ describe('ClubMembership — one open membership per (user, club)', () => {
     await expect(join(club.id, user.id, 'PENDING')).rejects.toMatchObject({ code: 'P2002' });
   });
 
+  it('scopes the rule per user — two students may both hold open memberships in one club', async () => {
+    // Without this, a (club_id)-only index would pass every other test in
+    // this block while capping each club at one member platform-wide.
+    const club = await aClub();
+    const [a, b] = [await aUser(), await aUser()];
+    await join(club.id, a.id, 'ACTIVE');
+    await expect(join(club.id, b.id, 'ACTIVE')).resolves.toBeDefined();
+  });
+
   it('allows re-joining after LEFT, and keeps the historic row', async () => {
     const club = await aClub();
     const user = await aUser();
