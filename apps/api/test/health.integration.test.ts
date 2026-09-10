@@ -3,13 +3,15 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
+import { API_PREFIX } from '../src/config/api-prefix';
 
 let app: INestApplication;
 
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
-  app.setGlobalPrefix('api/v1');
+  // See api-prefix.ts for why this must keep its leading slash.
+  app.setGlobalPrefix(API_PREFIX);
   await app.init();
 });
 
@@ -17,15 +19,15 @@ afterAll(async () => {
   await app?.close();
 });
 
-describe('GET /api/v1/health', () => {
+describe(`GET ${API_PREFIX}/health`, () => {
   it('reports ok with the database up', async () => {
-    const res = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
+    const res = await request(app.getHttpServer()).get(`${API_PREFIX}/health`).expect(200);
     expect(res.body).toMatchObject({ status: 'ok', database: 'up' });
     expect(typeof res.body.uptimeSeconds).toBe('number');
   });
 
   it('exposes nothing sensitive — no connection string, no secret', async () => {
-    const res = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
+    const res = await request(app.getHttpServer()).get(`${API_PREFIX}/health`).expect(200);
     const body = JSON.stringify(res.body);
     expect(body).not.toMatch(/postgres/i);
     expect(body).not.toMatch(/password/i);

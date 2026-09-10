@@ -6,6 +6,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { setupOpenApi } from './common/openapi';
 import { ProblemExceptionFilter } from './common/problem/problem.filter';
+import { API_PREFIX } from './config/api-prefix';
 import type { Env } from './config/env.schema';
 
 async function bootstrap(): Promise<void> {
@@ -13,16 +14,8 @@ async function bootstrap(): Promise<void> {
   const logger = app.get(Logger);
 
   app.useLogger(logger);
-  // A leading slash is required: @nestjs/core's registerNotFoundHandler()
-  // and registerExceptionHandler() pass the raw prefix straight to the
-  // Express adapter's setNotFoundHandler/setErrorHandler without the
-  // addLeadingSlash() normalization that registerRouter() applies to every
-  // real route. A prefix of 'api/v1' (no leading slash) becomes an Express
-  // mount path that never matches an incoming URL, so unmatched routes and
-  // adapter-level errors fall straight through to Express's raw default
-  // handler — bypassing this filter entirely. See the 404 assertions in
-  // test/problem.integration.test.ts.
-  app.setGlobalPrefix('/api/v1');
+  // See api-prefix.ts for why this must keep its leading slash.
+  app.setGlobalPrefix(API_PREFIX);
   app.useGlobalPipes(new ZodValidationPipe());
   app.useGlobalFilters(new ProblemExceptionFilter(logger));
   app.enableShutdownHooks();
