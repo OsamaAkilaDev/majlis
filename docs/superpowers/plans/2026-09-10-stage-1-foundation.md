@@ -4389,17 +4389,18 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # There is no .env in CI. The `test:integration` script wraps vitest in
+      # `dotenv -e ../../.env -c`, and dotenv silently no-ops on a missing
+      # file without overriding variables already set — so the job-level env
+      # block above is what actually supplies the connection strings.
       - name: Integration tests
         run: pnpm --filter @majlis/api test:integration
-        env:
-          # No .env file in CI; dotenv-cli must not fail on its absence.
-          DOTENV_CONFIG_PATH: ''
 
       - name: Build
         run: pnpm build
 ```
 
-> There is no `.env` in CI. The `test:integration` script already uses `dotenv-cli`'s `-c` flag (Task 4), which tolerates a missing file, so the workflow's `env:` block supplies the values instead. If the integration step fails with a missing-`.env` error, that flag was dropped — restore it rather than deleting the `dotenv` wrapper, which local runs depend on.
+> There is no `.env` in CI. The `test:integration` script uses `dotenv-cli`'s `-c` flag (Task 4), which tolerates a missing file, so the workflow's job-level `env:` block supplies the values instead — `dotenv` does not override variables already present. If the integration step fails with a missing-`.env` error, that flag was dropped: restore it rather than deleting the `dotenv` wrapper, which local runs depend on.
 
 - [ ] **Step 2: Write the README**
 
