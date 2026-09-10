@@ -16,6 +16,7 @@
 - **Never pin a package published in the last 48 hours.** pnpm 11 enforces a default 24-hour `minimumReleaseAge` supply-chain policy and refuses the install outright. **Do not add a `minimumReleaseAgeExclude` entry to work around it** — that bypass exists for emergencies, not for chasing a fresh release. Pick an older patch instead. This is why `zod` pins to `4.5.4` rather than the newer `4.6.1`.
 - **CommonJS, not ESM.** Prisma 7's generator defaults to ESM; the generator block must set `moduleFormat = "cjs"`. Do not add `"type": "module"` to `apps/api/package.json`.
 - Prisma 7 requires a **driver adapter** (`@prisma/adapter-pg`) and an explicit **`output`** path on the generator. It no longer auto-runs `generate` or `seed`.
+- **Hand-written migration SQL survives later migrations.** Tasks 5–9 each append partial unique indexes and CHECK constraints that Prisma cannot express in `schema.prisma`. Verified empirically against `prisma.10.0`: a subsequent `migrate dev` does **not** treat them as drift and does **not** generate drops for them — the next migration contains only the genuinely new objects. Layering constraints this way is safe.
 - **IDs are UUID v7** via Prisma's `@default(uuid(7))` — generated client-side, so it works regardless of the server's Postgres version. Do not use Postgres 18's native `uuidv7()`; Supabase may be on an older major.
 - **All timestamps are `timestamptz`, stored UTC.** In Prisma: `@db.Timestamptz(3)`.
 - **No unbounded list queries anywhere**, in any code, ever.
@@ -732,9 +733,11 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     globalSetup: ['./test/global-setup.ts'],
-    // The test database is shared state; a single fork keeps truncation honest.
+    // The test database is shared state; serializing file execution keeps
+    // truncation honest. Vitest 5 removed `poolOptions.forks.singleFork` —
+    // this top-level flag replaces it and forces maxWorkers to 1.
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,
   },
@@ -951,6 +954,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `apps/api/prisma/schema.prisma`
 - Create: `apps/api/prisma/migrations/<ts>_identity/migration.sql`
 - Test: `apps/api/test/schema/identity.integration.test.ts`
+
+> **`user` is a reserved word in Postgres.** `@@map("user")` produces a table literally named `user`, so every raw-SQL reference to it must be double-quoted — `ALTER TABLE "user"`, `TRUNCATE "public"."user"`. Unquoted `FROM user` resolves to the `user` keyword (an alias for `current_user`) and fails confusingly rather than obviously. Prisma quotes automatically, so this only affects hand-written migration SQL. The table stays singular for consistency with `club`, `event`, and the rest of the schema.
 
 **Interfaces:**
 - Consumes: Task 4's harness (`createTestPrisma`, `truncateAll`, `disconnectTestPrisma`).
