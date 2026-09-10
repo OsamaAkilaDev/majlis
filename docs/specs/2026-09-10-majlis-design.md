@@ -68,8 +68,26 @@ These are settled. Do not re-litigate without asking the human.
 | Email | Resend, behind a channel adapter interface |
 | Logging | Pino, structured, with request IDs and redaction |
 | Monorepo | pnpm workspaces + Turborepo |
-| Testing | Vitest, Supertest, Testcontainers, Playwright |
+| Testing | Vitest, Supertest, Playwright, against a **native local Postgres 18** |
 | Hosting | **Vercel for both** apps; Supabase for Postgres and Storage |
+
+**Pinned versions**, verified 2026-09-10. Pin these exactly; do not use `latest`.
+
+| Package | Version | Note |
+|---|---|---|
+| `prisma`, `@prisma/client`, `@prisma/adapter-pg` | **7.10.0** | ⚠️ `prisma@latest` currently resolves to **`8.0.0-rc.13`**, a release candidate. Always pin. |
+| `@nestjs/core`, `@nestjs/common`, `@nestjs/swagger` | 12.0.1 | |
+| `zod` | 4.6.1 | |
+| `nestjs-zod` | 5.5.0 | Zod 4 compatible |
+| `next` | 16.3.4 | |
+| `tailwindcss` | 4.3.3 | |
+| `turbo` | 2.10.12 | |
+| `vitest` | 5.0.0 | |
+| `nestjs-pino` | 5.1.0 | |
+| Node / pnpm | 22.14 / 11.15 | development machine |
+| Postgres | 18 | native local install; `postgres:18` in CI |
+
+Prisma 7 notes that shape the setup: **driver adapters are mandatory** (`@prisma/adapter-pg` over `pg`), the new `prisma-client` generator replaces `prisma-client-js` and **requires an explicit `output` path**, and its default output is ESM. Since NestJS is CommonJS, the generator block sets `moduleFormat = "cjs"` — this avoids an ESM migration of the whole API, which interacts badly with decorators and `emitDecoratorMetadata`. Prisma 7 also no longer auto-runs `generate` or `seed`; both are explicit steps.
 
 ### Product
 
@@ -125,7 +143,7 @@ majlis/
 ├── docs/
 ├── turbo.json
 ├── pnpm-workspace.yaml
-└── docker-compose.yml        local Postgres for development and tests
+└── Dockerfile                API image — portability only, not used locally
 ```
 
 pnpm workspaces with Turborepo for the `build` / `lint` / `typecheck` / `test` pipeline. TypeScript `strict` throughout. ESLint flat config, Prettier, Husky + lint-staged, conventional commits.
@@ -532,7 +550,7 @@ Where a viewer lacks access, or a club is suspended, or something genuinely went
 | Layer | Tool | Covers |
 |---|---|---|
 | Unit | Vitest | State machines, permission derivation, eligibility rules, waitlist ordering, certificate eligibility, timezone rendering, middleware route rules. Pure functions, fast. |
-| Integration | Vitest + Supertest + Testcontainers Postgres | Every endpoint against a **real database with the real constraints**. Mocking the DB would test nothing, because the invariants *are* the constraints. |
+| Integration | Vitest + Supertest against a **real Postgres 18** | Every endpoint against the real constraints. Mocking the DB would test nothing, because the invariants *are* the constraints. Locally this is a native Postgres 18 install with a dedicated `majlis_test` database, migrated once per run and truncated between tests; in CI it is a GitHub Actions `postgres:18` service container. Testcontainers was dropped because the development machine has no Docker. |
 | Concurrency | Vitest + real DB | N parallel requests for the last seat → exactly one `CONFIRMED`. Simultaneous double scan → one attendance row. Issuance run twice → one certificate. Concurrent cancellation + promotion → no lost or duplicated seat. |
 | Authorization | Vitest + Supertest | A matrix over every protected endpoint × every role that must not reach it — explicitly including the IDOR case, where a member of club A addresses club B's event by ID. |
 | E2E | Playwright | Admin creates club + appoints Lead → Lead invites Operations → Lead creates and publishes event → student registers → Operations scans → attendance recorded → certificate issued → public verification resolves. Plus a mobile-viewport pass and an accessibility pass. |
@@ -562,7 +580,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 
 | # | Stage | Contents |
 |---|---|---|
-| 1 | Foundation | Monorepo, Turborepo, contracts package, Prisma schema + first migrations with all constraints, Docker Compose, health endpoint, CI, seed script |
+| 1 | Foundation | Monorepo, Turborepo, contracts package, Prisma schema + first migrations with all constraints, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
 | 2 | Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard skeleton, user suspension, audit writer, transaction host |
 | 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline |
 | 4 | Clubs & team | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance |
