@@ -2078,6 +2078,28 @@ describe('AttendanceRecord', () => {
     expect(record.checkedInAt).toBeInstanceOf(Date);
   });
 
+  it('scopes attendance per registration, not per event — a queue of students all check in', async () => {
+    // The catastrophic failure this guards against: a unique index on
+    // event_id instead of registration_id would pass every other test here
+    // while allowing exactly one check-in per event, ever.
+    const { event, user, registration } = await aRegistration();
+    const scanner = await aUser();
+    await prisma.attendanceRecord.create({
+      data: { registrationId: registration.id, eventId: event.id, userId: user.id, checkedInById: scanner.id, method: 'QR_SCAN' },
+    });
+
+    const second = await aUser();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: event.id, userId: second.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.attendanceRecord.create({
+        data: { registrationId: secondReg.id, eventId: event.id, userId: second.id, checkedInById: scanner.id, method: 'QR_SCAN' },
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('makes a double check-in impossible, even from two simultaneous scanners', async () => {
     const { event, user, registration } = await aRegistration();
     const scanner = await aUser();
@@ -2114,6 +2136,24 @@ describe('Certificate', () => {
     expect(cert.status).toBe('ACTIVE');
     expect(cert.clubLogoSnapshotUrl).toBe('https://example.test/logo.png');
     expect(cert.pdfUrl).toBeNull(); // rendered lazily on first download
+  });
+
+  it('scopes certificates per registration — two attendees of one event each get one', async () => {
+    const { event, user, registration } = await aRegistration();
+    await prisma.certificate.create({
+      data: certData({ registrationId: registration.id, eventId: event.id, userId: user.id }),
+    });
+
+    const second = await aUser();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: event.id, userId: second.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.certificate.create({
+        data: certData({ registrationId: secondReg.id, eventId: event.id, userId: second.id }),
+      }),
+    ).resolves.toBeDefined();
   });
 
   it('rejects a second ACTIVE certificate for one registration, so re-running issuance is safe', async () => {
@@ -2291,7 +2331,7 @@ pnpm prisma generate
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/attendance.integration.test.ts`
-Expected: PASS — 9 tests.
+Expected: PASS — 11 tests.
 
 - [ ] **Step 6: Commit**
 
