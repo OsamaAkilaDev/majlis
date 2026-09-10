@@ -780,11 +780,11 @@ describe('integration test harness', () => {
     expect(rows[0]!.db).toBe('majlis_test');
   });
 
-  it('has applied migrations, so the _prisma_migrations table exists', async () => {
-    const rows = await prisma.$queryRaw<{ n: bigint }[]>`
-      SELECT count(*) AS n FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = '_prisma_migrations'`;
-    expect(Number(rows[0]!.n)).toBe(1);
+  it('refuses a connection string that does not name the test database', async () => {
+    const saved = process.env.TEST_DATABASE_URL;
+    process.env.TEST_DATABASE_URL = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
+    expect(() => createTestPrisma()).toThrow(/non-test database/);
+    process.env.TEST_DATABASE_URL = saved;
   });
 
   it('truncateAll runs without error when there are no application tables yet', async () => {
@@ -844,11 +844,26 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
 
 ```ts
 import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { testDatabaseUrl } from './db';
 
-/** Applies all migrations to the test database once, before any test file runs. */
+/**
+ * Applies all migrations to the test database once, before any test file runs.
+ *
+ * `prisma migrate deploy` errors on an empty migrations directory, which is
+ * the state until the first schema task lands — so this is a no-op until
+ * there is something to apply.
+ */
 export default function setup(): void {
   const url = testDatabaseUrl();
+  const dir = join(__dirname, '..', 'prisma', 'migrations');
+
+  const hasMigrations =
+    existsSync(dir) && readdirSync(dir, { withFileTypes: true }).some((e) => e.isDirectory());
+
+  if (!hasMigrations) return;
+
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
@@ -857,18 +872,19 @@ export default function setup(): void {
 }
 ```
 
-- [ ] **Step 7: Install, generate the client, and create the baseline migration**
+- [ ] **Step 7: Install and generate the client**
 
 Vitest does not read `.env` on its own, which is why the `test:integration` script above is wrapped in `dotenv-cli`. The `-c` flag makes a missing `.env` non-fatal, so CI can supply the same variables through its own `env:` block instead.
+
+**Do not create a migration in this task.** There are no models yet, and Prisma will not produce an empty migration — which is exactly why `global-setup.ts` above skips `migrate deploy` while the migrations directory is empty. The first real migration arrives in Task 5.
 
 ```bash
 pnpm install
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name init --create-only
 pnpm prisma generate
 ```
 
-Expected: `prisma/migrations/<timestamp>_init/migration.sql` exists (empty, since there are no models yet) and `src/generated/prisma/` is populated.
+Expected: `src/generated/prisma/` is populated with a CommonJS client, and `prisma/migrations/` does not exist yet.
 
 - [ ] **Step 8: Run the test to verify it passes**
 
@@ -2985,7 +3001,6 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `apps/api/src/common/problem/domain-error.ts`, `src/common/problem/problem.filter.ts`
 - Create: `apps/api/src/common/openapi.ts`
 - Modify: `apps/api/src/main.ts` — register the pipe, the filter, and OpenAPI
-- Modify: `apps/api/src/health/health.controller.ts` — add a probe route used only by tests
 - Test: `apps/api/src/common/problem/problem.filter.spec.ts`, `test/problem.integration.test.ts`
 
 **Interfaces:**
@@ -3705,7 +3720,6 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Create: `.github/workflows/ci.yml`
 - Create: `README.md`
-- Modify: root `package.json` — add a `ci` script
 
 **Interfaces:**
 - Consumes: every workspace script defined in Tasks 1–13.
