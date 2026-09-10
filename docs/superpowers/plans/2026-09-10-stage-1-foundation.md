@@ -650,6 +650,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   "devDependencies": {
     "@nestjs/cli": "12.0.0",
     "@nestjs/testing": "12.0.1",
+    "@swc/core": "1.16.2",
     "@types/express": "5.0.3",
     "@types/node": "22.14.0",
     "@types/pg": "8.15.6",
@@ -662,6 +663,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "unplugin-swc": "1.5.7",
+    "vite": "8.2.2",
     "vitest": "5.0.0"
   }
 }
