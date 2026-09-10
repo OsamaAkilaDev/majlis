@@ -100,16 +100,26 @@ Root `package.json`:
     "format": "prettier --write \"**/*.{ts,tsx,json,md,yaml,yml}\""
   },
   "devDependencies": {
-    "@eslint/js": "9.40.0",
-    "eslint": "9.40.0",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
-    "prettier": "3.6.2",
+    "prettier": "3.9.6",
     "turbo": "2.10.12",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.0"
+    "typescript-eslint": "8.70.0"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "nestjs-zod>@nestjs/common": "12",
+        "nestjs-zod>@nestjs/swagger": "12"
+      }
+    }
   }
 }
 ```
+
+`nestjs-zod@5.5.0` (added in Task 4) declares peers of `@nestjs/common ^10 || ^11` and `@nestjs/swagger ^7.4.2 || ^8 || ^11`, so NestJS 12 falls outside its stated range. The override records the deliberate judgement that the pipe and DTO surface is unchanged between Nest 11 and 12, rather than leaving an unexplained warning on every install. It is scoped to that one package — it does not relax peer checking generally.
 
 - [ ] **Step 2: Create the Turborepo pipeline**
 
@@ -586,7 +596,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/vitest.config.ts`, `apps/api/vitest.integration.config.ts`
-- Create: `apps/api/prisma/schema.prisma`
+- Create: `apps/api/prisma/schema.prisma`, `apps/api/prisma.config.ts`
 - Create: `apps/api/test/db.ts`, `apps/api/test/global-setup.ts`
 - Test: `apps/api/test/harness.integration.test.ts`
 
@@ -614,13 +624,13 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "dotenv -e ../../.env -c -- vitest run --config vitest.integration.config.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts"
+    "db:seed": "dotenv -e ../../.env -c -- tsx prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.0.1",
-    "@nestjs/config": "5.0.0",
+    "@nestjs/config": "12.0.0",
     "@nestjs/core": "12.0.1",
     "@nestjs/platform-express": "12.0.1",
     "@nestjs/swagger": "12.0.1",
@@ -637,12 +647,13 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "zod": "4.6.1"
   },
   "devDependencies": {
-    "@nestjs/cli": "12.0.1",
+    "@nestjs/cli": "12.0.0",
     "@nestjs/testing": "12.0.1",
     "@types/express": "5.0.3",
     "@types/node": "22.14.0",
     "@types/pg": "8.15.6",
     "@types/supertest": "6.0.3",
+    "dotenv": "17.2.3",
     "dotenv-cli": "10.0.0",
     "pino-pretty": "13.1.2",
     "prisma": "7.10.0",
@@ -745,11 +756,37 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 ```
+
+**The datasource block carries no `url`.** Prisma 7 removed it — a `url` here is now a hard validation error (`P1012`), not a deprecation. Connection strings live in `prisma.config.ts`, created in the next step. This was verified against `prisma@7.10.0` directly, not assumed.
+
+- [ ] **Step 3b: Create the Prisma config**
+
+`apps/api/prisma.config.ts`:
+
+```ts
+import { config } from 'dotenv';
+import { defineConfig, env } from 'prisma/config';
+
+// The workspace keeps one .env at the repo root, two levels up from here.
+config({ path: '../../.env' });
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: { path: 'prisma/migrations' },
+  // Migrations use the DIRECT connection. The application uses the pooled
+  // one via the driver adapter in PrismaService — on Supabase those differ
+  // (:5432 direct, :6543 transaction pooler), and migrations cannot run
+  // through pgBouncer.
+  datasource: { url: env('DIRECT_URL') },
+});
+```
+
+Add `dotenv` to `apps/api` devDependencies: `"dotenv": "17.2.3"`.
+
+Because this file loads the root `.env` itself, the Prisma CLI no longer needs a `dotenv-cli` wrapper — `pnpm prisma migrate dev` works directly. `dotenv` does not override variables already present in the environment, so the test harness can still point migrations at `majlis_test` by setting `DIRECT_URL` in the child process.
 
 - [ ] **Step 4: Write the failing harness test**
 
@@ -1064,7 +1101,7 @@ model RefreshToken {
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name identity --create-only
+pnpm prisma migrate dev --name identity --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -1079,7 +1116,7 @@ ALTER TABLE "user"
 Apply it and regenerate the client:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
@@ -1398,7 +1435,7 @@ model ClubMembership {
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name organisation --create-only
+pnpm prisma migrate dev --name organisation --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -1422,7 +1459,7 @@ CREATE UNIQUE INDEX "club_membership_one_open_per_user"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
@@ -1782,7 +1819,7 @@ model EventRegistration {
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name events --create-only
+pnpm prisma migrate dev --name events --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -1819,7 +1856,7 @@ CREATE UNIQUE INDEX "event_registration_one_open_per_user"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
@@ -2134,7 +2171,7 @@ Add the back-relations to `EventRegistration` (modify the existing model):
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name attendance_certificates --create-only
+pnpm prisma migrate dev --name attendance_certificates --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -2151,7 +2188,7 @@ CREATE UNIQUE INDEX "certificate_one_active_per_registration"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
@@ -2398,7 +2435,7 @@ Add the back-relation to `User` (modify the existing model). Note there is **no*
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name notifications_audit --create-only
+pnpm prisma migrate dev --name notifications_audit --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -2426,7 +2463,7 @@ CREATE TRIGGER "audit_log_no_delete"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
@@ -3389,15 +3426,17 @@ Expected: FAIL — the 404 body is Nest's default shape, missing `requestId` and
 ```ts
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { patchNestJsSwagger } from 'nestjs-zod';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 
 /**
  * The OpenAPI document is generated from the Zod-derived DTOs, never written
- * by hand. patchNestJsSwagger teaches @nestjs/swagger how to read a ZodDto.
+ * by hand.
+ *
+ * nestjs-zod v5 relies on Zod 4's native JSON Schema output, so there is no
+ * `patchNestJsSwagger` any more — it was removed in v5. `cleanupOpenApiDoc`
+ * post-processes the generated document instead.
  */
 export function setupOpenApi(app: INestApplication): void {
-  patchNestJsSwagger();
-
   const config = new DocumentBuilder()
     .setTitle('Majlis API')
     .setDescription('University club and event management.')
@@ -3405,9 +3444,12 @@ export function setupOpenApi(app: INestApplication): void {
     .addCookieAuth('majlis_session')
     .build();
 
-  SwaggerModule.setup('api/v1/docs', app, SwaggerModule.createDocument(app, config));
+  const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup('api/v1/docs', app, document);
 }
 ```
+
+> **Peer-range caveat, verified against the published package.** `nestjs-zod@5.5.0` declares peers of `@nestjs/common ^10 || ^11` and `@nestjs/swagger ^7.4.2 || ^8 || ^11` — it does **not** list NestJS 12. The root `package.json` carries a `pnpm.peerDependencyRules.allowedVersions` override permitting 12, on the judgement that the `PipeTransform` and DTO-class surface did not change between Nest 11 and 12. If `ZodValidationPipe` or `createZodDto` actually misbehaves at runtime, do **not** downgrade NestJS. Fall back to dropping `nestjs-zod`: a `ZodValidationPipe` is roughly 25 lines implementing `PipeTransform`, and Zod 4 ships `z.toJSONSchema()` natively for the OpenAPI side. Say in your report which path you took.
 
 Update `apps/api/src/main.ts`:
 
