@@ -3802,7 +3802,7 @@ export class ProblemExceptionFilter implements ExceptionFilter {
 - [ ] **Step 5: Run the unit test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test`
-Expected: PASS — 17 tests (6 env + 11 filter).
+Expected: PASS — 21 tests (6 env + 2 redaction + 2 prefix + 11 filter).
 
 - [ ] **Step 6: Write the failing integration test**
 
@@ -3858,6 +3858,50 @@ describe('error responses', () => {
 Run: `pnpm --filter @majlis/api test:integration test/problem.integration.test.ts`
 Expected: FAIL — the 404 body is Nest's default shape, missing `requestId` and the problem content type.
 
+- [ ] **Step 7b: Put the route prefix behind a guarded constant**
+
+The global prefix **must** carry a leading slash, and this is not cosmetic. `@nestjs/core`'s `registerNotFoundHandler` and `registerExceptionHandler` skip the `addLeadingSlash` normalisation that `registerRouter` applies, so a prefix of `'api/v1'` silently routes 404s and unhandled errors *around every exception filter* — they come back in Nest's default shape instead of Problem Details, and nothing fails.
+
+A comment is not enough protection for a trap this quiet, and tests that set their own prefix string can drift from what `main.ts` actually does. Share one constant and assert the property.
+
+`apps/api/src/config/api-prefix.ts`:
+
+```ts
+/**
+ * The global route prefix.
+ *
+ * The leading slash is load-bearing. @nestjs/core's registerNotFoundHandler
+ * and registerExceptionHandler skip the addLeadingSlash normalisation that
+ * registerRouter applies, so 'api/v1' would route 404s and unhandled errors
+ * around every exception filter — returning Nest's default error shape
+ * instead of Problem Details, silently.
+ */
+export const API_PREFIX = '/api/v1';
+```
+
+`apps/api/src/config/api-prefix.spec.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { API_PREFIX } from './api-prefix';
+
+describe('API_PREFIX', () => {
+  it('keeps the leading slash the 404 and error paths depend on', () => {
+    expect(API_PREFIX.startsWith('/')).toBe(true);
+  });
+
+  it('is the versioned prefix every route is served under', () => {
+    expect(API_PREFIX).toBe('/api/v1');
+  });
+});
+```
+
+Then use it everywhere the prefix is set — `main.ts` and **both** integration test files — so no test app is configured differently from production:
+
+```ts
+app.setGlobalPrefix(API_PREFIX);
+```
+
 - [ ] **Step 8: Wire the filter, the Zod pipe, and OpenAPI into main.ts**
 
 `apps/api/src/common/openapi.ts`:
@@ -3899,6 +3943,7 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
+import { API_PREFIX } from './config/api-prefix';
 import { setupOpenApi } from './common/openapi';
 import { ProblemExceptionFilter } from './common/problem/problem.filter';
 import type { Env } from './config/env.schema';
@@ -3908,7 +3953,7 @@ async function bootstrap(): Promise<void> {
   const logger = app.get(Logger);
 
   app.useLogger(logger);
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_PREFIX);
   app.useGlobalPipes(new ZodValidationPipe());
   app.useGlobalFilters(new ProblemExceptionFilter(logger));
   app.enableShutdownHooks();
