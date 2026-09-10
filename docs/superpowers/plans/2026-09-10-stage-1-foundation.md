@@ -2748,6 +2748,37 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   - `GET /api/v1/health` returning `{ status: 'ok'; database: 'up'; uptimeSeconds: number }`
 - The global route prefix is `api/v1`. Every later controller relies on this being set in `main.ts`, not repeated per controller.
 
+- [ ] **Step 0: Point integration tests at the test database, before anything imports**
+
+`@nestjs/config`'s `forRoot()` reads the environment, validates it, and caches the result **at import time** — the moment `config.module.ts` is first imported, which happens as soon as a test file imports `AppModule`. Setting `process.env.DATABASE_URL` inside `beforeAll` is therefore too late: the value is already captured, and `PrismaService` would connect to `majlis_dev`. Integration tests would silently read and write the development database, sailing straight past the `testDatabaseUrl()` guard, and every test would still pass.
+
+Fix it once, globally, with a Vitest setup file that runs before any test module is imported.
+
+Create `apps/api/test/setup-env.ts`:
+
+```ts
+// Runs before any test file is imported — which matters, because
+// @nestjs/config captures and validates the environment at import time.
+// Assigning these inside a beforeAll hook would be too late and the API
+// under test would quietly connect to the development database.
+if (!process.env.TEST_DATABASE_URL) {
+  throw new Error('TEST_DATABASE_URL is not set. Copy .env.example to .env.');
+}
+
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+process.env.DIRECT_URL = process.env.TEST_DATABASE_URL;
+```
+
+Then register it in `apps/api/vitest.integration.config.ts`, alongside the existing `globalSetup`:
+
+```ts
+    setupFiles: ['./test/setup-env.ts'],
+```
+
+`dotenv` does not overwrite variables already present in the environment, so these assignments survive `ConfigModule`'s own `.env` loading.
+
+Verify it works before moving on: `pnpm --filter @majlis/api test:integration` must still be green, and adding a temporary `console.error(process.env.DATABASE_URL)` to a test must print the `majlis_test` URL. Remove the temporary line afterwards.
+
 - [ ] **Step 1: Write the failing environment test**
 
 `apps/api/src/config/env.schema.spec.ts`:
@@ -2857,8 +2888,6 @@ import { AppModule } from '../src/app.module';
 let app: INestApplication;
 
 beforeAll(async () => {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DIRECT_URL = process.env.TEST_DATABASE_URL;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
@@ -3617,8 +3646,6 @@ import { ProblemExceptionFilter } from '../src/common/problem/problem.filter';
 let app: INestApplication;
 
 beforeAll(async () => {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DIRECT_URL = process.env.TEST_DATABASE_URL;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
