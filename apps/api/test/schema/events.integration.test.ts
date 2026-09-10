@@ -78,6 +78,18 @@ describe('Event', () => {
     ).rejects.toThrow(/event_capacity_bounds/);
   });
 
+  it('rejects an event created with zero capacity', async () => {
+    // capacity > 0 is the third conjunct of event_capacity_bounds and is
+    // otherwise untested — both other capacity tests only vary the counter.
+    await expect(anEvent({ capacity: 0 })).rejects.toThrow(/event_capacity_bounds/);
+  });
+
+  it('allows registration to close exactly when the event ends', async () => {
+    // The predicate is registration_closes_at <= ends_at. This boundary case
+    // is what distinguishes it from a stricter <.
+    await expect(anEvent({ registrationClosesAt: at(26), endsAt: at(26) })).resolves.toBeDefined();
+  });
+
   it('rejects a negative confirmed count', async () => {
     const event = await anEvent();
     await expect(
