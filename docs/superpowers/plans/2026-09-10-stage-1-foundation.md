@@ -4008,7 +4008,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ```ts
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { seed } from '../prisma/seed';
+import { assertSafeToSeed, seed } from '../prisma/seed';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
 const prisma = createTestPrisma();
@@ -4037,6 +4037,45 @@ describe('seed', () => {
     expect(await prisma.clubTeamAppointment.count({ where: { clubId: club.id, role: 'OPERATIONS', status: 'ACTIVE' } })).toBe(1);
   });
 
+  it('appoints the right people to those roles, not merely the right number', async () => {
+    // Counting by role alone passes even if the two people were swapped —
+    // the right number of wrong rows.
+    await seed(prisma);
+    const club = await prisma.club.findFirstOrThrow();
+    const lead = await prisma.user.findUniqueOrThrow({ where: { email: 'lead@uni.ac.ae' } });
+    const ops = await prisma.user.findUniqueOrThrow({ where: { email: 'ops@uni.ac.ae' } });
+
+    await expect(
+      prisma.clubTeamAppointment.findFirstOrThrow({
+        where: { clubId: club.id, userId: lead.id, role: 'LEAD', status: 'ACTIVE' },
+      }),
+    ).resolves.toBeDefined();
+
+    await expect(
+      prisma.clubTeamAppointment.findFirstOrThrow({
+        where: { clubId: club.id, userId: ops.id, role: 'OPERATIONS', status: 'ACTIVE' },
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('makes admin@uni.ac.ae specifically the Admin', async () => {
+    await seed(prisma);
+    const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@uni.ac.ae' } });
+    expect(admin.platformRole).toBe('ADMIN');
+  });
+
+  it('refuses to seed a non-local database without an explicit opt-in', () => {
+    const remote = 'postgresql://u:p@db.example.supabase.co:5432/postgres';
+    expect(() => assertSafeToSeed(remote, {})).toThrow(/non-local/i);
+    expect(() => assertSafeToSeed(remote, { ALLOW_REMOTE_SEED: 'yes' })).not.toThrow();
+  });
+
+  it('refuses to seed when NODE_ENV is production, even locally', () => {
+    const local = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
+    expect(() => assertSafeToSeed(local, { NODE_ENV: 'production' })).toThrow(/production/i);
+    expect(() => assertSafeToSeed(local, {})).not.toThrow();
+  });
+
   it('gives every user a QR pass', async () => {
     await seed(prisma);
     expect(await prisma.qrPass.count()).toBe(await prisma.user.count());
@@ -4049,6 +4088,8 @@ describe('seed', () => {
       clubs: await prisma.club.count(),
       events: await prisma.event.count(),
       appointments: await prisma.clubTeamAppointment.count(),
+      memberships: await prisma.clubMembership.count(),
+      departments: await prisma.department.count(),
       passes: await prisma.qrPass.count(),
     };
 
@@ -4058,6 +4099,8 @@ describe('seed', () => {
       clubs: await prisma.club.count(),
       events: await prisma.event.count(),
       appointments: await prisma.clubTeamAppointment.count(),
+      memberships: await prisma.clubMembership.count(),
+      departments: await prisma.department.count(),
       passes: await prisma.qrPass.count(),
     };
 
@@ -4202,9 +4245,36 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 }
 
+/**
+ * This script writes placeholder accounts carrying a fake password hash, plus
+ * a PUBLISHED event. It must never reach a real database.
+ *
+ * The test harness refuses any connection string not naming `majlis_test`;
+ * this is the reciprocal guard for the development path. A `.env` pointed at
+ * a deployed database is an ordinary mistake, and without this the only
+ * symptom would be placeholder credentials appearing in production.
+ */
+export function assertSafeToSeed(url: string, env: NodeJS.ProcessEnv): void {
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed: NODE_ENV is production.');
+  }
+
+  const { hostname } = new URL(url);
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+  if (!isLocal && env.ALLOW_REMOTE_SEED !== 'yes') {
+    throw new Error(
+      `Refusing to seed the non-local database at ${hostname}. ` +
+        'Set ALLOW_REMOTE_SEED=yes if that is genuinely what you want.',
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set.');
+
+  assertSafeToSeed(url, process.env);
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
   try {
@@ -4223,7 +4293,7 @@ if (require.main === module) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/seed.integration.test.ts`
-Expected: PASS — 6 tests.
+Expected: PASS — 10 tests.
 
 - [ ] **Step 5: Run the seed against the development database**
 
