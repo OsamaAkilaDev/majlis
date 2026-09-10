@@ -4225,13 +4225,14 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.0
+      # No `version:` input on purpose. The root package.json pins
+      # `packageManager: pnpm@11.15.0`, which this action reads; supplying
+      # both is a known conflict and risks the two drifting apart.
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
