@@ -2,9 +2,6 @@ packages:
   - "apps/*"
   - "packages/*"
 
-minimumReleaseAgeExclude:
-  - zod@4.6.1
-
 peerDependencyRules:
   allowedVersions:
     "nestjs-zod>@nestjs/common": "12"

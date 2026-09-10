@@ -77,7 +77,7 @@ These are settled. Do not re-litigate without asking the human.
 |---|---|---|
 | `prisma`, `@prisma/client`, `@prisma/adapter-pg` | **7.10.0** | ⚠️ `prisma@latest` currently resolves to **`8.0.0-rc.13`**, a release candidate. Always pin. |
 | `@nestjs/core`, `@nestjs/common`, `@nestjs/swagger` | 12.0.1 | |
-| `zod` | 4.6.1 | |
+| `zod` | 4.5.4 | |
 | `nestjs-zod` | 5.5.0 | Zod 4 compatible |
 | `next` | 16.3.4 | |
 | `tailwindcss` | 4.3.3 | |

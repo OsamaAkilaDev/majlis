@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - **Pin every version exactly.** Never `latest`. ⚠️ `prisma@latest` currently resolves to `8.0.0-rc.13`, a release candidate — the Prisma packages pin to **7.10.0**.
+- **Never pin a package published in the last 48 hours.** pnpm 11 enforces a default 24-hour `minimumReleaseAge` supply-chain policy and refuses the install outright. **Do not add a `minimumReleaseAgeExclude` entry to work around it** — that bypass exists for emergencies, not for chasing a fresh release. Pick an older patch instead. This is why `zod` pins to `4.5.4` rather than the newer `4.6.1`.
 - **CommonJS, not ESM.** Prisma 7's generator defaults to ESM; the generator block must set `moduleFormat = "cjs"`. Do not add `"type": "module"` to `apps/api/package.json`.
 - Prisma 7 requires a **driver adapter** (`@prisma/adapter-pg`) and an explicit **`output`** path on the generator. It no longer auto-runs `generate` or `seed`.
 - **IDs are UUID v7** via Prisma's `@default(uuid(7))` — generated client-side, so it works regardless of the server's Postgres version. Do not use Postgres 18's native `uuidv7()`; Supabase may be on an older major.
@@ -284,7 +285,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "test": "vitest run",
     "test:integration": "echo \"no integration tests in contracts\""
   },
-  "dependencies": { "zod": "4.6.1" },
+  "dependencies": { "zod": "4.5.4" },
   "devDependencies": { "typescript": "5.9.3", "vitest": "5.0.0" }
 }
 ```
@@ -644,7 +645,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "uuid": "13.0.0",
-    "zod": "4.6.1"
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@nestjs/cli": "12.0.0",
