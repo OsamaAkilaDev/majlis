@@ -3259,14 +3259,15 @@ Expected: FAIL — cannot resolve `../src/prisma/transaction.host`.
 ```ts
 import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { PrismaClient } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
 
-/** A Prisma client scoped to a transaction: the connection-level methods are gone. */
-export type TransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'
->;
+/**
+ * A Prisma client scoped to a transaction: the connection-level methods are
+ * gone. This is Prisma's own type rather than a hand-rolled `Omit`, so it
+ * stays exactly in step with whatever `$transaction` actually hands back.
+ */
+export type TransactionClient = Prisma.TransactionClient;
 
 /**
  * Carries the current transaction implicitly through the call stack.
@@ -3298,7 +3299,7 @@ export class TransactionHost {
     const ambient = this.storage.getStore();
     if (ambient) return fn();
 
-    return this.prisma.$transaction((tx) => this.storage.run(tx as TransactionClient, fn));
+    return this.prisma.$transaction((tx) => this.storage.run(tx, fn));
   }
 }
 ```
