@@ -2501,8 +2501,11 @@ async function anAuditRow() {
 describe('AuditLog', () => {
   it('stores before and after snapshots as JSON', async () => {
     const row = await anAuditRow();
-    expect(row.before).toEqual({ status: 'ACTIVE' });
-    expect(row.after).toEqual({ status: 'SUSPENDED' });
+    // Re-read rather than trusting the object create() echoes back, so this
+    // proves the JSON was actually persisted.
+    const persisted = await prisma.auditLog.findUniqueOrThrow({ where: { id: row.id } });
+    expect(persisted.before).toEqual({ status: 'ACTIVE' });
+    expect(persisted.after).toEqual({ status: 'SUSPENDED' });
   });
 
   it('records a denial as well as a success', async () => {
@@ -2536,6 +2539,24 @@ describe('AuditLog', () => {
     await anAuditRow();
     await expect(prisma.$executeRawUnsafe(`UPDATE "audit_log" SET "reason" = 'x'`))
       .rejects.toThrow(/append-only/i);
+  });
+
+  it('rejects an UPDATE matching no rows — proving the trigger is statement-level', async () => {
+    // The existing bulk-UPDATE test would also pass against a FOR EACH ROW
+    // trigger, since it touches a real row. Only a zero-row statement
+    // distinguishes the two, and that is the form a careless bulk migration
+    // takes.
+    await anAuditRow();
+    await expect(
+      prisma.$executeRawUnsafe(`UPDATE "audit_log" SET "reason" = 'x' WHERE 1 = 0`),
+    ).rejects.toThrow(/append-only/i);
+  });
+
+  it('rejects a DELETE matching no rows, for the same reason', async () => {
+    await anAuditRow();
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM "audit_log" WHERE 1 = 0`),
+    ).rejects.toThrow(/append-only/i);
   });
 
   it('survives its actor being deleted, because the trail outlives the account', async () => {
@@ -2574,6 +2595,18 @@ describe('Notification', () => {
     const base = { type: 'event.cancelled', payload: {}, dedupeKey: 'event.cancelled:e1' };
     await prisma.notification.create({ data: { ...base, userId: a.id } });
     await expect(prisma.notification.create({ data: { ...base, userId: b.id } })).resolves.toBeDefined();
+  });
+
+  it('cascades away when its user is deleted', async () => {
+    // The AuditLog half of this contrast is exercised above; without this the
+    // cascade is only ever verified by reading the migration SQL.
+    const user = await aUser();
+    await prisma.notification.create({
+      data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: `k-${uniq()}` },
+    });
+
+    await prisma.user.delete({ where: { id: user.id } });
+    expect(await prisma.notification.count()).toBe(0);
   });
 
   it('starts unread with a PENDING email status', async () => {
@@ -2708,7 +2741,7 @@ pnpm prisma generate
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/audit.integration.test.ts`
-Expected: PASS — 10 tests.
+Expected: PASS — 13 tests.
 
 - [ ] **Step 6: Run the whole integration suite to confirm nothing regressed**
 
