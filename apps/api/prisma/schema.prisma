@@ -20,11 +20,15 @@ datasource db {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+
+  @@map("user_status")
 }
 
 enum PlatformRole {
   STUDENT
   ADMIN
+
+  @@map("platform_role")
 }
 
 /// A person. There is no separate university identifier — the verified email
@@ -48,16 +52,16 @@ model User {
 /// One row per issued refresh token. Rotation replaces a row and links it via
 /// replacedById; presenting an already-rotated token revokes the whole family.
 model RefreshToken {
-  id          String    @id @default(uuid(7)) @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  tokenHash   String    @unique @map("token_hash")
-  familyId    String    @map("family_id") @db.Uuid
-  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
-  replacedById String?  @map("replaced_by_id") @db.Uuid
-  userAgent   String?   @map("user_agent")
-  ip          String?
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  familyId     String    @map("family_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  ip           String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
