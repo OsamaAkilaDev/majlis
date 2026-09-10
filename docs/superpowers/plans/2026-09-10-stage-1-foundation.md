@@ -624,7 +624,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start:dev": "tsx watch src/main.ts",
+    "start:dev": "node --watch -r @swc-node/register src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test prisma",
     "test": "vitest run --config vitest.config.ts",
@@ -656,6 +656,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   "devDependencies": {
     "@nestjs/testing": "12.0.1",
     "@swc/core": "1.16.2",
+    "@swc-node/register": "1.12.1",
     "@types/express": "5.0.3",
     "@types/node": "22.14.0",
     "@types/pg": "8.15.6",
@@ -694,16 +695,21 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **There is deliberately no `@nestjs/cli` and no `nest-cli.json`.** `@nestjs/cli@12.0.0` is the only stable 12.x release and it is broken: it pins `ora@9.4.1`, which is ESM-only, and `@angular-devkit/schematics@22.1.5` `require()`s it in a cycle, so *any* invocation — even `nest --version` — dies with `ERR_REQUIRE_CYCLE_MODULE` on Node 22. Verified directly, not assumed. `@nestjs/cli@11.0.24` works (it uses the CJS `ora@5.4.1`) but mixes majors and drags in a large Angular-derived dependency tree this project never otherwise uses.
 
-So the build is plain `tsc` and the dev loop is `tsx watch`. Nothing here needs schematics or asset copying, both are faster, and `tsx` is already a pinned dependency.
+So the build is plain `tsc`. Nothing here needs schematics or asset copying, and `tsc` is faster.
+
+**The dev loop cannot be `tsx`, though.** `tsx` transforms via esbuild, and esbuild does not implement `emitDecoratorMetadata` at all — so NestJS constructor injection silently breaks, with `ConfigService` arriving as `undefined` in `PrismaService`. Verified, not theorised. The dev runner is therefore `node --watch -r @swc-node/register`: SWC does implement decorator metadata, it reads `emitDecoratorMetadata` straight from `tsconfig.json`, and `@swc/core` is already a pinned dependency because Vitest uses it for the same reason.
 
 `apps/api/tsconfig.build.json`:
 
 ```json
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": "src" },
   "exclude": ["dist", "node_modules", "test", "src/**/*.spec.ts", "prisma/seed.ts"]
 }
 ```
+
+`rootDir` is narrowed to `src` here deliberately. The base `tsconfig.json` uses `"."` so that tests and the seed are type-checked, but leaving it at `"."` for the build puts the entry point at `dist/src/main.js` instead of `dist/main.js`.
 
 Vitest must compile decorators, so both configs use the SWC plugin.
 
