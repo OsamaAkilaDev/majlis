@@ -1,0 +1,18 @@
+// Majlis schema. Database objects are snake_case; the client is camelCase.
+//
+// Prisma 7 notes:
+//  - the `prisma-client` generator replaces `prisma-client-js`
+//  - `output` is required; the client is NOT written into node_modules
+//  - default output is ESM, so `moduleFormat = "cjs"` keeps NestJS on CommonJS
+//  - a driver adapter (@prisma/adapter-pg) is mandatory at runtime
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}

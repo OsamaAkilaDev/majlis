@@ -2,6 +2,13 @@ packages:
   - "apps/*"
   - "packages/*"
 
+allowBuilds:
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  '@swc/core': true
+  esbuild: true
+  prisma: true
+
 peerDependencyRules:
   allowedVersions:
     "nestjs-zod>@nestjs/common": "12"
