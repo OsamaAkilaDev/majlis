@@ -3356,6 +3356,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```ts
 import { BadRequestException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import { ZodValidationException } from 'nestjs-zod';
 import { ZodError, z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError } from './domain-error';
 import { ProblemExceptionFilter } from './problem.filter';
@@ -3424,6 +3425,25 @@ describe('ProblemExceptionFilter', () => {
         expect.objectContaining({ path: 'capacity' }),
       ]),
     );
+  });
+
+  it("maps nestjs-zod's ZodValidationException to 400 WITH field errors", () => {
+    // This is the shape the global pipe actually throws. Because it extends
+    // BadRequestException, a filter checking HttpException first would return
+    // a bare 400 and silently drop every field error.
+    const schema = z.object({ title: z.string() });
+    let inner: ZodError;
+    try {
+      schema.parse({});
+      throw new Error('should not reach');
+    } catch (e) {
+      inner = e as ZodError;
+    }
+
+    const { body, status } = invokeFilter(new ZodValidationException(inner!));
+    expect(status).toBe(400);
+    expect(body.title).toBe('Validation failed');
+    expect(body.errors).toEqual([expect.objectContaining({ path: 'title' })]);
   });
 
   it('maps a Prisma unique-violation to 409, not 500 — a lost race is expected, not a fault', () => {
@@ -3536,6 +3556,7 @@ import {
 } from '@nestjs/common';
 import type { ProblemDetails, ProblemFieldError } from '@majlis/contracts';
 import { Logger } from 'nestjs-pino';
+import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 import { DomainError } from './domain-error';
 
@@ -3544,6 +3565,20 @@ const PROBLEM_BASE = 'https://majlis.app/problems';
 /** Narrow structural check — avoids importing Prisma error classes here. */
 function isPrismaError(e: unknown): e is { code: string; message: string } {
   return typeof e === 'object' && e !== null && typeof (e as { code?: unknown }).code === 'string';
+}
+
+/**
+ * Validation failures reach us two ways: a bare ZodError from code that parses
+ * a schema directly, and a ZodValidationException from nestjs-zod's global
+ * pipe, which wraps one. Both must produce the same field-level response.
+ */
+function asZodError(e: unknown): ZodError | undefined {
+  if (e instanceof ZodError) return e;
+  if (e instanceof ZodValidationException) {
+    const inner = e.getZodError();
+    if (inner instanceof ZodError) return inner;
+  }
+  return undefined;
 }
 
 @Catch()
@@ -3581,8 +3616,12 @@ export class ProblemExceptionFilter implements ExceptionFilter {
       };
     }
 
-    if (exception instanceof ZodError) {
-      const errors: ProblemFieldError[] = exception.issues.map((i) => ({
+    // MUST come before the HttpException branch: nestjs-zod's
+    // ZodValidationException extends BadRequestException, so checking
+    // HttpException first would swallow it and drop every field error.
+    const zodError = asZodError(exception);
+    if (zodError) {
+      const errors: ProblemFieldError[] = zodError.issues.map((i) => ({
         path: i.path.join('.'),
         message: i.message,
         code: i.code,
@@ -3661,7 +3700,7 @@ export class ProblemExceptionFilter implements ExceptionFilter {
 - [ ] **Step 5: Run the unit test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test`
-Expected: PASS — 16 tests (6 env + 10 filter).
+Expected: PASS — 17 tests (6 env + 11 filter).
 
 - [ ] **Step 6: Write the failing integration test**
 
