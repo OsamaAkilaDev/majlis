@@ -3301,6 +3301,28 @@ describe('TransactionHost', () => {
     expect(await prisma.auditLog.count()).toBe(0);
   });
 
+  it('returns the callback result, from both the opening and the joining path', async () => {
+    // run() has two distinct return paths — one that opens a transaction and
+    // one that joins an ambient one. Every other test here asserts only on
+    // database side effects, so a regression that awaited the callback but
+    // discarded its value would pass all of them.
+    expect(await host.run(async () => 'outer')).toBe('outer');
+
+    const joined = await host.run(async () => host.run(async () => 'inner'));
+    expect(joined).toBe('inner');
+  });
+
+  it('restores the base client once run() resolves', async () => {
+    // Proves the AsyncLocalStorage scope does not leak past the callback.
+    expect(host.tx).toBe(prisma);
+
+    await host.run(async () => {
+      expect(host.tx).not.toBe(prisma);
+    });
+
+    expect(host.tx).toBe(prisma);
+  });
+
   it('isolates concurrent transactions from each other', async () => {
     const results = await Promise.allSettled([
       host.run(async () => {
@@ -3396,7 +3418,7 @@ export class PrismaModule {}
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/transaction-host.integration.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS — 7 tests.
 
 - [ ] **Step 6: Commit**
 
