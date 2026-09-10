@@ -76,9 +76,17 @@ describe('QrPass', () => {
   it('stores no token column at all, only the version', async () => {
     const cols = await prisma.$queryRaw<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'qr_pass'`;
-    const names = cols.map((c) => c.column_name);
-    expect(names).toContain('token_version');
-    expect(names.some((n) => n.includes('token') && n !== 'token_version')).toBe(false);
+    // Asserts the EXACT column set rather than matching on the substring
+    // "token". A raw secret named `signature`, `qr_secret` or `raw_code`
+    // would sail past a substring check, and this test is the only
+    // automated defence of the no-raw-token guarantee.
+    expect(cols.map((c) => c.column_name).sort()).toEqual([
+      'id',
+      'issued_at',
+      'last_rotated_at',
+      'token_version',
+      'user_id',
+    ]);
   });
 });
 
@@ -117,6 +125,40 @@ describe('AttendanceRecord', () => {
     await expect(
       prisma.attendanceRecord.create({
         data: { registrationId: secondReg.id, eventId: event.id, userId: second.id, checkedInById: scanner.id, method: 'QR_SCAN' },
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('scopes attendance per registration, not per user — one student attends two events', async () => {
+    // The mirror image of the event-scoping catastrophe: a unique index on
+    // user_id would let a student check in to exactly one event for their
+    // entire time at the university. Every other test here passes either way.
+    const first = await aRegistration();
+    const scanner = await aUser();
+    await prisma.attendanceRecord.create({
+      data: {
+        registrationId: first.registration.id,
+        eventId: first.event.id,
+        userId: first.user.id,
+        checkedInById: scanner.id,
+        method: 'QR_SCAN',
+      },
+    });
+
+    const second = await aRegistration();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: second.event.id, userId: first.user.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.attendanceRecord.create({
+        data: {
+          registrationId: secondReg.id,
+          eventId: second.event.id,
+          userId: first.user.id,
+          checkedInById: scanner.id,
+          method: 'QR_SCAN',
+        },
       }),
     ).resolves.toBeDefined();
   });
@@ -195,6 +237,35 @@ describe('Certificate', () => {
     });
     await expect(prisma.certificate.create({ data: certData(base) })).resolves.toBeDefined();
     expect(await prisma.certificate.count()).toBe(2);
+  });
+
+  it('rejects a duplicate serial number', async () => {
+    // serial_number is the certificate's human-facing identifier and is
+    // @unique exactly as verification_code is; only one of the two symmetric
+    // guarantees was covered.
+    const a = await aRegistration();
+    const b = await aRegistration();
+    const serial = 'MJL-SHARED-0001';
+
+    await prisma.certificate.create({
+      data: certData({
+        registrationId: a.registration.id,
+        eventId: a.event.id,
+        userId: a.user.id,
+        serialNumber: serial,
+      }),
+    });
+
+    await expect(
+      prisma.certificate.create({
+        data: certData({
+          registrationId: b.registration.id,
+          eventId: b.event.id,
+          userId: b.user.id,
+          serialNumber: serial,
+        }),
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
   });
 
   it('rejects a duplicate verification code', async () => {
