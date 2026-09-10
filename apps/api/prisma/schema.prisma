@@ -45,6 +45,8 @@ model User {
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   refreshTokens RefreshToken[]
+  memberships   ClubMembership[]
+  appointments  ClubTeamAppointment[]
 
   @@map("user")
 }
@@ -68,4 +70,135 @@ model RefreshToken {
   @@index([userId])
   @@index([familyId])
   @@map("refresh_token")
+}
+
+enum ClubStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+
+  @@map("club_status")
+}
+
+enum MembershipPolicy {
+  OPEN
+  APPROVAL_REQUIRED
+  INVITE_ONLY
+  CLOSED
+
+  @@map("membership_policy")
+}
+
+enum ClubRole {
+  LEAD
+  VICE_LEAD
+  MARKETING
+  CTO
+  OPERATIONS
+
+  @@map("club_role")
+}
+
+enum AppointmentStatus {
+  INVITED
+  ACTIVE
+  DECLINED
+  EXPIRED
+  ENDED
+
+  @@map("appointment_status")
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  LEFT
+  REMOVED
+
+  @@map("membership_status")
+}
+
+model Department {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clubs Club[]
+
+  @@map("department")
+}
+
+/// A club is ACTIVE the moment an Admin creates it. There is deliberately no
+/// review or approval state anywhere in the product.
+model Club {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  departmentId     String           @map("department_id") @db.Uuid
+  name             String           @unique
+  slug             String           @unique
+  description      String
+  category         String
+  academicYear     String           @map("academic_year")
+  logoUrl          String           @map("logo_url")
+  bannerUrl        String?          @map("banner_url")
+  membershipPolicy MembershipPolicy @default(OPEN) @map("membership_policy")
+  status           ClubStatus       @default(ACTIVE)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  department   Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  appointments ClubTeamAppointment[]
+  memberships  ClubMembership[]
+
+  @@index([departmentId])
+  @@index([status])
+  @@map("club")
+}
+
+/// Club-scoped authority. No permission is active until status = ACTIVE.
+/// Appointments end; they are never deleted, so history survives.
+model ClubTeamAppointment {
+  id                    String            @id @default(uuid(7)) @db.Uuid
+  clubId                String            @map("club_id") @db.Uuid
+  userId                String            @map("user_id") @db.Uuid
+  role                  ClubRole
+  status                AppointmentStatus @default(INVITED)
+  invitedById           String            @map("invited_by_id") @db.Uuid
+  invitationTokenHash   String?           @unique @map("invitation_token_hash")
+  invitationExpiresAt   DateTime?         @map("invitation_expires_at") @db.Timestamptz(3)
+  termStart             DateTime?         @map("term_start") @db.Timestamptz(3)
+  termEnd               DateTime?         @map("term_end") @db.Timestamptz(3)
+  acceptedAt            DateTime?         @map("accepted_at") @db.Timestamptz(3)
+  endedAt               DateTime?         @map("ended_at") @db.Timestamptz(3)
+  endedReason           String?           @map("ended_reason")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([clubId, status])
+  @@index([userId, status])
+  @@map("club_team_appointment")
+}
+
+/// Ordinary membership. Separate from appointment: being a member grants
+/// no management permission of any kind.
+model ClubMembership {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  clubId         String           @map("club_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  status         MembershipStatus @default(PENDING)
+  requestedAt    DateTime         @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedAt      DateTime?        @map("decided_at") @db.Timestamptz(3)
+  decidedById    String?          @map("decided_by_id") @db.Uuid
+  decisionReason String?          @map("decision_reason")
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([clubId, status])
+  @@index([userId, status])
+  @@map("club_membership")
 }
