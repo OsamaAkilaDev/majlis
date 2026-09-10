@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Integration tests refuse to run against anything not named majlis_test.
+  TEST_DATABASE_URL: postgresql://majlis:majlis@localhost:5432/majlis_test?schema=public
+  DATABASE_URL: postgresql://majlis:majlis@localhost:5432/majlis_test?schema=public
+  DIRECT_URL: postgresql://majlis:majlis@localhost:5432/majlis_test?schema=public
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: majlis
+          POSTGRES_PASSWORD: majlis
+          POSTGRES_DB: majlis_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U majlis"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # No `version:` input on purpose. The root package.json pins
+      # `packageManager: pnpm@11.15.0`, which this action reads; supplying
+      # both is a known conflict and risks the two drifting apart.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @majlis/api prisma:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Integration tests
+        run: pnpm --filter @majlis/api test:integration
+        env:
+          # No .env file in CI; dotenv-cli must not fail on its absence.
+          DOTENV_CONFIG_PATH: ''
+
+      - name: Build
+        run: pnpm build
