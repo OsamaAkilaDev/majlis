@@ -487,6 +487,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `scripts/bootstrap-db.sql`
 - Modify: root `package.json` — add a `db:check` script
 
+> Naming, because it has bitten once: `majlis` is a **role**, not a database. Exactly **two** databases exist — `majlis_dev` and `majlis_test`. Do not create a database called `majlis`.
+
 **Interfaces:**
 - Consumes: Task 1's root manifest.
 - Produces: a running Postgres 18 on `localhost:5432`, role `majlis`, databases `majlis_dev` and `majlis_test`, and these environment variables, which every later task depends on by these exact names: `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL`, `NODE_ENV`, `PORT`, `LOG_LEVEL`.
@@ -641,7 +643,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "nestjs-pino": "5.1.0",
     "nestjs-zod": "5.5.0",
     "pg": "8.16.3",
-    "pino-http": "10.5.0",
+    "pino": "10.3.1",
+    "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "uuid": "13.0.0",
