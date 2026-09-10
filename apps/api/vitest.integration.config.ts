@@ -8,6 +8,7 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     globalSetup: ['./test/global-setup.ts'],
+    setupFiles: ['./test/setup-env.ts'],
     // The test database is shared state; serializing file execution keeps
     // truncation honest. Vitest 5 removed `poolOptions.forks.singleFork` in
     // favor of this top-level flag (it forces maxWorkers to 1) — see
