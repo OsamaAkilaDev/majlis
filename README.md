@@ -44,7 +44,7 @@ at <http://localhost:3001/api/v1/docs>.
 | `pnpm --filter @majlis/api test:integration` | Integration tests against `majlis_test` |
 | `pnpm build` | Build every package |
 | `pnpm --filter @majlis/api start:dev` | Run the API in watch mode |
-| `pnpm --filter @majlis/api db:seed` | Seed development data (idempotent; refuses non-local databases unless `ALLOW_REMOTE_SEED=yes`) |
+| `pnpm --filter @majlis/api db:seed` | Seed development data (idempotent; refuses when `NODE_ENV=production`, and refuses any non-local database unless `ALLOW_REMOTE_SEED=yes`) |
 
 ## Seeded accounts
 

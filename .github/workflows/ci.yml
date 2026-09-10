@@ -61,11 +61,12 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # There is no .env in CI. The `test:integration` script wraps vitest in
+      # `dotenv -e ../../.env -c`, and dotenv silently no-ops on a missing
+      # file without overriding variables already set — so the job-level env
+      # block above is what actually supplies the connection strings.
       - name: Integration tests
         run: pnpm --filter @majlis/api test:integration
-        env:
-          # No .env file in CI; dotenv-cli must not fail on its absence.
-          DOTENV_CONFIG_PATH: ''
 
       - name: Build
         run: pnpm build
