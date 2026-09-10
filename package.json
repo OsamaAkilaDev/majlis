@@ -12,12 +12,12 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md,yaml,yml}\""
   },
   "devDependencies": {
-    "@eslint/js": "9.39.5",
-    "eslint": "9.39.5",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
-    "prettier": "3.6.2",
+    "prettier": "3.9.6",
     "turbo": "2.10.12",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.0"
+    "typescript-eslint": "8.70.0"
   }
 }
