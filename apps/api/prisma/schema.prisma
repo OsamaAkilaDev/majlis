@@ -52,6 +52,7 @@ model User {
   qrPass       QrPass?
   attendance   AttendanceRecord[]
   certificates Certificate[]
+  notifications Notification[]
 
   @@map("user")
 }
@@ -432,4 +433,69 @@ model Certificate {
   @@index([userId, status])
   @@index([eventId])
   @@map("certificate")
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+
+  @@map("email_status")
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+
+  @@map("audit_outcome")
+}
+
+/// Written in the same transaction as the action that triggers it. dedupeKey
+/// is unique per user, so a retried action cannot notify twice. A failed email
+/// is recorded here and never rolls back the action that caused it.
+model Notification {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  type        String
+  payload     Json
+  dedupeKey   String      @map("dedupe_key")
+  readAt      DateTime?   @map("read_at") @db.Timestamptz(3)
+  emailStatus EmailStatus @default(PENDING) @map("email_status")
+  emailError  String?     @map("email_error")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+/// Append-only. Enforced by database triggers, not convention. Never contains
+/// a raw QR token, password, session token or refresh token.
+///
+/// There is deliberately NO foreign key on actorUserId. An audit row is an
+/// immutable historical fact, not a live reference: a FK would force either a
+/// cascade (destroying the trail) or a SET NULL (an UPDATE, which the
+/// append-only trigger must refuse). Storing the id verbatim keeps the trail
+/// correct and keeps the trigger absolute.
+model AuditLog {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String       @map("entity_type")
+  entityId    String       @map("entity_id")
+  outcome     AuditOutcome
+  reason      String?
+  before      Json?
+  after       Json?
+  requestId   String       @map("request_id")
+  ip          String?
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_log")
 }
