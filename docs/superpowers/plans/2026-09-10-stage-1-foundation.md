@@ -1626,6 +1626,18 @@ describe('Event', () => {
     ).rejects.toThrow(/event_capacity_bounds/);
   });
 
+  it('rejects an event created with zero capacity', async () => {
+    // capacity > 0 is the third conjunct of event_capacity_bounds and is
+    // otherwise untested â both other capacity tests only vary the counter.
+    await expect(anEvent({ capacity: 0 })).rejects.toThrow(/event_capacity_bounds/);
+  });
+
+  it('allows registration to close exactly when the event ends', async () => {
+    // The predicate is registration_closes_at <= ends_at. This boundary case
+    // is what distinguishes it from a stricter <.
+    await expect(anEvent({ registrationClosesAt: at(26), endsAt: at(26) })).resolves.toBeDefined();
+  });
+
   it('rejects a negative confirmed count', async () => {
     const event = await anEvent();
     await expect(
@@ -1895,6 +1907,12 @@ Add the matching back-relations to `User` (modify the existing model):
   eventAssignments EventAssignment[]
 ```
 
+And to `Club` — Prisma requires the other side of the `Event.club` relation, and validation fails without it:
+
+```prisma
+  events Event[]
+```
+
 - [ ] **Step 4: Generate the migration and add the CHECK constraints and partial index**
 
 ```bash
@@ -1943,7 +1961,7 @@ pnpm prisma generate
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/events.integration.test.ts`
-Expected: PASS — 18 tests.
+Expected: PASS — 20 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2252,6 +2270,7 @@ model AttendanceRecord {
 
   registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
 
   @@index([eventId])
   @@index([userId])
@@ -2281,6 +2300,7 @@ model Certificate {
 
   registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
 
   @@index([userId, status])
   @@index([eventId])
@@ -2299,6 +2319,13 @@ And to `User`:
 
 ```prisma
   qrPass       QrPass?
+  attendance   AttendanceRecord[]
+  certificates Certificate[]
+```
+
+And to `Event`:
+
+```prisma
   attendance   AttendanceRecord[]
   certificates Certificate[]
 ```
