@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
-    "start:dev": "nest start --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "start:dev": "tsx watch src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern src test prisma",
     "test": "vitest run --config vitest.config.ts",
@@ -34,7 +34,6 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@nestjs/cli": "12.0.0",
     "@nestjs/testing": "12.0.1",
     "@swc/core": "1.16.2",
     "@types/express": "5.0.3",
