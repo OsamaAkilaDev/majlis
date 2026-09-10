@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+peerDependencyRules:
+  allowedVersions:
+    "nestjs-zod>@nestjs/common": "12"
+    "nestjs-zod>@nestjs/swagger": "12"
