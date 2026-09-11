@@ -1,46 +1,47 @@
 # Handoff
 
-**Written:** 2026-09-11, after Stage 2.
+**Written:** 2026-09-12, after Stage 3.
 `CLAUDE.md` holds the durable rules. Delete this once its gaps are actioned.
 
 ---
 
 ## State
 
-Stages 1 and 2 complete, merged to `master`. Nothing pushed — no remote exists.
+Stages 1, 2 and 3 complete. Stage 3 lives on `stage-3-design-system-shells`, 22 commits,
+not yet merged to `master`. Nothing pushed anywhere; no remote exists.
 
 | | |
 |---|---|
-| Tests | 125 unit, 174 integration, all green against real PostgreSQL 18 |
+| Tests | 91 web unit, 95 API unit, 176 API integration, 50 Playwright/axe. All green |
 | Migrations | 7 |
-| API | `/health` · `/docs` · `/auth/{signup,login,refresh,logout,me}` · `/me` · `/users` · `/users/{id}/status` |
-| Frontend | **None yet.** `apps/web` does not exist. |
+| API | `/health` `/docs` `/auth/{signup,login,refresh,logout,me}` `/me` `/users` `/users/{id}/status` |
+| Frontend | `apps/web`: three shells, working auth, PWA manifest, axe suite |
 
 Seeded accounts log in: `admin@` / `lead@` / `ops@` / `student@uni.ac.ae`, password `Passw0rd!`.
+Re-seeding now repairs password hashes and event capacity; it previously could not.
 
-**Next: Stage 3 — design system & shells.**
-
-The plan is now **9 stages, not 12** (renumbered 2026-09-11). No feature was dropped; the
-old 4+5, 6+7 and 10+11 merged because each pair is coupled. Spec §13 has the table.
+**Next: Stage 4 — clubs, team and membership.**
 
 ---
 
 ## Read order
 
-1. `docs/specs/2026-09-10-majlis-design.md` — binding. §9 is the frontend brief, §13 the stages.
-2. `docs/specs/2026-09-11-stage-2-auth-design.md` — how auth works (amended after delivery).
-3. This file.
+1. `docs/specs/2026-09-10-majlis-design.md` — binding. §13 has the stages and the completion notes.
+2. `docs/specs/2026-09-11-stage-3-shells-design.md` — the design system, tokens, and §10's six deviations.
+3. `docs/specs/2026-09-11-stage-2-auth-design.md` — how auth works.
+4. This file.
 
 ---
 
 ## Run it
 
 ```bash
-cp .env.example .env        # first — postinstall needs DIRECT_URL
+cp .env.example .env        # first, postinstall needs DIRECT_URL
 pnpm install
 pnpm --filter @majlis/api prisma:deploy
 pnpm --filter @majlis/api db:seed
 pnpm --filter @majlis/api start:dev      # :3001
+pnpm --filter @majlis/web dev            # :3000
 ```
 
 Needs PostgreSQL 18 on `localhost:5432`, databases `majlis_dev` / `majlis_test`.
@@ -49,117 +50,152 @@ Needs PostgreSQL 18 on `localhost:5432`, databases `majlis_dev` / `majlis_test`.
 ```bash
 pnpm typecheck && pnpm lint && pnpm test
 pnpm --filter @majlis/api test:integration
-pnpm build
+API_ORIGIN=http://localhost:3001 pnpm build
+pnpm --filter @majlis/web test:e2e       # needs both servers up
 ```
+
+**`pnpm build` now requires `API_ORIGIN`.** `next build` runs with `NODE_ENV=production`,
+which trips the guard that stops a production deploy silently pointing at localhost.
 
 ---
 
-## What Stage 3 has to build
+## What Stage 3 left for you
 
-Spec §9. In short: `apps/web` (Next.js 16, App Router), the visual identity, and three
-shells — student (mobile-first, bottom tabs), club officer console, admin desktop.
+### Design system
 
-The API contract you are building against:
+All 24 tokens live in `apps/web/src/styles/globals.css` as runtime custom properties,
+aliased through `@theme inline`. `tokens.contrast.test.ts` recomputes every WCAG ratio from
+the shipped values on every test run, so a palette regression fails the build.
 
-- Auth is **cookie-based**, `httpOnly`. The browser never sees a token. `majlis_session`
-  (15 min, `Path=/`) and `majlis_refresh` (30 days, `Path=/api/v1/auth`).
-- On a 401, call `POST /api/v1/auth/refresh` once and retry. **No client-side dedupe is
-  needed** — the refresh token does not rotate, so concurrent refreshes are harmless.
-- `GET /api/v1/auth/me` returns `{ id, email, fullName, avatarUrl, platformRole, clubRoles }`.
-  That is what `/` routes on: `ADMIN` → `/admin`, officer-only → their club console,
-  otherwise `/home`. `clubRoles` is empty until Stage 4.
-- Errors are RFC 9457 `application/problem+json` with `type/title/status/detail/requestId`
-  and an `errors[]` array on validation failures. Drive inline field errors off `errors[]`.
-- OpenAPI at `/api/v1/docs`, JSON at `/api/v1/docs-json`. Error shapes are documented;
-  **success-response schemas are not** (see gaps).
-- A Next.js rewrite maps `/api/v1/*` to the API so the browser sees one origin. Do this —
-  it is what makes the cookie first-party and removes CORS entirely.
+Two border tokens, and the distinction is load-bearing: `--color-border` is decorative and
+has no contrast requirement; `--color-border-control` is the boundary of an input or
+checkbox, is held to 3:1 against all three grounds for SC 1.4.11, and is the only border
+token a form control may use. The first palette pass failed that at 1.79:1 in both themes.
 
-**Never render a page then show an "authentication required" panel inside it. Redirect.**
+Motion comes from `--dur`, `--dur-fast` and `--ease-out`, which already collapse to
+`0.01ms` under `prefers-reduced-motion`. Never hardcode a duration and never add your own
+reduced-motion media query; you get it free by using the tokens.
+
+`EmptyState` and `Field` deliberately have **no** `description` prop. That absence is how
+the copy rule is enforced rather than reviewed. Do not add one.
+
+### Accessibility
+
+`apps/web/e2e/a11y.spec.ts` runs axe over login, the student shell, both consoles, a refusal
+page, the account menu while open, and the nav sheet while open, in both themes at two
+viewports. The suite is verified to discriminate: removing `htmlFor` from a label makes both
+themes fail on WCAG 4.1.2.
+
+**If axe reports a violation, fix the markup.** Do not narrow the tag list, add exclusions,
+or scope the scan. That converts verification back into assertion, which spec §9.5 rejects.
 
 ---
 
 ## Gaps, in the order I would fix them
 
-1. **No rate limiting anywhere.** Removed by owner decision; Stage 9 owns all of it. Login
-   is unthrottled — argon2id's ~100ms cost is the only brake on brute force. When Stage 9
-   adds it, set `trust proxy` **first**: behind the Next.js rewrite every caller shares one
-   `req.ip`, so an IP-keyed limit would throttle the whole university at once. Do not use
-   `trust proxy: true` — that makes `X-Forwarded-For` spoofable.
-2. **`req.url` is logged unredacted**, and `problem.filter.ts` logs `{ err }` on 5xx. Close
-   before Stage 4 puts invitation tokens in links.
-3. **CI has never run.** The workflow exists and passes locally; nothing has been pushed.
-   One green run on a Linux runner is the only real evidence.
-4. **No password reset, no email verification — anywhere in the spec.** A student who
-   forgets their password has no recovery path and an admin cannot give them one. Needs a
-   product decision before Stage 8 fixes the notification patterns in place.
-5. **OpenAPI has no success-response schemas.** Adding the `@ApiResponse` error
-   declarations displaced Nest's auto-generated defaults.
+1. **`__Host-` cookie prefix — Stage 9, and treat it as blocking.** Widening `majlis_refresh`
+   to `Path=/` removed the accidental protection RFC 6265 path ordering gave against a
+   sibling-subdomain shadowing attack. Renaming both cookies to `__Host-` fixes it, but not
+   as a two-line change: the prefix requires `Secure`, and `secureCookies()` deliberately
+   returns false in development, so adding it as-is makes the browser reject both cookies and
+   breaks the dev loop and the Playwright suite. Decide development-mode `Secure` first.
+2. **No rate limiting anywhere.** Owner decision; Stage 9 owns all of it. Login is unthrottled
+   and argon2id's ~100ms cost is the only brake. When Stage 9 adds it, set `trust proxy`
+   **first**: behind the Next.js rewrite every caller shares one `req.ip`, so an IP-keyed
+   limit throttles the whole university at once. Do not use `trust proxy: true`, which makes
+   `X-Forwarded-For` spoofable.
+3. **`req.url` is logged unredacted.** `log-redaction.ts` says so in its own comment, and it
+   names Stage 4's invitation tokens as the reason to care. Close it before those land. Error
+   objects are now covered by `*.headers.cookie`; the URL is not, because pino serialises it
+   as one opaque string.
+4. **CI has never run.** The workflow now has a `verify` job and an `e2e` job; neither has
+   executed once, because no remote exists. The `e2e` job was read line by line as a runner
+   would and one real defect was found and fixed (it never built `@majlis/contracts`, whose
+   `dist/` is gitignored). One green run is still the only real evidence.
+5. **No password reset, no email verification, anywhere in the spec.** A student who forgets
+   their password has no recovery path and an Admin cannot give them one. The sign-in screen
+   therefore ships with no "forgot password" link, because it would lead nowhere. Needs a
+   product decision before Stage 8.
+6. **OpenAPI has no success-response schemas.** Adding the `@ApiResponse` error declarations
+   displaced Nest's auto-generated defaults. This is also why Stage 3 uses a hand-written
+   client rather than codegen.
 
 ---
 
-## Two deliberate simplifications (2026-09-11)
-
-Both at the owner's direction, after Stage 2 landed. Neither is an oversight — do not
-"restore" them:
+## Deliberate simplifications, do not "restore" them
 
 - **Refresh tokens do not rotate.** One opaque token per login, revoked on logout and on
-  suspension, expiring 30 days after login regardless of activity. A stolen refresh token
-  works until it expires or the session is revoked. Rotation with family-wide reuse
-  detection existed and was removed as disproportionate.
+  suspension, expiring 30 days after login regardless of activity. Rotation with family-wide
+  reuse detection existed and was removed as disproportionate. The schema keeps `family_id`
+  (used by logout) and `replaced_by` (now unused; dropping it needs a migration for no gain).
 - **No rate limiting.** `@nestjs/throttler` removed entirely; Stage 9 owns it.
-
-The schema keeps `family_id` (identifies one login's session, used by logout) and
-`replaced_by` (now unused — dropping it needs a migration for no gain).
+- **The account menu is `modal={false}`.** The menu-open axe scan found a real WCAG 4.1.2
+  failure: Radix marked the shell `aria-hidden` while the bottom tab bar stayed focusable.
+  Radix suppresses Tab regardless of `trapFocus`, so keyboard users are not stranded. What is
+  lost is the focus scope and outside-pointer blocking, both smaller than the violation.
+- **No `(public)` route group.** Majlis has no landing page and no anonymous browsing, so
+  every viewer of `/clubs` and `/events` is signed in and keeps the bottom tabs.
 
 ---
 
 ## Things that will bite you
 
-Beyond `CLAUDE.md`'s toolchain traps, all verified the hard way:
+Beyond `CLAUDE.md`'s toolchain traps, all verified the hard way.
 
-- **Throwing inside `host.run()` rolls back everything, including the audit row.** The
-  client still sees a correct 4xx, so it looks fine. Reuse detection shipped broken this
-  way. If a path writes then throws, return a result and throw after the transaction
-  commits.
+**From Stage 3:**
+
+- **A Server Component cannot pass a component *reference* to a Client Component.** Passing
+  `icon: ComponentType` across the boundary throws an RSC serialization error **at render
+  time**, and `build`, `typecheck` and `lint` all pass because those routes never render at
+  build time. Pass a `ReactNode` instead. This shipped broken and was caught only by curling
+  the page.
+- **Middleware runs before rewrites**, so `/api/v1/*` must be excluded from its matcher or an
+  anonymous login POST is redirected to `/login` and signing in becomes impossible.
+- **Never derive a fetch origin from request headers** (`x-forwarded-host`, `req.url`) when
+  the request carries cookies. A spoofed `Host` exfiltrates the refresh token server-side.
+  `lib/api-origin.ts` is the only source.
+- **`NextResponse.next()` forwards the original cookie header.** A session renewed in
+  middleware is invisible to the current render unless you rebuild the forwarded headers.
+- **`res.cookies.delete(name)` with no path** uses RFC 6265 default-path, which is the
+  request's directory, so a stale cookie survives on any nested route.
+- **Vitest 5 transforms with oxc, not esbuild.** For a `.ts` test importing a `.tsx` module
+  you need `oxc: { jsx: { runtime: 'automatic' } }`; the `esbuild` key is silently ignored.
+- **`next/font` rejects `axes` alongside a fixed `weight`.** Use `weight: 'variable'`.
+- **`next-env.d.ts` is now gitignored.** Next rewrites it depending on whether `dev` or
+  `build` ran last, which produced a permanently dirty working tree.
+- **Do not set `NODE_ENV=production` in the E2E CI job.** `secureCookies()` would then emit
+  `Secure` cookies over the runner's plain HTTP and every signed-in test would fail.
+
+**From Stages 1 and 2:**
+
+- **Throwing inside `host.run()` rolls back everything, including the audit row.** The client
+  still sees a correct 4xx, so it looks fine. Return a result and throw after the commit.
 - **Nest stops at the first guard that denies.** A controller-scoped guard never runs if a
   global one denies first.
 - **Prisma raises `P2007`, not `P2023`, for a malformed UUID** with `@prisma/adapter-pg`.
-  Both map to 400 in `problem.filter.ts`.
-- **Zod 4's `.url()` does not restrict the scheme** — it accepts `javascript:` and
+- **Zod 4's `.url()` does not restrict the scheme.** It accepts `javascript:` and
   `data:text/html`. Any user-supplied URL needs an explicit allowlist.
 - **`z.email().trim()` validates before trimming.** Use `z.string().trim().email()`.
-- **`user.email` is `TEXT` with `CHECK (email = lower(email))`.** Normalise on lookup as
-  well as insert — the insert fails loudly, the lookup fails silently as "wrong password".
-- **Guards run outside the request's transaction.** An audit row written in a guard needs
-  its own `host.run()`.
+- **`user.email` is `TEXT` with `CHECK (email = lower(email))`.** Normalise on lookup as well
+  as insert: the insert fails loudly, the lookup fails silently as "wrong password".
+- **Guards run outside the request's transaction.** An audit row written in a guard needs its
+  own `host.run()`.
 
 ---
 
-## On process — read this before starting
+## On process
 
-Stage 2 took about six hours and that was too long. The owner's feedback, verbatim:
-*"too many comments and too long"*, *"more efficient and more productive while not losing
-quality"*.
+Stage 3 ran ten tasks with one review each, plus a whole-branch review at the end. That last
+review is where the value was, and the reason is structural: **a per-task review compares code
+to its task, and never the task set to the spec.** Ten task reviews passed while the stage was
+missing four spec requirements, because the plan's file table never listed them.
 
-What cost the time: four agent dispatches per task (implement → review → fix → re-review)
-across twelve tasks, many of those fix rounds over comment wording. What it bought: six real
-defects, three of them in the plan rather than the code.
+The other recurring lesson held again. Every review found real defects, and nearly all of them
+originated in the *plan* rather than in the implementations: a test asserting the wrong call
+count, a matcher that made login impossible, a test that was a tautology TypeScript already
+guaranteed, icon commands that never produced the maskable icon they promised.
 
-**For Stage 3 onward:**
-
-- One review per task. Not review-plus-fix-plus-re-review. Minor findings go on a list the
-  final review triages.
-- Batch small same-shape tasks into one dispatch.
-- Code comments: one or two lines, explaining *why* only where a reader would otherwise
-  undo it. No essays about library behaviour — that goes in the commit message, once.
-- Commit messages: subject plus two or three lines.
-- Keep replies to the owner short. Lead with the answer.
-
-**What does not get traded away:** tests that discriminate, invariants in the database, a
-security review before auth/token/permission code lands. The speed comes out of ceremony,
-not out of correctness.
-
-The recurring defect across both stages has been **tests that pass against badly broken
-code** — Stage 2's review caught one on nine of twelve tasks. Before trusting a test, name
-the broken implementation it would catch. If you cannot, it is not testing anything.
+So: **before trusting a test, name the broken implementation it would catch.** And when a
+suite passes on the very first run, treat that as a question rather than an answer. Stage 3's
+axe suite was green immediately; it only counted as evidence after deliberately breaking a
+label and watching it go red.

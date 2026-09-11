@@ -582,7 +582,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 |---|---|---|
 | 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
 | 2 | ✅ **Done** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md) |
-| 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline. Designed in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) |
+| 3 | ✅ **Done** — Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline. Designed in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) |
 | 4 | Clubs, team & membership | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance, the four membership policies, requests and decisions, member lists, leaving |
 | 5 | Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override |
 | 6 | QR & attendance | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections |
@@ -670,9 +670,58 @@ against real PostgreSQL 18, all green. `/security-review` run — no HIGH findin
 
 Carried items 4, 5 and 6 from Stage 1 are closed (shared test factories; Problem Details
 in the OpenAPI document; real argon2id in the seed, so seeded accounts now log in).
+### Stage 3 completion note (2026-09-12)
+
+`apps/web` exists: Next.js 16 App Router, the warm-majlis visual identity, the shadcn
+component layer re-pointed at our own tokens, and all three shells. 22 commits.
+
+| | |
+|---|---|
+| Tests | 91 web unit, 95 API unit, 176 API integration, 50 Playwright/axe. All green |
+| Verified | Contrast computed from the shipped token values, not asserted. Axe run over five surfaces in both themes at two viewports |
+
+**Deviations, all recorded in the stage design's §10.** Four were approved up front: a thin
+`fetch` client over `@majlis/contracts` instead of OpenAPI codegen; public discovery inside
+the student shell rather than a `(public)` route group; `majlis_refresh` widened to `Path=/`;
+and TanStack Query deferred to Stage 5. Two more were added during the final review: the
+`/verify/{code}` page was not built, because no certificate exists to verify until Stage 7,
+and the shell switcher sits in the header rather than at the top of the sidebar.
+
+**The refresh cookie path was the only API change.** It passed a dedicated security review,
+verdict safe to land. Without it `middleware.ts` cannot see the refresh cookie on a page
+navigation, so a user holding 29 valid days is sent back to `/login` after 15 idle minutes.
+
+**Carried forward, with the reasoning in the stage design and the branch history:**
+
+- **Stage 9, blocking:** rename both cookies to the `__Host-` prefix. Widening the refresh
+  cookie path removed the accidental protection that RFC 6265 path ordering gave against a
+  sibling-subdomain shadowing attack. This is not the two-line change it looks like:
+  `__Host-` requires the `Secure` attribute, and `secureCookies()` deliberately returns
+  false in development, so adding the prefix as-is makes the browser reject both cookies
+  and breaks the local dev loop. It needs a development-mode `Secure` decision first.
+- **Stage 9:** an authorization refusal returns HTTP 200. Next 16 `forbidden()` gives a real
+  403, which matters for logs and for anything caching in front of Vercel.
+- **Stage 9:** no `helmet`, and no explicit `Cache-Control` on API responses.
+- **Stage 5:** every page render costs a server round-trip to `/auth/me`, with no cache and
+  no timeout, so a slow API stalls every navigation and `getSessionUser`s catch turns an API
+  blip into a logout.
+- **Stage 5, before the concurrency tests:** re-seeding now restores `capacity`, fixed on
+  this branch. The same class of bug remains in the `department` and `club` upserts.
+- **Stage 4:** the two authorization refusal strings are sentences rendered in a display
+  `h1`, the only copy in the stage that breaks the title-not-sentence rule.
+
+**A process note worth keeping.** Ten per-task reviews all passed while the stage was still
+missing four spec requirements (sign out, the account menu, the shell switcher, and a link
+between `/login` and `/signup`), because a per-task review compares code to its task and
+never the task set to the spec. Only the whole-branch review caught it. That review also
+caught a test that could not fail: `StatusBadge` asserted its two maps had equal key sets,
+which TypeScript already guaranteed, while the component was missing 14 real enum values
+and had invented two. Both defects originated in the plan, not in the implementations.
+
+---
 ## 14. Open items
 
-- The visual identity itself — palette, type ramp, component language — is deliberately deferred to Stage 3 and will be presented for approval before the shells are built.
+- ~~The visual identity itself, palette, type ramp and component language, is deferred to Stage 3~~ Settled in Stage 3; the approved values live in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) §2.
 - The check-in/out and minimum-duration attendance policies are a later additive stage. `event.attendance_policy` is an enum with room to grow, and adding check-out is a nullable column plus a new branch in the eligibility function — no restructuring. **No unused columns are added now.**
-- This spec covers twelve stages and will therefore produce **one implementation plan per stage**, not a single monolithic plan. Stage 1's plan is written first; each subsequent stage is planned when the previous one is done, so later plans can absorb what earlier stages taught us.
+- This spec covers nine stages and will therefore produce **one implementation plan per stage**, not a single monolithic plan. Stage 1's plan is written first; each subsequent stage is planned when the previous one is done, so later plans can absorb what earlier stages taught us.
 - Vercel Hobby's non-commercial terms must be revisited before Majlis serves a paying customer.
