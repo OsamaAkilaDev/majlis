@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
@@ -74,6 +75,10 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
       <Button type="submit" disabled={pending}>
         {mode === 'login' ? 'Sign in' : 'Create account'}
       </Button>
+
+      <Link href={mode === 'login' ? '/signup' : '/login'} className="self-start text-sm text-primary underline">
+        {mode === 'login' ? 'Create account' : 'Sign in'}
+      </Link>
     </form>
   );
 }

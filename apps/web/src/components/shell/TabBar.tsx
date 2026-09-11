@@ -4,6 +4,7 @@ import { CalendarDays, House, QrCode, User, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { activeTabHref } from '@/lib/routing';
 
 const TABS = [
   { href: '/home', label: 'Home', icon: House },
@@ -15,6 +16,7 @@ const TABS = [
 
 export function TabBar() {
   const pathname = usePathname();
+  const current = activeTabHref(pathname, TABS.map((t) => t.href));
 
   return (
     <nav
@@ -22,9 +24,7 @@ export function TabBar() {
       className="grid grid-cols-5 border-t border-border bg-surface pb-[var(--safe-b)]"
     >
       {TABS.map(({ href, label, icon: Icon }) => {
-        // /me must not light up while on /me/qr, so the deepest match wins.
-        const active =
-          pathname === href || (href !== '/me' && pathname.startsWith(`${href}/`));
+        const active = href === current;
         return (
           <Link
             key={href}

@@ -2,9 +2,11 @@ import { Menu } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { requireUser } from '@/lib/session';
 import { SideNav, type NavItem } from './SideNav';
+import { UserMenu } from './UserMenu';
 
-export function ConsoleShell({
+export async function ConsoleShell({
   items,
   title,
   context,
@@ -15,6 +17,9 @@ export function ConsoleShell({
   context: ReactNode;
   children: ReactNode;
 }) {
+  // Memoised by getSessionUser, so this shares the layout's /auth/me call.
+  const user = await requireUser();
+
   return (
     <div className="min-h-dvh bg-bg lg:grid lg:grid-cols-[13rem_1fr]">
       <aside className="hidden border-r border-border bg-surface-2 p-3 lg:flex lg:flex-col lg:gap-3">
@@ -42,6 +47,7 @@ export function ConsoleShell({
 
           <h1 className="min-w-0 flex-1 truncate font-display text-title text-ink">{title}</h1>
           <ThemeToggle />
+          <UserMenu user={user} />
         </header>
 
         <main id="main" className="min-w-0 flex-1 px-4 py-5 lg:px-6">

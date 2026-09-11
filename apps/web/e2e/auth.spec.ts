@@ -66,6 +66,10 @@ test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'My QR' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'Me', exact: true })).not.toHaveAttribute('aria-current', 'page');
 
+  await page.goto('/me/registrations');
+  await expect(page.getByRole('link', { name: 'Me', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'My QR' })).not.toHaveAttribute('aria-current', 'page');
+
   // Task 8 carry-forward: pb-[var(--safe-b)] sits on the whole <nav>, which a
   // reviewer flagged could compress the 56px tab row instead of padding
   // below it. Measure the rendered row on a real mobile viewport.
@@ -74,4 +78,35 @@ test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
   );
   console.warn(`[tab-row-height] ${tabHeight}px at viewport ${page.viewportSize()?.width}x${page.viewportSize()?.height}`);
   expect(tabHeight).toBeGreaterThanOrEqual(44);
+});
+
+test('signing out ends the session server-side, not only in the browser', async ({ page }) => {
+  await signIn(page, 'student@uni.ac.ae');
+  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+
+  // The assertion that matters. Landing on /login proves only that the client
+  // navigated; a sign-out that cleared nothing server-side would still let this
+  // navigation through on the surviving refresh cookie.
+  await page.goto('/home');
+  await expect(page).toHaveURL(/\/login$/);
+});
+
+test('an admin who also leads a club can reach both shells from the menu', async ({ page }) => {
+  // admin@ holds no club role, so lead@ is the multi-destination account here:
+  // without a switcher an officer had no way back to the student shell.
+  await signIn(page, 'lead@uni.ac.ae');
+  await expect(page).toHaveURL(/\/manage\/[^/]+\/overview$/);
+  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Home' }).click();
+  await expect(page).toHaveURL(/\/home$/);
+});
+
+test('/login and /signup reach each other', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/signup$/);
+  await page.getByRole('link', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/login$/);
 });

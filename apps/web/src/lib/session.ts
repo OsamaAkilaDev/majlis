@@ -1,9 +1,12 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 import { sessionUserSchema, type SessionUser } from '@majlis/contracts';
 import { API_ORIGIN } from '@/lib/api-origin';
 
-export async function getSessionUser(): Promise<SessionUser | null> {
+/** Memoised per request: a layout and the shell it renders both need the
+ *  viewer, and that must stay one call to /auth/me, not two. */
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const cookie = (await cookies()).toString();
   if (!cookie) return null;
 
@@ -21,7 +24,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     // log this: the caught error can carry request headers, cookie included.
     return null;
   }
-}
+});
 
 /**
  * Never render a page and then show an "authentication required" panel inside

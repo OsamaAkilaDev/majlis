@@ -16,6 +16,36 @@ export function landingFor(user: SessionUser): string {
   return first ? `/manage/${first}` : '/home';
 }
 
+/** The tab a path belongs to: the longest tab href that is a prefix of it, so
+ *  `/me` owns `/me/registrations` while `/me/qr` keeps its own tab. */
+export function activeTabHref(pathname: string, hrefs: readonly string[]): string | null {
+  let best: string | null = null;
+  for (const href of hrefs) {
+    if (!isUnder(pathname, href)) continue;
+    if (best === null || href.length > best.length) best = href;
+  }
+  return best;
+}
+
+export type ShellDestination = { href: string; label: string };
+
+/** Every shell this viewer may reach, derived from the session the server
+ *  already fetched. A club ID from the browser is a claim, never a destination. */
+export function shellDestinations(user: SessionUser): ShellDestination[] {
+  const destinations: ShellDestination[] = [];
+  if (user.platformRole === 'ADMIN') destinations.push({ href: '/admin', label: 'Admin' });
+
+  const clubs = [...user.clubRoles].sort((a, b) => a.clubId.localeCompare(b.clubId));
+  for (const { clubId, role } of clubs) {
+    // Club names arrive in Stage 4; the session carries only the role today.
+    const label = role.charAt(0) + role.slice(1).toLowerCase().replace(/_/g, ' ');
+    destinations.push({ href: `/manage/${clubId}/overview`, label });
+  }
+
+  destinations.push({ href: '/home', label: 'Home' });
+  return destinations;
+}
+
 function isUnder(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }

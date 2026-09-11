@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@majlis/contracts';
-import { decideRedirect, landingFor, mergeSessionCookie } from './routing';
+import {
+  activeTabHref,
+  decideRedirect,
+  landingFor,
+  mergeSessionCookie,
+  shellDestinations,
+} from './routing';
 
 const user = (over: Partial<SessionUser> = {}): SessionUser => ({
   id: 'u1',
@@ -131,5 +137,65 @@ describe('mergeSessionCookie', () => {
       'majlis_session=new; Path=/; HttpOnly; Max-Age=900; SameSite=Lax',
     ]);
     expect(result).not.toMatch(/Path|HttpOnly|Max-Age|SameSite/);
+  });
+});
+
+describe('shellDestinations', () => {
+  it('gives a plain student one destination, so no switcher is shown', () => {
+    // Catches a switcher that always renders: a student with nowhere else to
+    // go would see a one-entry menu offering the shell they are already in.
+    expect(shellDestinations(user())).toEqual([{ href: '/home', label: 'Home' }]);
+  });
+
+  it('gives an admin who also leads a club every shell, admin first', () => {
+    // The exact user the review found stranded: an ADMIN with clubRoles had no
+    // reachable path to /manage/*. An implementation returning only the
+    // landingFor destination passes every single-role case and fails this one.
+    expect(
+      shellDestinations(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', role: 'VICE_LEAD' }] })),
+    ).toEqual([
+      { href: '/admin', label: 'Admin' },
+      { href: '/manage/c1/overview', label: 'Vice lead' },
+      { href: '/home', label: 'Home' },
+    ]);
+  });
+
+  it('orders a multi-club officer deterministically, not by array order', () => {
+    // Catches a map over clubRoles as given: the menu would reshuffle between
+    // requests whenever the API returns the roles in a different order.
+    const byIdOrder = shellDestinations(
+      user({ clubRoles: [{ clubId: 'cb', role: 'LEAD' }, { clubId: 'ca', role: 'OPERATIONS' }] }),
+    );
+    expect(byIdOrder.map((d) => d.href)).toEqual([
+      '/manage/ca/overview',
+      '/manage/cb/overview',
+      '/home',
+    ]);
+  });
+});
+
+describe('activeTabHref', () => {
+  const TABS = ['/home', '/clubs', '/events', '/me/qr', '/me'];
+
+  it('lights the tab for its own route', () => {
+    expect(activeTabHref('/home', TABS)).toBe('/home');
+    expect(activeTabHref('/me', TABS)).toBe('/me');
+  });
+
+  it('lights My QR, not Me, on /me/qr', () => {
+    // Catches a plain prefix match: /me is a prefix of /me/qr, so a naive
+    // implementation lights two tabs at once.
+    expect(activeTabHref('/me/qr', TABS)).toBe('/me/qr');
+  });
+
+  it('lights Me on its sub-routes', () => {
+    // The defect this replaces: excluding /me from prefix matching to protect
+    // /me/qr left these two screens with no tab lit at all.
+    expect(activeTabHref('/me/registrations', TABS)).toBe('/me');
+    expect(activeTabHref('/me/certificates', TABS)).toBe('/me');
+  });
+
+  it('lights nothing for a route that is not under any tab', () => {
+    expect(activeTabHref('/admin/metrics', TABS)).toBeNull();
   });
 });
