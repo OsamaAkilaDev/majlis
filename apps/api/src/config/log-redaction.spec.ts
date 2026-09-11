@@ -10,8 +10,8 @@ describe('LOG_REDACT_PATHS', () => {
     expect([...LOG_REDACT_PATHS]).toEqual([
       'req.headers.cookie',
       'req.headers.authorization',
-      'req.body.password',
-      'req.body.token',
+      'req.query.token',
+      'req.query.code',
       'res.headers["set-cookie"]',
     ]);
   });
@@ -27,6 +27,9 @@ describe('LOG_REDACT_PATHS', () => {
 
     const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
 
+    // Shaped like pino-http's actual request serializer output:
+    // { id, method, url, query, params, headers, remoteAddress, remotePort }
+    // — notably no `body`. See pino-std-serializers/lib/req.js.
     logger.info(
       {
         req: {
@@ -34,7 +37,7 @@ describe('LOG_REDACT_PATHS', () => {
             cookie: 'majlis_session=LEAKED',
             authorization: 'Bearer LEAKED',
           },
-          body: { password: 'LEAKED', token: 'LEAKED' },
+          query: { token: 'LEAKED', code: 'LEAKED' },
         },
         res: { headers: { 'set-cookie': 'majlis_session=LEAKED' } },
       },
