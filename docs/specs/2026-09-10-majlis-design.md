@@ -611,12 +611,14 @@ Delivered on branch `stage-1-foundation`: 32 unit tests, 100 integration tests a
 - **`db:seed` refuses to run** when `NODE_ENV=production`, or against any non-localhost database unless `ALLOW_REMOTE_SEED=yes`.
 - **Log redaction targets what pino-http actually serialises** — `req.headers`, `req.query`, `res.getHeaders()`. Request bodies are never serialised, so body paths would be inert. **`req.url` still carries the raw query string and is not redacted: a known remaining exposure to close before Stage 3 puts invitation tokens in query strings.**
 
-**Carried into Stage 2:**
+**Carried out of Stage 1:**
 
-1. **An ESLint boundary rule banning `PrismaService` injection outside `src/prisma/`.** `PrismaService` must stay injectable, so nothing currently stops a service writing outside the ambient transaction — meaning "the audit row lands in the same transaction as the action" is enforced by convention, not by the type system. Add the rule before services multiply.
-2. **A shared `test/factories.ts`.** `uniq()`, `aUser()` and `aClub()` are duplicated across the schema test files. Stage 2 will need the factories anyway.
-3. **Register the Problem Details schemas in the OpenAPI document.** They are currently imported only as types, so the generated spec documents no error shape. Needs routes that declare error responses.
-4. **Replace the seed's placeholder password hash** with real argon2id hashing when auth lands.
+1. ✅ **An ESLint boundary rule banning `PrismaService` injection outside `src/prisma/`** — done 2026-09-11, ahead of Stage 2. `PrismaService` must stay injectable, so nothing else stops a service writing outside the ambient transaction, which would let an action commit while its audit row rolls back. Implemented as `@typescript-eslint/no-restricted-imports` scoped to `apps/api/src/**` with `apps/api/src/prisma/**` exempt — no new dependency. `allowTypeImports: true` is load-bearing and precise rather than lenient: Nest resolves constructor DI from `design:paramtypes`, so an injection is always a *value* import, and a type-only import cannot become one. `test/` and `prisma/seed.ts` are outside the rule's scope and reach the database directly on purpose. `HealthController` was the only violation in the repo and now reads through `host.tx`; with no transaction open that is the base client, so the query is unchanged. Guarded by `src/prisma/boundary.spec.ts`, which runs the ESLint API over fixtures and asserts in both directions — a lint rule fails silently, and a glob that matches nothing leaves the repo green while the boundary is wide open.
+2. **`req.url` is logged unredacted, query string included.** `LOG_REDACT_PATHS` covers cookies, auth headers, `req.query.token`, `req.query.code` and `set-cookie`, but not the raw URL. Harmless while no endpoint takes a token in a query string; a live leak the moment Stage 4's team invitations put one in a link. `problem.filter.ts` also logs `{ err }` on 5xx, and Prisma validation errors embed the failing call's arguments. **Close before Stage 4.**
+3. **CI has never actually run.** The workflow exists and its seven commands pass locally, but nothing has been pushed to a remote, so it is unexercised on a Linux runner. One green run is the only real evidence.
+4. **A shared `test/factories.ts`.** `uniq()`, `aUser()` and `aClub()` are duplicated across the schema test files. Stage 2 needs the factories anyway.
+5. **Register the Problem Details schemas in the OpenAPI document.** They are currently imported only as types, so the generated spec documents no error shape. Needs routes that declare error responses — Stage 2 supplies the first.
+6. **Replace the seed's placeholder password hash** with real argon2id hashing when auth lands. `DEV_PASSWORD_HASH` is labelled `SEED-ONLY-NOT-A-REAL-HASH`, so the seeded accounts cannot currently be logged into.
 
 ## 14. Open items
 

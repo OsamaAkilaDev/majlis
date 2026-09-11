@@ -1,21 +1,25 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
-import { PrismaService } from '../prisma/prisma.service';
+import { TransactionHost } from '../prisma/transaction.host';
 
 @ApiTags('ops')
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly host: TransactionHost) {}
 
   /**
    * Deliberately minimal. The scanner screen pings this on open to warm a
    * cold serverless instance before the first student reaches the door.
+   *
+   * Goes through `host.tx` like every other database read: with no ambient
+   * transaction open it returns the base client, so this is the same query
+   * on the same connection it always was.
    */
   @Get()
   @ApiOkResponse({ description: 'Service and database are reachable.' })
   async check(): Promise<{ status: 'ok'; database: 'up'; uptimeSeconds: number }> {
-    await this.prisma.$queryRaw`SELECT 1`;
+    await this.host.tx.$queryRaw`SELECT 1`;
     return { status: 'ok', database: 'up', uptimeSeconds: Math.round(process.uptime()) };
   }
 }
