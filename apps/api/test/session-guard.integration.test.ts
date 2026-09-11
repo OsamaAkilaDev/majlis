@@ -56,6 +56,31 @@ describe('SessionGuard', () => {
     expect(res.status).toBe(401);
   });
 
+  it('gives a suspended user the identical rejection body a missing cookie gets', async () => {
+    // The code is correct today — both branches throw the same
+    // UnauthorizedError('Not signed in.') — but nothing above pins that.
+    // Catches a later refactor that gives the suspended branch a more
+    // specific message (e.g. 'Account suspended.'): that would let anyone
+    // holding a stale cookie for a suspended account distinguish "this
+    // account exists and was suspended" from "not signed in", leaking
+    // account state to a caller who no longer has valid credentials.
+    const user = await mkUser();
+    const cookie = await sessionCookieFor(user.id);
+    await prisma.user.update({ where: { id: user.id }, data: { status: 'SUSPENDED' } });
+
+    const suspended = await request(app.getHttpServer()).get(PROTECTED_PATH).set('Cookie', cookie);
+    const noCookie = await request(app.getHttpServer()).get(PROTECTED_PATH);
+
+    // requestId is expected to differ per request — asserted here so the
+    // two toEqual bodies below aren't quietly comparing one cached response
+    // against itself. Every other field — type, title, status, detail,
+    // instance — must be identical, not just status.
+    const { requestId: suspendedRequestId, ...suspendedBody } = suspended.body;
+    const { requestId: noCookieRequestId, ...noCookieBody } = noCookie.body;
+    expect(suspendedRequestId).not.toBe(noCookieRequestId);
+    expect(suspendedBody).toEqual(noCookieBody);
+  });
+
   it('rejects a request with no session cookie at all', async () => {
     const res = await request(app.getHttpServer()).get(PROTECTED_PATH);
 
@@ -108,9 +133,10 @@ describe('SessionGuard', () => {
 
     for (const route of routes) {
       const res = await request(app.getHttpServer())[route.method](route.path);
-      expect(res.status, `${route.method.toUpperCase()} ${route.path} is unprotected`).not.toBe(
-        200,
-      );
+      // 401 specifically, not just "not 200": a route that answers 403 or
+      // 500 for an unrelated reason would otherwise pass as "protected",
+      // masking a guard that never actually ran on it.
+      expect(res.status, `${route.method.toUpperCase()} ${route.path} is unprotected`).toBe(401);
     }
   });
 });
