@@ -42,6 +42,13 @@ export class AuditService {
     // `null`) — and `Prisma.JsonNull` would write the JSON value `null`
     // into the column, not leave it SQL NULL. `Prisma.DbNull` is the
     // sentinel that means "no snapshot", i.e. an actual SQL NULL.
+    //
+    // `== null` (not `=== undefined`) catches both an omitted key and an
+    // explicit `before: null` from a caller — AuditEntry['before'] is
+    // `unknown`, so nothing stops a future caller (Tasks 8/10/11) from
+    // passing null on purpose to mean "no snapshot", and that must take the
+    // DbNull branch too rather than falling through to a cast that lies
+    // about `null` being a valid InputJsonValue.
     await this.host.tx.auditLog.create({
       data: {
         actorUserId: entry.actorUserId ?? null,
@@ -50,8 +57,8 @@ export class AuditService {
         entityId: entry.entityId,
         outcome: entry.outcome,
         reason: entry.reason ?? null,
-        before: entry.before === undefined ? Prisma.DbNull : (entry.before as Prisma.InputJsonValue),
-        after: entry.after === undefined ? Prisma.DbNull : (entry.after as Prisma.InputJsonValue),
+        before: entry.before == null ? Prisma.DbNull : (entry.before as Prisma.InputJsonValue),
+        after: entry.after == null ? Prisma.DbNull : (entry.after as Prisma.InputJsonValue),
         requestId: facts?.requestId ?? 'unknown',
         ip: facts?.ip ?? null,
       },

@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AuditService } from '../src/audit/audit.service';
+import { RequestContext } from '../src/common/request-context';
 import { TransactionHost } from '../src/prisma/transaction.host';
 import { createTestApp } from './app';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
@@ -69,7 +70,49 @@ describe('AuditService', () => {
     const rows = await prisma.auditLog.findMany({ where: { entityId: user.id } });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.action).toBe('user.suspended');
-    expect(rows[0]?.requestId).toBeTruthy();
+  });
+
+  it('falls back to the literal "unknown" requestId when no RequestContext is running', async () => {
+    // Pins the fallback branch exactly, rather than `toBeTruthy()` — which
+    // 'unknown' itself satisfies and so cannot tell "correctly fell back"
+    // from "ignored RequestContext entirely and hardcoded something else
+    // truthy".
+    const audit = app.get(AuditService);
+    const user = await prisma.user.create({ data: aUser() });
+
+    await audit.record({
+      action: 'user.suspended',
+      entityType: 'User',
+      entityId: user.id,
+      outcome: 'SUCCESS',
+    });
+
+    const row = await prisma.auditLog.findFirstOrThrow({ where: { entityId: user.id } });
+    expect(row.requestId).toBe('unknown');
+    expect(row.ip).toBeNull();
+  });
+
+  it('threads requestId and ip from the ambient RequestContext', async () => {
+    // Catches a service that ignores RequestContext and always hardcodes
+    // the 'unknown' fallback — the previous test alone can't distinguish
+    // "correctly read the ambient facts" from "always writes 'unknown'",
+    // since neither wrapped the call in RequestContext.run.
+    const context = app.get(RequestContext);
+    const audit = app.get(AuditService);
+    const user = await prisma.user.create({ data: aUser() });
+
+    await context.run({ requestId: 'req-123', ip: '1.2.3.4' }, () =>
+      audit.record({
+        action: 'user.suspended',
+        entityType: 'User',
+        entityId: user.id,
+        outcome: 'SUCCESS',
+      }),
+    );
+
+    const row = await prisma.auditLog.findFirstOrThrow({ where: { entityId: user.id } });
+    expect(row.requestId).toBe('req-123');
+    expect(row.ip).toBe('1.2.3.4');
   });
 
   it('omits actorUserId for an unauthenticated denial rather than writing a fabricated one', async () => {
@@ -122,10 +165,18 @@ describe('AuditService', () => {
       outcome: 'SUCCESS',
     });
 
-    const rawNull = await prisma.$queryRaw<{ before: unknown; after: unknown }[]>`
-      SELECT "before", "after" FROM "audit_log"
+    // Both a real SQL NULL and a stored JSON `null` scalar come back as JS
+    // `null` once node-postgres/pg-types parses the column — that driver
+    // parsing (JSON.parse) is exactly why an ordinary Prisma or $queryRaw
+    // read of the value can't discriminate Prisma.DbNull from
+    // Prisma.JsonNull. jsonb_typeof forces the check to happen in Postgres,
+    // before any driver-side parsing: it returns SQL NULL for an actual SQL
+    // NULL, and the string 'null' for a stored JSON null scalar.
+    const typeofResult = await prisma.$queryRaw<{ before_type: string | null; after_type: string | null }[]>`
+      SELECT jsonb_typeof("before") AS before_type, jsonb_typeof("after") AS after_type
+      FROM "audit_log"
       WHERE entity_id = ${user.id} AND action = 'club.suspend.no-snapshot'`;
-    expect(rawNull[0]?.before).toBeNull();
-    expect(rawNull[0]?.after).toBeNull();
+    expect(typeofResult[0]?.before_type).toBeNull();
+    expect(typeofResult[0]?.after_type).toBeNull();
   });
 });
