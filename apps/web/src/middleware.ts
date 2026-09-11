@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { decideRedirect, REFRESH_COOKIE, SESSION_COOKIE } from '@/lib/routing';
+import { API_ORIGIN } from '@/lib/api-origin';
+import { decideRedirect, mergeSessionCookie, REFRESH_COOKIE, SESSION_COOKIE } from '@/lib/routing';
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js).*)'],
+  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js).*)'],
 };
 
 export async function middleware(req: NextRequest) {
@@ -16,19 +17,24 @@ export async function middleware(req: NextRequest) {
   // Session expired but the 30-day refresh token is still here. Renew it now
   // so the navigation continues instead of bouncing the user to /login.
   if (!hasSession && hasRefresh) {
-    const renewed = await fetch(new URL('/api/v1/auth/refresh', req.url), {
+    const renewed = await fetch(`${API_ORIGIN}/api/v1/auth/refresh`, {
       method: 'POST',
       headers: { cookie: req.headers.get('cookie') ?? '' },
     });
 
     if (!renewed.ok) {
       const res = NextResponse.redirect(new URL('/login', req.url));
-      res.cookies.delete(REFRESH_COOKIE);
+      res.cookies.delete({ name: REFRESH_COOKIE, path: '/' });
       return res;
     }
 
-    const res = NextResponse.next();
-    for (const cookie of renewed.headers.getSetCookie()) {
+    // Rewrite the current request's cookie header too, or the layout that
+    // renders next still sends the expired session value and 401s.
+    const setCookies = renewed.headers.getSetCookie();
+    const headers = new Headers(req.headers);
+    headers.set('cookie', mergeSessionCookie(req.headers.get('cookie') ?? '', setCookies));
+    const res = NextResponse.next({ request: { headers } });
+    for (const cookie of setCookies) {
       res.headers.append('set-cookie', cookie);
     }
     return res;

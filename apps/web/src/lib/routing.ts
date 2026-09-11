@@ -36,3 +36,21 @@ export function decideRedirect(input: {
   if (AUTH_ROUTES.includes(pathname)) return signedIn ? { to: '/' } : null;
   return signedIn ? null : { to: '/login' };
 }
+
+/** Rewrites a request's `cookie` header so the just-renewed session cookie is
+ *  visible to the current render, not only to the next request. */
+export function mergeSessionCookie(cookieHeader: string, setCookies: string[]): string {
+  const sessionSetCookie = setCookies.find((c) => c.trim().startsWith(`${SESSION_COOKIE}=`));
+  if (!sessionSetCookie) return cookieHeader;
+
+  // Attributes (Path, HttpOnly, Max-Age, ...) belong on Set-Cookie, never on
+  // the request's Cookie header, so only the name=value pair survives.
+  const pair = sessionSetCookie.split(';')[0]?.trim() ?? '';
+
+  const kept = cookieHeader
+    .split(';')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !p.startsWith(`${SESSION_COOKIE}=`));
+
+  return [...kept, pair].join('; ');
+}

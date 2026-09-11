@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@majlis/contracts';
-import { decideRedirect, landingFor } from './routing';
+import { decideRedirect, landingFor, mergeSessionCookie } from './routing';
 
 const user = (over: Partial<SessionUser> = {}): SessionUser => ({
   id: 'u1',
@@ -85,5 +85,51 @@ describe('decideRedirect', () => {
     // Catches pathname.startsWith('/login'), which would send an anonymous
     // visitor of any route beginning with those characters to the wrong place.
     expect(decideRedirect({ pathname: '/loginary', ...anon })).toEqual({ to: '/login' });
+  });
+
+  it('does not treat /verifyfoo as the public verify route', () => {
+    // Catches PUBLIC_PREFIXES.some((p) => pathname.startsWith(p)), which would
+    // leave any route beginning with those characters ungated.
+    expect(decideRedirect({ pathname: '/verifyfoo', ...anon })).toEqual({ to: '/login' });
+  });
+
+  it('leaves the bare /verify route public', () => {
+    expect(decideRedirect({ pathname: '/verify', ...anon })).toBeNull();
+  });
+});
+
+describe('mergeSessionCookie', () => {
+  it('replaces an existing majlis_session pair', () => {
+    const result = mergeSessionCookie('majlis_session=old; majlis_refresh=abc', [
+      'majlis_session=new; Path=/; HttpOnly; Max-Age=900',
+    ]);
+    expect(result).toBe('majlis_refresh=abc; majlis_session=new');
+    // Catches an implementation that appends instead of replacing, which
+    // would leave both the expired and the renewed value on the header.
+    expect(result.match(/majlis_session=/g)).toHaveLength(1);
+  });
+
+  it('appends when majlis_session is absent', () => {
+    const result = mergeSessionCookie('majlis_refresh=abc', [
+      'majlis_session=new; Path=/; HttpOnly',
+    ]);
+    expect(result).toBe('majlis_refresh=abc; majlis_session=new');
+  });
+
+  it('ignores a majlis_refresh Set-Cookie entry', () => {
+    // Catches an implementation that merges the first Set-Cookie entry
+    // regardless of name, which would let a refresh-token rotation overwrite
+    // the session cookie's slot or leak the refresh value into the header.
+    const result = mergeSessionCookie('majlis_session=old', [
+      'majlis_refresh=newrefresh; Path=/; HttpOnly',
+    ]);
+    expect(result).toBe('majlis_session=old');
+  });
+
+  it('strips attributes so Path, HttpOnly and Max-Age never leak into the cookie header', () => {
+    const result = mergeSessionCookie('majlis_refresh=abc', [
+      'majlis_session=new; Path=/; HttpOnly; Max-Age=900; SameSite=Lax',
+    ]);
+    expect(result).not.toMatch(/Path|HttpOnly|Max-Age|SameSite/);
   });
 });
