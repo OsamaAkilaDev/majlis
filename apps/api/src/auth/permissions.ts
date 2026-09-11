@@ -89,6 +89,7 @@ export interface PermissionRule {
 export const PERMISSIONS = {
   'user:list': { platform: ['ADMIN'] },
   'user:suspend': { platform: ['ADMIN'] },
+  'club:edit': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;
