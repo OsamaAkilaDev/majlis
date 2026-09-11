@@ -1,5 +1,8 @@
-import { BRAND } from '@/lib/brand';
+import { redirect } from 'next/navigation';
+import { landingFor } from '@/lib/routing';
+import { getSessionUser } from '@/lib/session';
 
-export default function Page() {
-  return <main id="main">{BRAND.product}</main>;
+export default async function RootPage() {
+  const user = await getSessionUser();
+  redirect(user ? landingFor(user) : '/login');
 }
