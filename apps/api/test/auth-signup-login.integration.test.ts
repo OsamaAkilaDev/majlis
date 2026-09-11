@@ -1,11 +1,31 @@
 import type { INestApplication } from '@nestjs/common';
-import { ThrottlerStorage } from '@nestjs/throttler';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ThrottlerStorage, type ThrottlerStorageService } from '@nestjs/throttler';
+import { verify } from '@node-rs/argon2';
+import type * as Argon2 from '@node-rs/argon2';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '../src/auth/auth.service';
 import { TokensService } from '../src/auth/tokens.service';
 import { login, loginAsAdmin, loginAsStudent, signup } from './auth-helpers';
 import { createTestApp } from './app';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 import { uniq } from './factories';
+
+// A partial mock: `verify` is wrapped with a spy that still calls through to
+// the real implementation, so every other test in this file gets real
+// argon2 behaviour (real hashing, real rejection of a wrong password) and
+// only gains the ability to assert what it was CALLED with. `hash` is left
+// untouched entirely.
+vi.mock('@node-rs/argon2', async (importOriginal) => {
+  const actual = await importOriginal<typeof Argon2>();
+  return { ...actual, verify: vi.fn(actual.verify) };
+});
+
+// AuthService.DUMMY_HASH is `private` at the type level only — TypeScript
+// erases that at runtime, so the class still carries it as a real static
+// property. Reading it here (rather than pasting a second copy of the
+// literal into the test) means this test can never drift from the value
+// actually used in production.
+const DUMMY_HASH = (AuthService as unknown as { DUMMY_HASH: string }).DUMMY_HASH;
 
 const prisma = createTestPrisma();
 
@@ -24,13 +44,27 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(prisma);
+  vi.mocked(verify).mockClear();
+
   // Rate limiting is real (see auth.module.ts / auth.controller.ts), not
   // disabled for tests — several tests below deliberately run right up to
   // its edge. Without this reset, the in-memory counter (one instance per
   // test FILE, since createTestApp() runs once in beforeAll) would carry
   // hit counts from an earlier test into the next one, making pass/fail
   // depend on test order and file layout rather than on the code.
-  app.get(ThrottlerStorage).storage.clear();
+  //
+  // storage.clear() alone would leave any already-scheduled setTimeout
+  // handles (ThrottlerStorageService.timeoutIds) live; if one fired after a
+  // later clear(), its callback would destructure a now-missing storage
+  // entry and throw synchronously inside the timer, outside any test's
+  // control. onApplicationShutdown() is ThrottlerStorageService's own public
+  // cleanup method (it implements Nest's OnApplicationShutdown) and does
+  // exactly this: cancels every pending timeout before the Map is cleared.
+  // Calling it early and calling it again via the real app.close() in
+  // afterAll is harmless — clearTimeout on an already-cleared id is a no-op.
+  const storage = app.get(ThrottlerStorage) as ThrottlerStorageService;
+  storage.onApplicationShutdown();
+  storage.storage.clear();
 });
 
 describe('POST /auth/signup', () => {
@@ -94,9 +128,27 @@ describe('POST /auth/signup', () => {
     expect(second.status).toBe(409);
   });
 
-  it('rejects a password shorter than the 12-character minimum with a validation problem, not a 500', async () => {
-    const res = await signup(app, { password: 'short-pass' });
+  it('resolves a concurrent duplicate signup to exactly one 201 and one 409', async () => {
+    // Two sequential calls (the test above) never actually contend — the
+    // first always finishes before the second starts. It is the database's
+    // unique index on email that serialises a genuine race, not the
+    // service's try/catch by itself; this proves that holds under real
+    // concurrency, the same pattern Stage 7's capacity guards will lean on.
+    const email = `${uniq('race')}@uni.ac.ae`;
+    const [a, b] = await Promise.all([signup(app, { email }), signup(app, { email })]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+  });
+
+  it('rejects an 11-character password, one below the minimum', async () => {
+    // Catches a `.min(11)` typo — the vaguer "some short password" version
+    // of this test would not.
+    const res = await signup(app, { password: 'a'.repeat(11) });
     expect(res.status).toBe(400);
+  });
+
+  it('accepts a 12-character password, exactly at the minimum', async () => {
+    const res = await signup(app, { password: 'a'.repeat(12) });
+    expect(res.status).toBe(201);
   });
 
   it('writes no audit row for a routine signup', async () => {
@@ -143,22 +195,17 @@ describe('POST /auth/login', () => {
     expect(unknownBody).toEqual(wrongBody);
   });
 
-  it('rejects an unknown email exactly as fast as a wrong password for a real one', async () => {
-    // Catches a "no user, return immediately" shortcut: without verifying
-    // against DUMMY_HASH, an unknown email answers in ~0ms while a wrong
-    // password against a real user pays argon2's ~100ms — a reliable timing
-    // oracle that the byte-identical-body test above cannot detect at all.
-    await signup(app, { email: 'timing@uni.ac.ae', password: 'correct-horse-battery' });
+  it('verifies against the dummy hash when no user is found — the dummy-hash branch actually runs', async () => {
+    // Asserts the CODE PATH taken, not its wall-clock cost. A timing
+    // assertion on two real HTTP round trips is load-sensitive — a GC pause
+    // or a busy CI runner can violate it with nothing wrong, and it can pass
+    // even with the dummy-hash branch deleted, as long as both paths happen
+    // to be equally slow for some other reason. This is strictly more
+    // discriminating: it fails the moment "no user, return immediately"
+    // replaces the unconditional verify() call, regardless of timing.
+    await login(app, { email: 'never-signed-up@uni.ac.ae', password: 'whatever-at-all' });
 
-    const start1 = Date.now();
-    await login(app, { email: 'nobody-at-all@uni.ac.ae', password: 'whatever-at-all' });
-    const unknownMs = Date.now() - start1;
-
-    const start2 = Date.now();
-    await login(app, { email: 'timing@uni.ac.ae', password: 'whatever-at-all' });
-    const wrongMs = Date.now() - start2;
-
-    expect(Math.abs(unknownMs - wrongMs)).toBeLessThan(100);
+    expect(verify).toHaveBeenCalledWith(DUMMY_HASH, 'whatever-at-all');
   });
 
   it('tells a suspended user they are suspended, but only on the right password', async () => {
