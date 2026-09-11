@@ -1,4 +1,6 @@
+import { hash } from '@node-rs/argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { ARGON2_OPTIONS } from '../src/auth/auth.service';
 import { PrismaClient } from '../src/generated/prisma/client';
 
 /**
@@ -7,12 +9,17 @@ import { PrismaClient } from '../src/generated/prisma/client';
  * constraint violation. Prisma 7 no longer runs this automatically.
  */
 
-// Development only. Real hashing arrives with auth in Stage 2.
-const DEV_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$DEVELOPMENT$SEED-ONLY-NOT-A-REAL-HASH';
+// Every seeded persona shares this password (see README.md). Hashed with the
+// same ARGON2_OPTIONS the login path verifies against — computed once here
+// rather than pinned as a literal, so it can never drift from the real
+// parameters the way the old placeholder string did.
+const SEED_PASSWORD = 'Passw0rd!';
 
 const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
 
 export async function seed(prisma: PrismaClient): Promise<void> {
+  const passwordHash = await hash(SEED_PASSWORD, ARGON2_OPTIONS);
+
   const people = [
     { email: 'admin@uni.ac.ae', fullName: 'Amina Al Marri', platformRole: 'ADMIN' as const },
     { email: 'lead@uni.ac.ae', fullName: 'Yousef Rahman', platformRole: 'STUDENT' as const },
@@ -25,7 +32,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     const user = await prisma.user.upsert({
       where: { email: person.email },
       update: { fullName: person.fullName, platformRole: person.platformRole },
-      create: { ...person, passwordHash: DEV_PASSWORD_HASH },
+      create: { ...person, passwordHash },
     });
     users[person.email] = user.id;
 
@@ -120,8 +127,9 @@ export async function seed(prisma: PrismaClient): Promise<void> {
 }
 
 /**
- * This script writes placeholder accounts carrying a fake password hash, plus
- * a PUBLISHED event. It must never reach a real database.
+ * This script writes placeholder accounts sharing one publicly-known
+ * password (real argon2id hash, known plaintext), plus a PUBLISHED event. It
+ * must never reach a real database.
  *
  * The test harness refuses any connection string not naming `majlis_test`;
  * this is the reciprocal guard for the development path. A `.env` pointed at

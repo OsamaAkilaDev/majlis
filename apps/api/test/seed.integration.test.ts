@@ -1,10 +1,18 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import type { INestApplication } from '@nestjs/common';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertSafeToSeed, seed } from '../prisma/seed';
+import { createTestApp } from './app';
+import { login } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
 const prisma = createTestPrisma();
+let app: INestApplication;
 
-afterAll(async () => { await disconnectTestPrisma(prisma); });
+beforeAll(async () => { app = await createTestApp(); });
+afterAll(async () => {
+  await app.close();
+  await disconnectTestPrisma(prisma);
+});
 beforeEach(async () => { await truncateAll(prisma); });
 
 describe('seed', () => {
@@ -53,6 +61,30 @@ describe('seed', () => {
     await seed(prisma);
     const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@uni.ac.ae' } });
     expect(admin.platformRole).toBe('ADMIN');
+  });
+
+  it('lets the seeded admin actually log in with the password README.md promises', async () => {
+    // The old placeholder hash made every seeded account unauthenticatable —
+    // this is the exact login a fresh clone's README walks a developer
+    // through. Asserting the response's specific email and platformRole,
+    // not merely a 200, is what would catch a fix that hashes the right
+    // password but stores it against the wrong persona (e.g. every seeded
+    // user sharing one row, or the hash landing on lead@uni.ac.ae instead).
+    await seed(prisma);
+    const res = await login(app, { email: 'admin@uni.ac.ae', password: 'Passw0rd!' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe('admin@uni.ac.ae');
+    expect(res.body.platformRole).toBe('ADMIN');
+  });
+
+  it('rejects the seeded admin with the wrong password', async () => {
+    // Discriminates against a seed bug that hashes an empty string, ignores
+    // ARGON2_OPTIONS, or otherwise accepts anything — a login test that only
+    // checked the correct password succeeding would miss all three.
+    await seed(prisma);
+    const res = await login(app, { email: 'admin@uni.ac.ae', password: 'wrong-password-entirely' });
+    expect(res.status).toBe(401);
   });
 
   it('gives every user a QR pass', async () => {

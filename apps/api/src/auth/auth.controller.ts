@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
+import { ApiResponse } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { loginBodySchema, signupBodySchema, type SessionUser } from '@majlis/contracts';
 import type { Request, Response } from 'express';
@@ -14,6 +15,7 @@ import {
   SESSION_COOKIE,
 } from './cookies';
 import { Actor } from './actor.decorator';
+import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
 import { UnauthorizedError } from '../common/problem/domain-error';
 import type { User } from '../generated/prisma/client';
 import { Public } from './public.decorator';
@@ -44,6 +46,7 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('signup')
   @HttpCode(201)
+  @ApiResponse({ status: 409, description: 'An account with this email already exists.', type: ProblemDetailsDto })
   async signup(@Body() body: SignupDto, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const result = await this.auth.signup(body);
     this.setAuthCookies(res, result);
@@ -54,6 +57,8 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
+  @ApiResponse({ status: 401, description: 'Email or password is incorrect.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 403, description: 'This account is suspended.', type: ProblemDetailsDto })
   async login(@Body() body: LoginDto, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const result = await this.auth.login(body);
     this.setAuthCookies(res, result);
@@ -68,6 +73,7 @@ export class AuthController {
    * deliberately carries none of this.
    */
   @Get('me')
+  @ApiResponse({ status: 401, description: 'Not signed in.', type: ProblemDetailsDto })
   me(@Actor() actor: User): Promise<SessionUser> {
     return this.auth.me(actor);
   }
@@ -80,6 +86,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(200)
+  @ApiResponse({ status: 401, description: SESSION_EXPIRED, type: ProblemDetailsDto })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     // Same message and status as every failure inside AuthService.refresh —
