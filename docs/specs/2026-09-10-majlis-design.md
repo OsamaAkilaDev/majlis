@@ -580,7 +580,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 
 | # | Stage | Contents |
 |---|---|---|
-| 1 | Foundation | Monorepo, Turborepo, contracts package, Prisma schema + first migrations with all constraints, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
+| 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
 | 2 | Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard skeleton, user suspension, audit writer, transaction host |
 | 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline |
 | 4 | Clubs & team | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance |
@@ -594,6 +594,29 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 12 | Hardening & deploy | Rate limits, security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
 
 ---
+
+### Stage 1 completion note (2026-09-11)
+
+Delivered on branch `stage-1-foundation`: 32 unit tests, 100 integration tests against a real PostgreSQL 18, all green. Every invariant in §5.2 exists as a partial unique index, `CHECK` constraint or trigger, each proven by a test that fails without it.
+
+**Deviations from this spec, and why:**
+
+- **Testcontainers and Docker Compose dropped** (§4.1, §12). The development machine has no Docker. Local integration tests run against a native Postgres 18 with a dedicated `majlis_test` database; CI uses a `postgres:18` service container.
+- **`@nestjs/cli` is not used.** Version 12.0.0 is the only stable 12.x and it cannot run at all — it pins ESM-only `ora@9.4.1` while `@angular-devkit/schematics` `require()`s it in a cycle, so even `nest --version` dies on Node 22. `build` is `tsc -p tsconfig.build.json`; the dev loop is `node --watch -r @swc-node/register`, because `tsx`'s esbuild transform does not implement `emitDecoratorMetadata` and silently breaks Nest's constructor injection.
+- **Prisma 7 removed `url` from the datasource block.** Connection strings live in `apps/api/prisma.config.ts`. Migrations use `DIRECT_URL`; the application uses the pooled `DATABASE_URL` through the mandatory driver adapter.
+- **`zod` pins to 4.5.4, not 4.6.1.** pnpm 11 enforces a 24-hour minimum release age; 4.6.1 was too new. Standing rule: never pin a package published in the last 48 hours, and never add a `minimumReleaseAgeExclude` to bypass the check.
+- **`nestjs-zod@5.5.0` does not declare NestJS 12 support.** A scoped `peerDependencyRules` override in `pnpm-workspace.yaml` permits it; `cleanupOpenApiDoc` replaces the removed `patchNestJsSwagger`.
+- **The global route prefix carries a leading slash, and this is load-bearing.** `@nestjs/core`'s `registerNotFoundHandler` and `registerExceptionHandler` skip the normalisation `registerRouter` applies, so `'api/v1'` routes 404s and unhandled errors around every exception filter — silently. Guarded by `API_PREFIX` and a test.
+- **`AttendanceRecord.registration` is `onDelete: Restrict`**, matching `Certificate`. Deleting a registration must not destroy the proof someone was in the room.
+- **`db:seed` refuses to run** when `NODE_ENV=production`, or against any non-localhost database unless `ALLOW_REMOTE_SEED=yes`.
+- **Log redaction targets what pino-http actually serialises** — `req.headers`, `req.query`, `res.getHeaders()`. Request bodies are never serialised, so body paths would be inert. **`req.url` still carries the raw query string and is not redacted: a known remaining exposure to close before Stage 3 puts invitation tokens in query strings.**
+
+**Carried into Stage 2:**
+
+1. **An ESLint boundary rule banning `PrismaService` injection outside `src/prisma/`.** `PrismaService` must stay injectable, so nothing currently stops a service writing outside the ambient transaction — meaning "the audit row lands in the same transaction as the action" is enforced by convention, not by the type system. Add the rule before services multiply.
+2. **A shared `test/factories.ts`.** `uniq()`, `aUser()` and `aClub()` are duplicated across the schema test files. Stage 2 will need the factories anyway.
+3. **Register the Problem Details schemas in the OpenAPI document.** They are currently imported only as types, so the generated spec documents no error shape. Needs routes that declare error responses.
+4. **Replace the seed's placeholder password hash** with real argon2id hashing when auth lands.
 
 ## 14. Open items
 
