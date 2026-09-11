@@ -60,7 +60,7 @@ These are settled. Do not re-litigate without asking the human.
 | Frontend | **Next.js** (App Router) |
 | UI | **Tailwind CSS v4 + shadcn/ui** (Radix primitives owned in-repo) |
 | Contracts | **Zod** in a shared package, via `nestjs-zod`, generating OpenAPI |
-| Auth | **NestJS-native** — argon2id, httpOnly cookies, rotating refresh tokens, guards written directly. Identity lives entirely in our Postgres. Not Supabase Auth. ~~Passport~~ — dropped 2026-09-11, see Stage 2 design §9.1. |
+| Auth | **NestJS-native** — argon2id, httpOnly cookies, revocable refresh tokens, guards written directly. Identity lives entirely in our Postgres. Not Supabase Auth. ~~Passport~~ — dropped 2026-09-11, see Stage 2 design §9.1. |
 | Background work | **Plain code.** No queue, no Redis, no BullMQ. |
 | Client data | TanStack Query + react-hook-form (sharing the Zod schemas) |
 | File storage | Supabase Storage, uploaded direct from browser via signed URL |
@@ -219,7 +219,7 @@ All timestamps are `timestamptz`, stored UTC. All IDs are UUID v7 (time-sortable
 **`User`** — `id`, `email` (unique, citext), `password_hash` (argon2id), `full_name`, `avatar_url?`, `status` (`ACTIVE` | `SUSPENDED`), `platform_role` (`STUDENT` | `ADMIN`), `created_at`, `updated_at`.
 No `university_id`. Majlis serves one university; the email is the unique identity key. Operations verifies a scanned pass against **name + email**.
 
-**`RefreshToken`** — `id`, `user_id`, `token_hash`, `family_id`, `expires_at`, `revoked_at?`, `replaced_by?`, `user_agent?`, `ip?`. Rotation with reuse detection: presenting an already-rotated token revokes the whole family.
+**`RefreshToken`** — `id`, `user_id`, `token_hash`, `family_id`, `expires_at`, `revoked_at?`, `replaced_by?`, `user_agent?`, `ip?`. The token is **revocable, not rotating** — it stays valid until logout, suspension, or expiry (simplified 2026-09-11, see §13). `family_id` identifies one login's session; `replaced_by` is vestigial.
 Lifetimes: **access token 15 minutes, refresh token 30 days**, both configurable by environment variable.
 
 **`Department`** — `id`, `name` (unique), `code` (unique), `description?`.
@@ -535,8 +535,8 @@ Where a viewer lacks access, or a club is suspended, or something genuinely went
 ## 11. Security
 
 - Server-side authorization on every protected endpoint, re-derived from the database per request. No exceptions. The UI hiding a control is presentation, never protection.
-- argon2id password hashing with sane parameters. httpOnly, `Secure`, `SameSite=Lax` cookies. Refresh rotation with family-wide revocation on reuse detection.
-- Rate limiting on login, signup, scan, and `/verify/{code}`.
+- argon2id password hashing with sane parameters. httpOnly, `Secure`, `SameSite=Lax` cookies. Refresh tokens are opaque, stored only as SHA-256 hashes, and revoked on logout and on suspension. ~~Rotation with family-wide revocation on reuse detection~~ — dropped 2026-09-11 as disproportionate for this system; see §13.
+- Rate limiting on login, signup, scan, and `/verify/{code}` — **all of it in Stage 12**, none of it today.
 - QR signing keys, session secrets, the sweep secret, and the Resend key live in environment secrets. Never in code, never in a log, never in an audit row.
 - Least privilege on attendee personal data — Marketing does not see it; Operations sees it only for their assigned event; students see only their own.
 - Input validation at the boundary via Zod; uploaded images validated for declared type and size before a signed URL is issued.
@@ -623,7 +623,7 @@ Delivered on branch `stage-1-foundation`: 32 unit tests, 100 integration tests a
 
 ### Stage 2 completion note (2026-09-11)
 
-Delivered on branch `stage-2-auth`: 26 commits, 125 unit tests, 184 integration tests
+Delivered on branch `stage-2-auth`: 125 unit tests, 174 integration tests
 against real PostgreSQL 18, all green. `/security-review` run — no HIGH findings.
 
 **Deviations from this spec:**
@@ -631,26 +631,31 @@ against real PostgreSQL 18, all green. `/security-review` run — no HIGH findin
 - **Passport dropped** (§3 ledger, already amended). One strategy, a cookie-borne
   credential needing a custom extractor anyway, and a `validate()` that must hit the
   database regardless — a library wrapping forty lines.
-- **Auth rate limiting pulled forward from Stage 12.** §11 requires it on login and
-  signup. `ThrottlerGuard` is registered **globally, ahead of `PermissionsGuard`** — a
-  controller-scoped guard never runs, because Nest stops at the first denial and the
-  global permissions guard denies first. `@SkipThrottle()` on health.
+- ~~Auth rate limiting pulled forward from Stage 12.~~ **Reverted 2026-09-11** at the
+  owner's direction — `@nestjs/throttler` removed entirely. All rate limiting is Stage 12
+  again. Login has no brute-force limit until then; argon2id's cost is the only brake.
 - **The permission mechanism was built in full, not as a skeleton.** All three scope
   resolvers exist and are tested; only the matrix stays minimal (`user:list`,
   `user:suspend`, `club:edit`). Later stages add rows, not code.
-- **Refresh reuse is discriminated on `replacedById` alone**, not `revokedAt ||
-  replacedById`. Logout and suspension set `revokedAt` with `replacedById` null, so the
-  original test recorded every post-logout refresh as a security incident.
+- ~~Refresh rotation with family-wide reuse detection.~~ **Removed 2026-09-11** at the
+  owner's direction as disproportionate for this system. The refresh token is now plain and
+  revocable: logout and suspension revoke it, and it expires 30 days after login regardless
+  of activity. Consequences accepted knowingly — a stolen refresh token works undetected
+  until it expires or the session is revoked, and there is no sliding expiry. `replaced_by`
+  is left in the schema unused; dropping it needs a migration and buys nothing.
+  **Stage 3 no longer needs client-side refresh deduplication** — the two-tab race that
+  rotation created is gone.
 - **`ProblemExceptionFilter` maps Prisma `P2007` as well as `P2023` to 400.** Verified
   live: with `@prisma/adapter-pg`, a malformed UUID raises `P2007`, not the documented
   `P2023`.
 
 **Open, carried into Stage 3+:**
 
-1. **`trust proxy` is not set.** Behind the §9.2 Next.js rewrite, `req.ip` becomes the
-   platform proxy for every caller — collapsing all IP-keyed rate limits to one global
-   bucket and destroying the forensic value of `audit_log.ip` and `refresh_token.ip`.
-   **Must be resolved when the rewrite lands in Stage 3.**
+1. **`trust proxy` is not set.** Behind the §9.2 Next.js rewrite, `req.ip` is the platform
+   proxy for every caller, so `audit_log.ip` and `refresh_token.ip` record the hop rather
+   than the client. Less urgent now that no rate limiting is IP-keyed, but **Stage 12 must
+   set it before adding any**, and do not blindly use `trust proxy: true` — that makes
+   `X-Forwarded-For` spoofable.
 2. **`req.url` is logged unredacted**, and `problem.filter.ts` logs `{ err }` on 5xx.
    Close before Stage 4 puts invitation tokens in query strings.
 3. **CI has never run.** Nothing pushed; the workflow is unexercised on a Linux runner.

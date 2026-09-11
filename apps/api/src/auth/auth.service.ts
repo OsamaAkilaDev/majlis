@@ -14,7 +14,7 @@ import { TransactionHost } from '../prisma/transaction.host';
 import { TokensService } from './tokens.service';
 
 /**
- * Every refresh failure path — expiry, reuse, an unknown token, a suspended
+ * Every refresh failure path — expiry, an unknown token, a suspended
  * user, and (in the controller) a missing cookie — throws this exact
  * message. The client cannot tell which case occurred, and does not need
  * to: distinguishing them would only help an attacker probe which sessions
@@ -158,108 +158,29 @@ export class AuthService {
   }
 
   /**
-   * Rotation with family-wide reuse detection. Presenting a refresh token
-   * that was already rotated (or already revoked for any other reason)
-   * means one of two things happened: a thief is replaying a stolen token,
-   * or the legitimate user is (e.g. a lost race between two tabs). The
-   * server cannot tell which, so neither keeps the session — the entire
-   * family is revoked, including members minted after the replayed token.
-   * That is deliberately harsher than revoking only the presented row or
-   * its ancestors, which would leave a thief's later-rotated token alive.
+   * Exchanges a live refresh token for a fresh access token. The token is
+   * not rotated: it stays valid until revoked (logout, suspension) or until
+   * its 30 days run out. Revocation, not rotation, is what ends a session.
    *
-   * Every failure below reports the exact same UnauthorizedError, so expiry,
-   * reuse, an unknown token hash, and a suspended user are indistinguishable
-   * to the caller.
-   *
-   * The failure branches return a sentinel from inside host.run rather than
-   * throwing there: `host.run` wraps its callback in Prisma's interactive
-   * `$transaction`, and Prisma rolls that transaction back the moment the
-   * callback throws. Throwing UnauthorizedError from inside the reuse branch
-   * would silently undo the very writes reuse detection exists to make — the
-   * family-wide revocation and the audit row — before the 401 ever reached
-   * the caller. Only the outer, non-transactional call is allowed to throw.
+   * Every failure reports the same UnauthorizedError, so expiry, an unknown
+   * hash and a suspended user are indistinguishable to the caller.
    */
   async refresh(raw: string): Promise<AuthResult> {
-    type Outcome = { ok: true; result: AuthResult } | { ok: false };
+    const hash = this.tokens.hashRefreshToken(raw);
+    const row = await this.host.tx.refreshToken.findUnique({ where: { tokenHash: hash } });
+    if (!row || row.revokedAt || row.expiresAt <= new Date()) {
+      throw new UnauthorizedError(SESSION_EXPIRED);
+    }
 
-    const outcome: Outcome = await this.host.run(async () => {
-      const hash = this.tokens.hashRefreshToken(raw);
+    // Reloaded every refresh, so a suspension takes effect here too.
+    const user = await this.host.tx.user.findUnique({ where: { id: row.userId } });
+    if (!user || user.status !== 'ACTIVE') throw new UnauthorizedError(SESSION_EXPIRED);
 
-      // Locks the one row this hash can match (token_hash is unique) before
-      // any read of it, so a concurrent refresh of the same token serialises
-      // on this row rather than both readers seeing it as still-live and
-      // both successfully rotating it. Locked via raw SQL, then re-read
-      // through Prisma so the rest of this method works with the normal
-      // camelCase model rather than hand-mapping columns.
-      const locked = await this.host.tx.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "refresh_token" WHERE "token_hash" = ${hash} FOR UPDATE`;
-      if (locked.length === 0) return { ok: false };
-
-      const row = await this.host.tx.refreshToken.findUniqueOrThrow({
-        where: { id: locked[0]!.id },
-      });
-
-      if (row.replacedById) {
-        // REUSE, and only reuse: `replacedById` is set exclusively by the
-        // rotation step below, so its presence means this exact token was
-        // already exchanged for a successor and is now being presented
-        // again. `revokedAt` alone is NOT this signal — logout and
-        // suspension both set it while leaving `replacedById` null, so
-        // checking `revokedAt || replacedById` here misclassified every
-        // post-logout retry (a queued refresh, a stale tab) as a stolen
-        // token being replayed. A family already killed by a prior reuse
-        // has `replacedById` null too, so it correctly falls through to the
-        // expiry/plain-401 checks below instead of re-triggering this
-        // branch. Revoking the family is the entire point of rotation — see
-        // the doc comment above.
-        await this.host.tx.refreshToken.updateMany({
-          where: { familyId: row.familyId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-        await this.audit.record({
-          action: 'auth.refresh.reuse_detected',
-          entityType: 'RefreshToken',
-          entityId: row.id,
-          outcome: 'DENIED',
-          actorUserId: row.userId,
-          reason: 'A rotated refresh token was presented again.',
-        });
-        return { ok: false };
-      }
-
-      // Revoked but never rotated: logout and suspension both set
-      // `revokedAt` while leaving `replacedById` null. Still a plain 401 —
-      // presenting a stale cookie after logout is completely routine, not
-      // an incident — just without the reuse audit row above.
-      if (row.revokedAt) return { ok: false };
-
-      if (row.expiresAt <= new Date()) return { ok: false };
-
-      const user = await this.host.tx.user.findUnique({ where: { id: row.userId } });
-      if (!user || user.status !== 'ACTIVE') return { ok: false };
-
-      // Sliding expiry: the successor gets a fresh full TTL from
-      // mintRefreshTokenRow rather than inheriting row.expiresAt, so an
-      // active session never approaches its original expiry as long as it
-      // keeps refreshing.
-      const successor = await this.mintRefreshTokenRow(user.id, row.familyId);
-      await this.host.tx.refreshToken.update({
-        where: { id: row.id },
-        data: { revokedAt: new Date(), replacedById: successor.id },
-      });
-
-      return {
-        ok: true,
-        result: {
-          user: await this.buildSessionUser(user),
-          accessToken: await this.tokens.signAccessToken(user.id),
-          refreshToken: successor.raw,
-        },
-      };
-    });
-
-    if (!outcome.ok) throw new UnauthorizedError(SESSION_EXPIRED);
-    return outcome.result;
+    return {
+      user: await this.buildSessionUser(user),
+      accessToken: await this.tokens.signAccessToken(user.id),
+      refreshToken: raw,
+    };
   }
 
   /**

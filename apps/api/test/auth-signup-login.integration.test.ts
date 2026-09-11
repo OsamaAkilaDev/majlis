@@ -1,5 +1,4 @@
 import type { INestApplication } from '@nestjs/common';
-import { ThrottlerStorage, type ThrottlerStorageService } from '@nestjs/throttler';
 import { verify } from '@node-rs/argon2';
 import type * as Argon2 from '@node-rs/argon2';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,26 +44,6 @@ afterAll(async () => {
 beforeEach(async () => {
   await truncateAll(prisma);
   vi.mocked(verify).mockClear();
-
-  // Rate limiting is real (see auth.module.ts / auth.controller.ts), not
-  // disabled for tests — several tests below deliberately run right up to
-  // its edge. Without this reset, the in-memory counter (one instance per
-  // test FILE, since createTestApp() runs once in beforeAll) would carry
-  // hit counts from an earlier test into the next one, making pass/fail
-  // depend on test order and file layout rather than on the code.
-  //
-  // storage.clear() alone would leave any already-scheduled setTimeout
-  // handles (ThrottlerStorageService.timeoutIds) live; if one fired after a
-  // later clear(), its callback would destructure a now-missing storage
-  // entry and throw synchronously inside the timer, outside any test's
-  // control. onApplicationShutdown() is ThrottlerStorageService's own public
-  // cleanup method (it implements Nest's OnApplicationShutdown) and does
-  // exactly this: cancels every pending timeout before the Map is cleared.
-  // Calling it early and calling it again via the real app.close() in
-  // afterAll is harmless — clearTimeout on an already-cleared id is a no-op.
-  const storage = app.get(ThrottlerStorage) as ThrottlerStorageService;
-  storage.onApplicationShutdown();
-  storage.storage.clear();
 });
 
 describe('POST /auth/signup', () => {
@@ -286,18 +265,6 @@ describe('POST /auth/login', () => {
     expect(count).toBe(0);
   });
 
-  it('throttles rapid login attempts past the configured limit of 5 per minute', async () => {
-    await signup(app, { email: 'throttle@uni.ac.ae', password: 'correct-horse-battery' });
-
-    for (let i = 0; i < 5; i++) {
-      const res = await login(app, { email: 'throttle@uni.ac.ae', password: 'wrong-password' });
-      expect(res.status).toBe(401);
-    }
-    // Catches a @Throttle() left off the route entirely, or a ttl/limit
-    // typo — both would let this 6th attempt through as another 401.
-    const blocked = await login(app, { email: 'throttle@uni.ac.ae', password: 'wrong-password' });
-    expect(blocked.status).toBe(429);
-  });
 });
 
 describe('loginAsAdmin test helper', () => {

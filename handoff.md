@@ -11,7 +11,7 @@ Stages 1 and 2 complete and merged to `master`. Nothing pushed — no remote exi
 
 | | |
 |---|---|
-| Tests | 125 unit, 184 integration, all green against real PostgreSQL 18 |
+| Tests | 125 unit, 174 integration, all green against real PostgreSQL 18 |
 | Migrations | 7 |
 | HTTP surface | `/health`, `/docs`, `/auth/{signup,login,refresh,logout,me}`, `/me`, `/users`, `/users/{id}/status` |
 
@@ -99,6 +99,19 @@ Beyond `CLAUDE.md`'s toolchain traps, all verified the hard way in Stage 2:
   its own `host.run()`.
 
 ---
+
+## Two deliberate simplifications (2026-09-11)
+
+Both at the owner's direction, after Stage 2 landed. Neither is an oversight:
+
+- **Refresh tokens do not rotate.** One opaque token per login, revoked on logout and on
+  suspension, expiring 30 days after login regardless of activity. A stolen refresh token
+  therefore works until it expires or the session is revoked. Rotation with family-wide
+  reuse detection existed and was removed as disproportionate here.
+- **No rate limiting.** `@nestjs/throttler` removed; Stage 12 owns it.
+
+The schema keeps `family_id` (identifies one login's session, used by logout) and
+`replaced_by` (now unused — dropping it needs a migration for no gain).
 
 ## On process
 

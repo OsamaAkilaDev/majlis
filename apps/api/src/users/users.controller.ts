@@ -26,11 +26,8 @@ class UsersQueryDto extends createZodDto(cursorPageQuerySchema) {}
  * authorization facts `/auth/me` does, so it isn't nested under the admin
  * listing either). Left blank; each handler spells out its own full path.
  *
- * Every route here is covered by ThrottlerGuard's global 60/min default
  * bucket (see auth.module.ts) — no local @UseGuards needed. That guard is
- * registered ahead of PermissionsGuard specifically so it can throttle a
  * denied request (429) before PermissionsGuard gets a chance to deny it
- * (403) and write another `permission.denied` row: without ThrottlerGuard
  * running first, a signed-in STUDENT could loop `GET /users` and commit one
  * such row per request, unbounded, into a table with no delete path.
  */

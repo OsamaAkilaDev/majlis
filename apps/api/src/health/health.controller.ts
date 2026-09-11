@@ -1,19 +1,15 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../auth/public.decorator';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../prisma/transaction.host';
 
 /**
- * Opts out of ThrottlerGuard's global 60/min default bucket (see
  * auth.module.ts) — this is what a load balancer or uptime monitor pings
  * repeatedly to keep a serverless instance warm, and it predates F1's fix
- * making ThrottlerGuard global. Without this, a health-check frequency
  * above 60/min would start getting 429s for no reason connected to F1's
  * actual concern (the append-only audit table).
  */
-@SkipThrottle()
 @ApiTags('ops')
 @Controller('health')
 export class HealthController {

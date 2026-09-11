@@ -1,5 +1,4 @@
 import type { INestApplication } from '@nestjs/common';
-import { ThrottlerStorage, type ThrottlerStorageService } from '@nestjs/throttler';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX } from '../src/config/api-prefix';
@@ -32,13 +31,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(prisma);
-
-  // Same reset as auth-signup-login/auth-refresh: signup is throttled to 3
-  // per hour per IP, and every helper here goes through it — without this,
-  // hit counts from an earlier test would carry into the next one.
-  const storage = app.get(ThrottlerStorage) as ThrottlerStorageService;
-  storage.onApplicationShutdown();
-  storage.storage.clear();
 });
 
 function get(path: string, cookie: string): request.Test {
@@ -95,23 +87,6 @@ describe('GET /users', () => {
     const me = await loginAsStudent(app);
     expect((await get(ME_PATH, me.sessionCookie)).status).toBe(200);
     expect((await get(USERS_PATH, me.sessionCookie)).status).toBe(403);
-  });
-
-  it('throttles a student looping a denied route past 60/min, so denials cannot flood the audit log unbounded', async () => {
-    // AuditLog is append-only by statement-level trigger — there is no
-    // delete path, ever. Without a ThrottlerGuard on UsersController, a
-    // signed-in STUDENT could loop this 403 forever, committing one
-    // permission.denied row per request with no limit. Catches a missing
-    // (or misconfigured) @UseGuards(ThrottlerGuard) on the controller —
-    // this test only completes green if the 61st request is actually
-    // blocked at exactly the registered 60/min default bucket.
-    const me = await loginAsStudent(app);
-    for (let i = 0; i < 60; i++) {
-      const res = await get(USERS_PATH, me.sessionCookie);
-      expect(res.status).toBe(403);
-    }
-    const blocked = await get(USERS_PATH, me.sessionCookie);
-    expect(blocked.status).toBe(429);
   });
 
   it('allows an ADMIN to list users', async () => {

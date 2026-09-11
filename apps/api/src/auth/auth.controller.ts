@@ -2,7 +2,6 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import { loginBodySchema, signupBodySchema, type SessionUser } from '@majlis/contracts';
 import type { Request, Response } from 'express';
 import { createZodDto } from 'nestjs-zod';
@@ -31,9 +30,7 @@ class LoginDto extends createZodDto(loginBodySchema) {}
  * route that forgets this decorator is simply unreachable by anyone who
  * isn't already signed in.
  *
- * ThrottlerGuard itself is registered globally now (see auth.module.ts) —
  * every route gets the 60/min default bucket unless it opts out with
- * @SkipThrottle(). @Throttle() below only overrides the bucket's
  * limit/window for these two routes; it does not register a second guard.
  */
 @Controller('auth')
@@ -44,7 +41,6 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('signup')
   @HttpCode(201)
   @ApiResponse({ status: 409, description: 'An account with this email already exists.', type: ProblemDetailsDto })
@@ -55,7 +51,6 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
   @ApiResponse({ status: 401, description: 'Email or password is incorrect.', type: ProblemDetailsDto })
