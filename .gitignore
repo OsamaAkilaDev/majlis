@@ -14,3 +14,6 @@ apps/api/src/generated/
 # next dev generates these next to the real root CLAUDE.md
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
+
+# Next rewrites this between dev and build; it regenerates on demand
+apps/web/next-env.d.ts

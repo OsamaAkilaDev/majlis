@@ -38,6 +38,14 @@ for (const theme of ['light', 'dark'] as const) {
       await signIn(page, 'admin@uni.ac.ae');
       await scan(page);
     });
+
+    test('an authorization refusal page has no violations', async ({ page }) => {
+      // PageError previously rendered no main landmark at all.
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/admin/metrics');
+      await expect(page.getByRole('heading', { name: /do not have access/i })).toBeVisible();
+      await scan(page);
+    });
   });
 }
 
