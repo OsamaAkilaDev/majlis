@@ -1,4 +1,4 @@
-# Stage 3 — Design system & shells
+# Stage 3: design system and shells
 
 **Status:** approved 2026-09-11. Binding for Stage 3.
 Extends [`2026-09-10-majlis-design.md`](2026-09-10-majlis-design.md) §9. Where the two
@@ -22,7 +22,7 @@ accessibility baseline.
 - PWA manifest, icons, install-prompt service worker.
 - Contrast, routing and API-client tests; Playwright + axe over the three shells.
 
-**Out of scope** — everything that needs data Stage 3 does not have. No club, event,
+**Out of scope:** everything that needs data Stage 3 does not have. No club, event,
 membership, QR, certificate or notification screens beyond their empty states. **No fake
 data anywhere**: a route with nothing behind it says so.
 
@@ -39,7 +39,7 @@ data anywhere**: a route with nothing behind it says so.
 ## 2. Visual identity
 
 Direction: **warm majlis**. A *majlis* is the room where a community sits together and
-decides things — warm earth ground rather than institutional blue-grey, a deep teal-green
+decides things. Warm earth ground rather than institutional blue-grey, a deep teal-green
 that carries authority without borrowing the SaaS palette, and a mashrabiya-derived
 lattice used as texture on three surfaces only.
 
@@ -51,7 +51,7 @@ themes at working density on desktop and phone.
 Every value below is shipped in `globals.css` and re-verified numerically by
 `src/styles/tokens.contrast.test.ts` on every test run.
 
-**Light — default.** Light is the default because a student reads this outdoors in Gulf
+**Light, the default.** Light is the default because a student reads this outdoors in Gulf
 sun. Chosen from the use scene, not from category habit.
 
 | Token | Hex | Verified |
@@ -76,7 +76,7 @@ sun. Chosen from the use scene, not from category habit.
 | `--color-info-soft` / `-fg` | `#E1E6F2` / `#3A4A80` | 6.80:1 |
 | `--color-mute-soft` / `-fg` | `#EDE7DD` / `#5B5045` | 6.38:1 |
 
-**Dark — first-class, warm.** Built from warm browns, not a grey inversion. This is also
+**Dark, first-class and warm.** Built from warm browns, not a grey inversion. This is also
 the theme the Stage 6 scanner will want at a dim door.
 
 | Token | Hex | Verified |
@@ -106,23 +106,23 @@ the theme the Stage 6 scanner will want at a dim door.
 `--color-border` is decorative and has no contrast requirement.
 `--color-border-control` is the boundary of an input, checkbox or radio, is held to 3:1
 against all three grounds, and is the **only** border token a form control may use. This
-split exists because the first palette pass failed SC 1.4.11 at 1.79:1 in both themes —
-the separate names make the requirement impossible to forget.
+split exists because the first palette pass failed SC 1.4.11 at 1.79:1 in both themes.
+The separate names make the requirement impossible to forget.
 
 `--color-primary` is for primary actions, current selection, focus rings and state
 indicators. **Never decoration.**
 
 ### 2.2 Type
 
-**IBM Plex Sans** carries every label, button, table cell and paragraph — a humanist face
-drawn alongside IBM Plex Sans Arabic, so the cultural root sits in the letterforms rather
+**IBM Plex Sans** carries every label, button, table cell and paragraph. It is a humanist
+face drawn alongside IBM Plex Sans Arabic, so the cultural root sits in the letterforms rather
 than in decoration. **Fraunces** (`opsz` auto, weight 600) appears in exactly four places:
 the wordmark, the login heading, page titles in the student shell, and empty-state
 headlines. Never on a button, a label, a table cell or a number.
 
 Both self-hosted via `next/font/google`, which emits `@font-face` with a real fallback
 stack and removes the external stylesheet request. Fixed rem steps at a ~1.22 ratio, not
-fluid — a clamp-sized heading that shrinks inside a sidebar looks worse, not better.
+fluid: a clamp-sized heading that shrinks inside a sidebar looks worse, not better.
 
 | Token | Size / line | Face |
 |---|---|---|
@@ -136,7 +136,7 @@ fluid — a clamp-sized heading that shrinks inside a sidebar looks worse, not b
 
 Body base is 16px, not 15px: form inputs below 16px trigger iOS zoom-on-focus, and the
 student shell is the primary surface. `font-variant-numeric: tabular-nums` on every
-figure — counts, capacities, times, IDs, table numerics.
+figure: counts, capacities, times, IDs, table numerics.
 
 ### 2.3 Other tokens
 
@@ -182,7 +182,7 @@ rename is one line. Spec §9.5.
 apps/web/
   app/
     layout.tsx                  html/body, fonts, theme script, <a href="#main"> skip link
-    page.tsx                    "/" — server-side role redirect, renders nothing
+    page.tsx                    "/" server-side role redirect, renders nothing
     (auth)/login|signup/        unauthenticated only; redirects away if signed in
     (student)/                  /home · /clubs · /events · /me · /me/qr
                                 /me/registrations · /me/certificates
@@ -202,15 +202,15 @@ apps/web/
 Public discovery (`/clubs`, `/events`) lives inside the student shell rather than a
 separate `(public)` group: Majlis is an authenticated product with no landing page, so
 every viewer of those pages is signed in and gets the bottom tabs. `/verify/[code]` is the
-one genuinely public route and has no shell at all — it is opened by an employer holding a
+one genuinely public route and has no shell at all. It is opened by an employer holding a
 certificate, who has no account.
 
 ### 3.1 Student shell
 
-A `100dvh` grid of three rows — sticky header, the single scrolling region, fixed tab bar.
+A `100dvh` grid of three rows: sticky header, the single scrolling region, fixed tab bar.
 `overscroll-behavior: contain` on the scroll region kills rubber-banding.
 `env(safe-area-inset-top/bottom)` pads header and tab bar. Five equal tabs: Home, Clubs,
-Events, My QR, Me — each a 64×56 target, above the 44px floor. Active tab carries colour,
+Events, My QR, Me, each a 64×56 target, above the 44px floor. Active tab carries colour,
 weight **and** a 2px top indicator, so the state is never colour alone.
 
 Events render as a **list with a date rail**, not a grid of identical cards. The date is
@@ -223,7 +223,7 @@ read as different products. Sidebar on `--color-surface-2`, switcher at the top,
 on `--color-bg`. Collapses to a drawer below 1024px.
 
 The officer console is addressed by club **ID** at `/manage/[clubId]`; public club pages
-are addressed by **slug** at `/clubs/[slug]`. Spec §9.1 — the collision is the reason.
+are addressed by **slug** at `/clubs/[slug]`. Spec §9.1: the collision is the reason.
 
 Numbers sit in a horizontal stat strip, not four identical hero tiles. The figures support
 the tables below; they are not the point of the page.
@@ -268,7 +268,7 @@ decideRedirect(input: {
 }): { to: string } | null
 ```
 
-`middleware.ts` gates on cookie presence only — it never decodes a token and never makes
+`middleware.ts` gates on cookie presence only. It never decodes a token and never makes
 an authorization decision. Each shell's `layout.tsx` then calls `GET /api/v1/auth/me`
 server-side, re-derives club-scoped roles from that response, and redirects if the viewer
 does not belong.
@@ -306,13 +306,13 @@ loading and error**. Shipping half of these is shipping none.
 
 Beyond shadcn, four components carry Majlis's own vocabulary:
 
-- `StatusBadge` — the single renderer for every status enum in the schema. Always icon
+- `StatusBadge`: the single renderer for every status enum in the schema. Always icon
   plus word; colour never carries meaning alone.
-- `EmptyState` — display-face headline and the action that resolves it. No explanatory
+- `EmptyState`: display-face headline and the action that resolves it. No explanatory
   paragraph. No `description` prop exists, so one cannot be added by habit.
-- `Field` — label, control, error. No description or helper slot. Errors are driven off
+- `Field`: label, control, error. No description or helper slot. Errors are driven off
   the API's RFC 9457 `errors[]` array and wired with `aria-describedby` + `aria-invalid`.
-- `PageError` — per-shell error boundary. Says the true thing in one line: no access,
+- `PageError`: per-shell error boundary. Says the true thing in one line: no access,
   suspended, or genuinely broken. Spec §10.
 
 ### 5.1 Copy rule
@@ -322,7 +322,7 @@ outright: taglines, field helper text, empty-state explainer paragraphs, and
 instructional microcopy ("tap to enlarge", "you can also…"). A headline plus the action
 is enough; a button names its action and stops.
 
-This is enforced structurally rather than by review — `EmptyState` and `Field` have no
+This is enforced structurally rather than by review. `EmptyState` and `Field` have no
 prop to hang a description on.
 
 Three things are **not** copy and stay:
@@ -338,19 +338,19 @@ Icons are `lucide-react`, one stroke weight throughout. No emoji standing in for
 
 ## 6. API client
 
-`lib/api.ts` — a thin `fetch` wrapper, not a generated client.
+`lib/api.ts` is a thin `fetch` wrapper, not a generated client.
 
 - Same-origin through the rewrite; `credentials: 'same-origin'`.
 - Non-2xx with `application/problem+json` parses into a typed `ProblemError` carrying
   `status`, `title`, `detail`, `requestId` and `errors[]`.
 - On 401: call `POST /api/v1/auth/refresh` **once**, then retry the original request once.
-  No client-side dedupe — the refresh token does not rotate, so concurrent refreshes are
+  No client-side dedupe is needed: the refresh token does not rotate, so concurrent refreshes are
   harmless. A 401 on the refresh itself redirects to `/login`.
 - Response types come from `@majlis/contracts` Zod schemas.
 
 Spec §9.2 calls for "one generated typed client". **Deviation:** generation needs handoff
 gap #5 fixed first (OpenAPI documents error shapes but no success-response schemas), plus
-a generator dependency and a build step — to arrive at types `@majlis/contracts` already
+a generator dependency and a build step, all to arrive at types `@majlis/contracts` already
 provides as the declared single source of truth. Revisit in Stage 9 if the surface grows
 enough to earn it. Recorded in §10.
 
@@ -361,7 +361,7 @@ enough to earn it. Recorded in §10.
 `manifest.webmanifest` with name from `lib/brand.ts`, `display: standalone`,
 `start_url: '/'`, theme colour `#0E5F55`, and maskable icons at 192/512 generated from an
 authored SVG mark. A service worker exists only because Chrome requires one with a `fetch`
-handler to offer the install prompt — it is a pass-through and caches nothing.
+handler to offer the install prompt. It is a pass-through and caches nothing.
 **No offline support.** Spec §9.3.
 
 ---
@@ -370,18 +370,18 @@ handler to offer the install prompt — it is a pass-through and caches nothing.
 
 WCAG 2.2 AA, verified rather than asserted. Spec §9.5.
 
-- **Contrast** — `tokens.contrast.test.ts` computes WCAG relative luminance over the
+- **Contrast:** `tokens.contrast.test.ts` computes WCAG relative luminance over the
   shipped hex values and asserts 4.5:1 on text pairs, 3:1 on control boundaries and focus
   rings. A palette regression fails the build. This suite already caught two real SC
   1.4.11 failures during design.
-- **Keyboard** — visible `:focus-visible` on every interactive element, a skip link to
+- **Keyboard:** visible `:focus-visible` on every interactive element, a skip link to
   `#main`, focus trapped and restored in sheets and dropdowns, logical tab order.
-- **Colour alone** — `StatusBadge` always pairs colour with an icon and a word; the active
+- **Colour alone:** `StatusBadge` always pairs colour with an icon and a word; the active
   tab carries an indicator bar as well as colour.
-- **Forms** — every control has a real `<label>`; errors use `aria-describedby` and
+- **Forms:** every control has a real `<label>`; errors use `aria-describedby` and
   `aria-invalid` and are announced.
-- **Motion** — `prefers-reduced-motion` collapses durations at the token level.
-- **Landmarks** — one `<main id="main">`, `<nav>` with accessible names, one `<h1>` per
+- **Motion:** `prefers-reduced-motion` collapses durations at the token level.
+- **Landmarks:** one `<main id="main">`, `<nav>` with accessible names, one `<h1>` per
   page.
 
 ---
@@ -403,7 +403,7 @@ implementation it would catch. If you cannot, it is not testing anything.
 A routing test written against a single-role user passes against an implementation that
 ignores `platformRole` entirely. Every routing case uses a user whose roles conflict.
 
-**E2E (Playwright + axe-core)** — sign in as each seeded account and assert the landing
+**E2E (Playwright + axe-core):** sign in as each seeded account and assert the landing
 route; axe over login, student shell, officer console and admin dashboard, in **both
 themes** at mobile and desktop viewports; keyboard-only path through sign-in; the
 15-minute-idle refresh path with the session cookie cleared.
