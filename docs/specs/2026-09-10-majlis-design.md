@@ -581,7 +581,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | # | Stage | Contents |
 |---|---|---|
 | 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
-| 2 | 🔨 **In progress** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in detail in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md); its §9 carries three approved deviations from this document — Passport dropped, auth rate limiting pulled forward from Stage 12, and the permission mechanism built in full rather than as a skeleton |
+| 2 | ✅ **Done** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md) |
 | 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline |
 | 4 | Clubs & team | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance |
 | 5 | Membership | Four policies, requests and decisions, member lists, leaving |
@@ -620,6 +620,48 @@ Delivered on branch `stage-1-foundation`: 32 unit tests, 100 integration tests a
 5. **Register the Problem Details schemas in the OpenAPI document.** They are currently imported only as types, so the generated spec documents no error shape. Needs routes that declare error responses — Stage 2 supplies the first.
 6. **Replace the seed's placeholder password hash** with real argon2id hashing when auth lands. `DEV_PASSWORD_HASH` is labelled `SEED-ONLY-NOT-A-REAL-HASH`, so the seeded accounts cannot currently be logged into.
 
+
+### Stage 2 completion note (2026-09-11)
+
+Delivered on branch `stage-2-auth`: 26 commits, 125 unit tests, 184 integration tests
+against real PostgreSQL 18, all green. `/security-review` run — no HIGH findings.
+
+**Deviations from this spec:**
+
+- **Passport dropped** (§3 ledger, already amended). One strategy, a cookie-borne
+  credential needing a custom extractor anyway, and a `validate()` that must hit the
+  database regardless — a library wrapping forty lines.
+- **Auth rate limiting pulled forward from Stage 12.** §11 requires it on login and
+  signup. `ThrottlerGuard` is registered **globally, ahead of `PermissionsGuard`** — a
+  controller-scoped guard never runs, because Nest stops at the first denial and the
+  global permissions guard denies first. `@SkipThrottle()` on health.
+- **The permission mechanism was built in full, not as a skeleton.** All three scope
+  resolvers exist and are tested; only the matrix stays minimal (`user:list`,
+  `user:suspend`, `club:edit`). Later stages add rows, not code.
+- **Refresh reuse is discriminated on `replacedById` alone**, not `revokedAt ||
+  replacedById`. Logout and suspension set `revokedAt` with `replacedById` null, so the
+  original test recorded every post-logout refresh as a security incident.
+- **`ProblemExceptionFilter` maps Prisma `P2007` as well as `P2023` to 400.** Verified
+  live: with `@prisma/adapter-pg`, a malformed UUID raises `P2007`, not the documented
+  `P2023`.
+
+**Open, carried into Stage 3+:**
+
+1. **`trust proxy` is not set.** Behind the §9.2 Next.js rewrite, `req.ip` becomes the
+   platform proxy for every caller — collapsing all IP-keyed rate limits to one global
+   bucket and destroying the forensic value of `audit_log.ip` and `refresh_token.ip`.
+   **Must be resolved when the rewrite lands in Stage 3.**
+2. **`req.url` is logged unredacted**, and `problem.filter.ts` logs `{ err }` on 5xx.
+   Close before Stage 4 puts invitation tokens in query strings.
+3. **CI has never run.** Nothing pushed; the workflow is unexercised on a Linux runner.
+4. **No password reset and no email verification anywhere in this spec.** A student who
+   forgets their password has no recovery path. Decide before Stage 10 sets the
+   notification patterns.
+5. The generated OpenAPI document has no **success**-response schemas — adding the
+   `@ApiResponse` error declarations displaced Nest's auto-generated defaults.
+
+Carried items 4, 5 and 6 from Stage 1 are closed (shared test factories; Problem Details
+in the OpenAPI document; real argon2id in the seed, so seeded accounts now log in).
 ## 14. Open items
 
 - The visual identity itself — palette, type ramp, component language — is deliberately deferred to Stage 3 and will be presented for approval before the shells are built.
