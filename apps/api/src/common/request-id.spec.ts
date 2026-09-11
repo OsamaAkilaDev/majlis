@@ -25,4 +25,24 @@ describe('resolveRequestId', () => {
   it('ignores a repeated header (array value), generating a fresh id', () => {
     expect(resolveRequestId(['a', 'b'])).not.toEqual(['a', 'b']);
   });
+
+  it('rejects a value with characters outside the allowlist', () => {
+    // Catches a `typeof v === 'string' && v.trim().length > 0` check alone,
+    // which stores ANY non-blank string verbatim into audit_log.request_id
+    // — an append-only column with no delete path — letting an
+    // unauthenticated caller stamp an arbitrary value (e.g. one copied off
+    // an admin's own response header) onto a permission.denied row forever.
+    expect(resolveRequestId('trace/me;123')).not.toBe('trace/me;123');
+    expect(resolveRequestId('<script>alert(1)</script>')).not.toBe('<script>alert(1)</script>');
+  });
+
+  it('rejects a value over 64 characters, since the field has no length cap otherwise', () => {
+    const tooLong = 'a'.repeat(65);
+    expect(resolveRequestId(tooLong)).not.toBe(tooLong);
+  });
+
+  it('accepts a 64-character value at the boundary', () => {
+    const atLimit = 'a'.repeat(64);
+    expect(resolveRequestId(atLimit)).toBe(atLimit);
+  });
 });

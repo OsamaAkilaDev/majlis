@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { loginBodySchema, signupBodySchema, type SessionUser } from '@majlis/contracts';
 import type { Request, Response } from 'express';
 import { createZodDto } from 'nestjs-zod';
@@ -10,6 +10,7 @@ import { createZodDto } from 'nestjs-zod';
 import { AuthService, SESSION_EXPIRED, type AuthResult } from './auth.service';
 import {
   refreshCookieOptions,
+  secureCookies,
   sessionCookieOptions,
   REFRESH_COOKIE,
   SESSION_COOKIE,
@@ -30,11 +31,11 @@ class LoginDto extends createZodDto(loginBodySchema) {}
  * route that forgets this decorator is simply unreachable by anyone who
  * isn't already signed in.
  *
- * ThrottlerGuard is applied here, on the controller, rather than as another
- * global APP_GUARD — so no other endpoint gets a surprise rate limit it
- * never asked for.
+ * ThrottlerGuard itself is registered globally now (see auth.module.ts) —
+ * every route gets the 60/min default bucket unless it opts out with
+ * @SkipThrottle(). @Throttle() below only overrides the bucket's
+ * limit/window for these two routes; it does not register a second guard.
  */
-@UseGuards(ThrottlerGuard)
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -110,9 +111,9 @@ export class AuthController {
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     await this.auth.logout(raw);
 
-    const isProduction = this.config.get('NODE_ENV', { infer: true }) === 'production';
-    res.clearCookie(SESSION_COOKIE, sessionCookieOptions(isProduction));
-    res.clearCookie(REFRESH_COOKIE, refreshCookieOptions(isProduction));
+    const secure = secureCookies(this.config.get('NODE_ENV', { infer: true }));
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions(secure));
+    res.clearCookie(REFRESH_COOKIE, refreshCookieOptions(secure));
   }
 
   /**
@@ -122,8 +123,8 @@ export class AuthController {
    * response history.
    */
   private setAuthCookies(res: Response, result: AuthResult): void {
-    const isProduction = this.config.get('NODE_ENV', { infer: true }) === 'production';
-    res.cookie(SESSION_COOKIE, result.accessToken, sessionCookieOptions(isProduction));
-    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(isProduction));
+    const secure = secureCookies(this.config.get('NODE_ENV', { infer: true }));
+    res.cookie(SESSION_COOKIE, result.accessToken, sessionCookieOptions(secure));
+    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(secure));
   }
 }

@@ -3,8 +3,31 @@ import { API_PREFIX } from '../config/api-prefix';
 import {
   REFRESH_COOKIE_PATH,
   refreshCookieOptions,
+  secureCookies,
   sessionCookieOptions,
 } from './cookies';
+
+describe('secureCookies', () => {
+  it('is false in development, so localhost works over http', () => {
+    expect(secureCookies('development')).toBe(false);
+  });
+
+  it('is true in production', () => {
+    expect(secureCookies('production')).toBe(true);
+  });
+
+  it('is true in test — a staging deploy running NODE_ENV=test must still ship Secure cookies', () => {
+    // Catches the pre-fix `NODE_ENV === 'production'` check: it satisfies
+    // neither 'test' nor any other non-development value, so a staging
+    // deploy running with NODE_ENV=test would ship the session cookie
+    // without Secure, over plain HTTP.
+    expect(secureCookies('test')).toBe(true);
+  });
+
+  it('is true for any value that is not literally "development"', () => {
+    expect(secureCookies('staging')).toBe(true);
+  });
+});
 
 describe('sessionCookieOptions', () => {
   it('sets Secure outside development', () => {

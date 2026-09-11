@@ -10,6 +10,25 @@ import { cursorPageSchema } from '../common/pagination';
 export const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
 
 /**
+ * Zod 4's `.url()` validates shape only — it does not restrict scheme, so it
+ * accepts `javascript:alert(1)`, `data:text/html,x`, and `file:///etc/passwd`
+ * just as happily as `https://...`. Stored verbatim and echoed by `GET /me`,
+ * every auth response, and `PATCH /users/{id}/status` — i.e. into an admin's
+ * browser for the student they just suspended. `new URL(v).protocol` is the
+ * platform's own scheme parser, safer here than a hand-rolled regex.
+ */
+const httpUrlSchema = z.string().trim().refine(
+  (v) => {
+    try {
+      return ['http:', 'https:'].includes(new URL(v).protocol);
+    } catch {
+      return false;
+    }
+  },
+  { message: 'must be an http:// or https:// URL' },
+);
+
+/**
  * The shape both `GET /me` and `PATCH /me` return, and what
  * `PATCH /users/{id}/status` returns for the user it just changed.
  * Deliberately excludes `clubRoles` — that's `sessionUserSchema`'s job (see
@@ -37,7 +56,7 @@ export const meSchema = userProfileSchema;
  */
 export const patchMeBodySchema = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
-  avatarUrl: z.string().trim().url().nullable().optional(),
+  avatarUrl: httpUrlSchema.nullable().optional(),
 });
 
 /** One row of `GET /users`' admin listing. */

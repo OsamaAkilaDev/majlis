@@ -12,19 +12,32 @@ export const REFRESH_COOKIE = 'majlis_refresh';
  */
 export const REFRESH_COOKIE_PATH = `${API_PREFIX}/auth`;
 
-export function sessionCookieOptions(isProduction: boolean): CookieOptions {
+/**
+ * Design spec (§3): Secure whenever `NODE_ENV !== 'development'`, not only in
+ * `'production'`. The two callers in auth.controller.ts each computed
+ * `NODE_ENV === 'production'` independently — a staging deploy running with
+ * `NODE_ENV=test` (a real, common setup) would satisfy neither branch and
+ * ship the session and refresh cookies without Secure, over plain HTTP.
+ * Centralised here so both call sites derive it from the same rule rather
+ * than each re-deriving (and each risking drifting from) it.
+ */
+export function secureCookies(nodeEnv: string): boolean {
+  return nodeEnv !== 'development';
+}
+
+export function sessionCookieOptions(secure: boolean): CookieOptions {
   return {
     httpOnly: true,
-    secure: isProduction,
+    secure,
     sameSite: 'lax',
     path: '/',
   };
 }
 
-export function refreshCookieOptions(isProduction: boolean): CookieOptions {
+export function refreshCookieOptions(secure: boolean): CookieOptions {
   return {
     httpOnly: true,
-    secure: isProduction,
+    secure,
     sameSite: 'lax',
     path: REFRESH_COOKIE_PATH,
   };

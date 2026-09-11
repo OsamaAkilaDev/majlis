@@ -106,6 +106,35 @@ describe('ProblemExceptionFilter', () => {
     expect(invokeFilter(p2025).status).toBe(404);
   });
 
+  it('maps a Prisma inconsistent-column-data (P2023) to 400, not 500 — a malformed :id is a client error', () => {
+    // Catches the pre-fix gap: without this branch, "not-a-uuid" against a
+    // @db.Uuid column falls through to the generic 500 branch below, which
+    // also risks echoing Prisma's own message — it embeds the failing
+    // call's arguments, including passwordHash on the signup path.
+    const p2023 = Object.assign(
+      new Error('Inconsistent column data: invalid input syntax for type uuid: "not-a-uuid"'),
+      { code: 'P2023' },
+    );
+    const { body, status } = invokeFilter(p2023);
+    expect(status).toBe(400);
+    expect(body.detail).not.toContain('not-a-uuid');
+  });
+
+  it('maps a Prisma data-validation error (P2007) to 400 too — the code the pg driver adapter actually raises', () => {
+    // Verified live: prisma@7.10.0 with @prisma/adapter-pg (this project's
+    // driver) surfaces a malformed uuid as P2007, not P2023, wrapping the
+    // same underlying Postgres 22P02. Catches a filter that maps only P2023
+    // — that would leave this project's actual malformed-:id failure mode
+    // as an unhandled 500 despite "fixing" F2.
+    const p2007 = Object.assign(new Error('Data validation error'), {
+      code: 'P2007',
+      meta: { driverAdapterError: { cause: { originalMessage: 'invalid input syntax for type uuid: "not-a-uuid"' } } },
+    });
+    const { body, status } = invokeFilter(p2007);
+    expect(status).toBe(400);
+    expect(body.detail).not.toContain('not-a-uuid');
+  });
+
   it('passes a Nest HttpException through at its own status', () => {
     expect(invokeFilter(new NotFoundException('nope')).status).toBe(404);
     expect(invokeFilter(new BadRequestException('bad')).status).toBe(400);

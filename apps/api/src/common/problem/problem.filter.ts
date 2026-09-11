@@ -122,6 +122,29 @@ export class ProblemExceptionFilter implements ExceptionFilter {
           detail: 'A referenced record does not exist or is still in use.',
         };
       }
+      // A malformed value for a typed column (e.g. "not-a-uuid" against
+      // User.id's @db.Uuid) — a client input error, never a server fault.
+      // Without this branch it falls through to the generic 500 below, and
+      // Prisma's own error message embeds the failing call's arguments — on
+      // the signup path, that would include passwordHash.
+      //
+      // P2023 ("Inconsistent column data") is the code Prisma's docs and
+      // this project's spec describe for this case. Verified live against
+      // the installed prisma@7.10.0 with the @prisma/adapter-pg driver
+      // adapter this project uses, a malformed uuid against a typed call
+      // (findUnique/findMany/etc.) actually surfaces as P2007 ("Data
+      // validation error") instead, wrapping the same underlying Postgres
+      // 22P02. Both are handled so this holds regardless of which one a
+      // future Prisma/driver-adapter version picks.
+      if (exception.code === 'P2023' || exception.code === 'P2007') {
+        return {
+          ...base,
+          type: `${PROBLEM_BASE}/validation-failed`,
+          title: 'Validation failed',
+          status: 400,
+          detail: 'The request contained a malformed identifier.',
+        };
+      }
     }
 
     if (exception instanceof HttpException) {

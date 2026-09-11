@@ -380,4 +380,22 @@ describe('POST /auth/logout', () => {
     expect(rows.length).toBeGreaterThan(1);
     expect(rows.every((r) => r.revokedAt !== null)).toBe(true);
   });
+
+  it('rejects a refresh after logout with a plain 401 and writes no reuse audit row', async () => {
+    // Catches the pre-fix discriminator `row.revokedAt || row.replacedById`:
+    // logout sets revokedAt while leaving replacedById null, which that
+    // check misclassified as REUSE — a permanent, false "security incident"
+    // audit row for what is actually a completely routine post-logout retry.
+    const s = await signup(app, {});
+    const cookie = refreshCookieOf(s);
+
+    await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', cookie);
+    const res = await refresh(app, cookie);
+
+    expect(res.status).toBe(401);
+    const reuseRows = await prisma.auditLog.findMany({
+      where: { action: 'auth.refresh.reuse_detected' },
+    });
+    expect(reuseRows).toHaveLength(0);
+  });
 });

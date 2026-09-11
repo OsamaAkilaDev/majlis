@@ -93,25 +93,31 @@ export class AuthService {
   }
 
   async login(input: LoginBody): Promise<AuthResult> {
-    return this.host.run(async () => {
-      const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
+    // Looked up outside any transaction — same reasoning as signup's hash()
+    // call: the read plus the ~100ms argon2 verify below have no need of one,
+    // and only issueSession (minting a token and persisting the refresh-token
+    // row) does. The pre-fix version wrapped this whole method in host.run,
+    // pinning a pooled connection idle for the entire CPU-bound verify —
+    // the first thing to fall over under a semester-start login burst on a
+    // small serverless pool.
+    const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
 
-      // Runs unconditionally, even when no user was found — verifying
-      // against DUMMY_HASH instead of short-circuiting is what keeps "no
-      // such account" and "wrong password" costing the same ~100ms.
-      const ok = await verify(user?.passwordHash ?? AuthService.DUMMY_HASH, input.password);
+    // Runs unconditionally, even when no user was found, and still outside
+    // any transaction — verifying against DUMMY_HASH instead of
+    // short-circuiting is what keeps "no such account" and "wrong password"
+    // costing the same ~100ms.
+    const ok = await verify(user?.passwordHash ?? AuthService.DUMMY_HASH, input.password);
 
-      if (!user || !ok) throw new UnauthorizedError('Email or password is incorrect.');
+    if (!user || !ok) throw new UnauthorizedError('Email or password is incorrect.');
 
-      // Reported only once the caller has already proven the password — the
-      // one deliberate exception to enumeration resistance (spec: this
-      // leaks account state only to someone who already knows it). A wrong
-      // password against a suspended account still falls through the branch
-      // above, indistinguishable from an unknown email.
-      if (user.status !== 'ACTIVE') throw new ForbiddenError('This account is suspended.');
+    // Reported only once the caller has already proven the password — the
+    // one deliberate exception to enumeration resistance (spec: this
+    // leaks account state only to someone who already knows it). A wrong
+    // password against a suspended account still falls through the branch
+    // above, indistinguishable from an unknown email.
+    if (user.status !== 'ACTIVE') throw new ForbiddenError('This account is suspended.');
 
-      return this.issueSession(user);
-    });
+    return this.host.run(() => this.issueSession(user));
   }
 
   /**
@@ -193,8 +199,18 @@ export class AuthService {
         where: { id: locked[0]!.id },
       });
 
-      if (row.revokedAt || row.replacedById) {
-        // REUSE. Revoking the family is the entire point of rotation — see
+      if (row.replacedById) {
+        // REUSE, and only reuse: `replacedById` is set exclusively by the
+        // rotation step below, so its presence means this exact token was
+        // already exchanged for a successor and is now being presented
+        // again. `revokedAt` alone is NOT this signal — logout and
+        // suspension both set it while leaving `replacedById` null, so
+        // checking `revokedAt || replacedById` here misclassified every
+        // post-logout retry (a queued refresh, a stale tab) as a stolen
+        // token being replayed. A family already killed by a prior reuse
+        // has `replacedById` null too, so it correctly falls through to the
+        // expiry/plain-401 checks below instead of re-triggering this
+        // branch. Revoking the family is the entire point of rotation — see
         // the doc comment above.
         await this.host.tx.refreshToken.updateMany({
           where: { familyId: row.familyId, revokedAt: null },
@@ -210,6 +226,12 @@ export class AuthService {
         });
         return { ok: false };
       }
+
+      // Revoked but never rotated: logout and suspension both set
+      // `revokedAt` while leaving `replacedById` null. Still a plain 401 —
+      // presenting a stale cookie after logout is completely routine, not
+      // an incident — just without the reuse audit row above.
+      if (row.revokedAt) return { ok: false };
 
       if (row.expiresAt <= new Date()) return { ok: false };
 
