@@ -583,15 +583,18 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
 | 2 | ✅ **Done** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md) |
 | 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline |
-| 4 | Clubs & team | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance |
-| 5 | Membership | Four policies, requests and decisions, member lists, leaving |
-| 6 | Events | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments |
-| 7 | Registration | Eligibility, window, capacity under lock, waitlist, transactional promotion, cancellation, admin override |
-| 8 | QR & attendance | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections |
-| 9 | Certificates | Idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue |
-| 10 | Notifications | Notification records, in-app inbox, channel abstraction, Resend email, all triggers |
-| 11 | Reporting | Club/event/attendance/certificate metrics, CSV exports, audit log viewer |
-| 12 | Hardening & deploy | Rate limits, security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
+| 4 | Clubs, team & membership | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance, the four membership policies, requests and decisions, member lists, leaving |
+| 5 | Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override |
+| 6 | QR & attendance | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections |
+| 7 | Certificates | Idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue |
+| 8 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
+| 9 | Hardening & deploy | Rate limits (all of them — none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
+
+**Renumbered 2026-09-11**, from twelve stages to nine. No feature was dropped — the old
+4+5, 6+7 and 10+11 are merged, because each pair is genuinely coupled (membership is
+meaningless without clubs; registration without events) and three fewer design/plan/review
+cycles is real time back. Earlier references in this document to "Stage 4", "Stage 10" and
+so on predate this and mean the old numbering; the contents are what matter.
 
 ---
 

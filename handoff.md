@@ -1,31 +1,35 @@
 # Handoff
 
-**Written:** 2026-09-11, after Stage 2 shipped.
-`CLAUDE.md` holds the durable rules. Delete this file once its gaps are actioned.
+**Written:** 2026-09-11, after Stage 2.
+`CLAUDE.md` holds the durable rules. Delete this once its gaps are actioned.
 
 ---
 
 ## State
 
-Stages 1 and 2 complete and merged to `master`. Nothing pushed — no remote exists.
+Stages 1 and 2 complete, merged to `master`. Nothing pushed — no remote exists.
 
 | | |
 |---|---|
 | Tests | 125 unit, 174 integration, all green against real PostgreSQL 18 |
 | Migrations | 7 |
-| HTTP surface | `/health`, `/docs`, `/auth/{signup,login,refresh,logout,me}`, `/me`, `/users`, `/users/{id}/status` |
+| API | `/health` · `/docs` · `/auth/{signup,login,refresh,logout,me}` · `/me` · `/users` · `/users/{id}/status` |
+| Frontend | **None yet.** `apps/web` does not exist. |
 
-Seeded accounts now log in: `admin@uni.ac.ae` / `lead@` / `ops@` / `student@`, password `Passw0rd!`.
+Seeded accounts log in: `admin@` / `lead@` / `ops@` / `student@uni.ac.ae`, password `Passw0rd!`.
 
-**Next: Stage 3 — design system & shells.** Spec §13.
+**Next: Stage 3 — design system & shells.**
+
+The plan is now **9 stages, not 12** (renumbered 2026-09-11). No feature was dropped; the
+old 4+5, 6+7 and 10+11 merged because each pair is coupled. Spec §13 has the table.
 
 ---
 
 ## Read order
 
-1. `docs/specs/2026-09-10-majlis-design.md` — binding. §13 has stage progress and every deviation.
-2. `docs/specs/2026-09-11-stage-2-auth-design.md` — how auth actually works.
-3. The stage plan in `docs/superpowers/plans/`.
+1. `docs/specs/2026-09-10-majlis-design.md` — binding. §9 is the frontend brief, §13 the stages.
+2. `docs/specs/2026-09-11-stage-2-auth-design.md` — how auth works (amended after delivery).
+3. This file.
 
 ---
 
@@ -36,11 +40,11 @@ cp .env.example .env        # first — postinstall needs DIRECT_URL
 pnpm install
 pnpm --filter @majlis/api prisma:deploy
 pnpm --filter @majlis/api db:seed
-pnpm --filter @majlis/api start:dev
+pnpm --filter @majlis/api start:dev      # :3001
 ```
 
 Needs PostgreSQL 18 on `localhost:5432`, databases `majlis_dev` / `majlis_test`.
-`pnpm db:check` confirms. CI sequence:
+`pnpm db:check` confirms. Before claiming anything works:
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test
@@ -50,81 +54,112 @@ pnpm build
 
 ---
 
-## Gaps, in the order I'd fix them
+## What Stage 3 has to build
 
-1. **`trust proxy` is not set — resolve during Stage 3.** Spec §9.2 puts a Next.js
-   rewrite in front of the API. The moment it lands, `req.ip` is the platform proxy for
-   every caller: login throttling becomes 5 failed attempts per minute *for the whole
-   university*, and `audit_log.ip` / `refresh_token.ip` record the proxy instead of the
-   client. Do not blindly enable `trust proxy: true` either — that makes
-   `X-Forwarded-For` spoofable. Set it to the specific hop count Vercel guarantees.
+Spec §9. In short: `apps/web` (Next.js 16, App Router), the visual identity, and three
+shells — student (mobile-first, bottom tabs), club officer console, admin desktop.
 
-2. **`req.url` logged unredacted, and `{ err }` logged on 5xx.** Harmless today. A live
-   token leak the moment Stage 4 puts invitation tokens in links.
+The API contract you are building against:
 
-3. **CI has never run.** The workflow exists and passes locally; nothing has been pushed,
-   so it is unexercised on a Linux runner. One green run is the only real evidence.
+- Auth is **cookie-based**, `httpOnly`. The browser never sees a token. `majlis_session`
+  (15 min, `Path=/`) and `majlis_refresh` (30 days, `Path=/api/v1/auth`).
+- On a 401, call `POST /api/v1/auth/refresh` once and retry. **No client-side dedupe is
+  needed** — the refresh token does not rotate, so concurrent refreshes are harmless.
+- `GET /api/v1/auth/me` returns `{ id, email, fullName, avatarUrl, platformRole, clubRoles }`.
+  That is what `/` routes on: `ADMIN` → `/admin`, officer-only → their club console,
+  otherwise `/home`. `clubRoles` is empty until Stage 4.
+- Errors are RFC 9457 `application/problem+json` with `type/title/status/detail/requestId`
+  and an `errors[]` array on validation failures. Drive inline field errors off `errors[]`.
+- OpenAPI at `/api/v1/docs`, JSON at `/api/v1/docs-json`. Error shapes are documented;
+  **success-response schemas are not** (see gaps).
+- A Next.js rewrite maps `/api/v1/*` to the API so the browser sees one origin. Do this —
+  it is what makes the cookie first-party and removes CORS entirely.
 
-4. **No password reset, no email verification — anywhere in the spec.** A student who
-   forgets their password has no recovery path and an admin cannot give them one. Needs
-   a product decision before Stage 10 fixes the notification patterns in place.
-
-5. **OpenAPI has no success-response schemas.** Adding the `@ApiResponse` error
-   declarations displaced Nest's auto-generated defaults. Errors are documented; 200s
-   are not.
+**Never render a page then show an "authentication required" panel inside it. Redirect.**
 
 ---
 
-## Things that will bite you
+## Gaps, in the order I would fix them
 
-Beyond `CLAUDE.md`'s toolchain traps, all verified the hard way in Stage 2:
-
-- **Throwing inside `host.run()` rolls back everything, including the audit row.** The
-  client still sees a correct 4xx, so it looks fine. Refresh reuse detection shipped
-  broken this way and was caught only by a test asserting the family was actually dead.
-  If a path writes then throws, return a result and throw after the transaction commits
-  — see `auth.service.ts`'s refresh flow.
-- **Nest stops at the first guard that denies.** A controller-scoped `ThrottlerGuard`
-  never runs if a global guard denies first. That is why `ThrottlerGuard` is global and
-  ordered ahead of `PermissionsGuard`.
-- **Prisma raises `P2007`, not `P2023`, for a malformed UUID** with `@prisma/adapter-pg`.
-  Both are mapped to 400 in `problem.filter.ts`.
-- **Zod 4's `.url()` does not restrict the scheme.** It accepts `javascript:` and
-  `data:text/html`. Any user-supplied URL needs an explicit scheme allowlist.
-- **`z.email().trim()` validates before trimming.** Use `z.string().trim().email()`.
-- **`user.email` is `TEXT` with `CHECK (email = lower(email))`, not citext.** Normalise
-  on lookup as well as insert — the insert fails loudly, the lookup fails silently as
-  "wrong password".
-- **Guards run outside the request's transaction.** An audit row written in a guard needs
-  its own `host.run()`.
+1. **No rate limiting anywhere.** Removed by owner decision; Stage 9 owns all of it. Login
+   is unthrottled — argon2id's ~100ms cost is the only brake on brute force. When Stage 9
+   adds it, set `trust proxy` **first**: behind the Next.js rewrite every caller shares one
+   `req.ip`, so an IP-keyed limit would throttle the whole university at once. Do not use
+   `trust proxy: true` — that makes `X-Forwarded-For` spoofable.
+2. **`req.url` is logged unredacted**, and `problem.filter.ts` logs `{ err }` on 5xx. Close
+   before Stage 4 puts invitation tokens in links.
+3. **CI has never run.** The workflow exists and passes locally; nothing has been pushed.
+   One green run on a Linux runner is the only real evidence.
+4. **No password reset, no email verification — anywhere in the spec.** A student who
+   forgets their password has no recovery path and an admin cannot give them one. Needs a
+   product decision before Stage 8 fixes the notification patterns in place.
+5. **OpenAPI has no success-response schemas.** Adding the `@ApiResponse` error
+   declarations displaced Nest's auto-generated defaults.
 
 ---
 
 ## Two deliberate simplifications (2026-09-11)
 
-Both at the owner's direction, after Stage 2 landed. Neither is an oversight:
+Both at the owner's direction, after Stage 2 landed. Neither is an oversight — do not
+"restore" them:
 
 - **Refresh tokens do not rotate.** One opaque token per login, revoked on logout and on
   suspension, expiring 30 days after login regardless of activity. A stolen refresh token
-  therefore works until it expires or the session is revoked. Rotation with family-wide
-  reuse detection existed and was removed as disproportionate here.
-- **No rate limiting.** `@nestjs/throttler` removed; Stage 12 owns it.
+  works until it expires or the session is revoked. Rotation with family-wide reuse
+  detection existed and was removed as disproportionate.
+- **No rate limiting.** `@nestjs/throttler` removed entirely; Stage 9 owns it.
 
 The schema keeps `family_id` (identifies one login's session, used by logout) and
 `replaced_by` (now unused — dropping it needs a migration for no gain).
 
-## On process
+---
 
-Stage 2 took about six hours and that was too long. The rigor found six real defects —
-three of them in the plan rather than the code — but cost four agent dispatches per task,
-many of them fix rounds over comment wording.
+## Things that will bite you
 
-For Stage 3 onward: one review per task, not review-plus-fix-plus-re-review. Minor
-findings go on a list for the final review to triage. Batch small same-shape tasks into
-one dispatch. Keep code comments to a line or two. What stays non-negotiable is tests
-that discriminate, invariants in the database, and a security review before auth, token
-or permission code lands — the speed comes out of ceremony, not out of correctness.
+Beyond `CLAUDE.md`'s toolchain traps, all verified the hard way:
 
-The recurring defect in both stages has been **tests that pass against badly broken
-code**. Stage 2's review caught one on nine of twelve tasks. Before trusting a test, name
-the broken implementation it would catch; if you cannot, it is not testing anything.
+- **Throwing inside `host.run()` rolls back everything, including the audit row.** The
+  client still sees a correct 4xx, so it looks fine. Reuse detection shipped broken this
+  way. If a path writes then throws, return a result and throw after the transaction
+  commits.
+- **Nest stops at the first guard that denies.** A controller-scoped guard never runs if a
+  global one denies first.
+- **Prisma raises `P2007`, not `P2023`, for a malformed UUID** with `@prisma/adapter-pg`.
+  Both map to 400 in `problem.filter.ts`.
+- **Zod 4's `.url()` does not restrict the scheme** — it accepts `javascript:` and
+  `data:text/html`. Any user-supplied URL needs an explicit allowlist.
+- **`z.email().trim()` validates before trimming.** Use `z.string().trim().email()`.
+- **`user.email` is `TEXT` with `CHECK (email = lower(email))`.** Normalise on lookup as
+  well as insert — the insert fails loudly, the lookup fails silently as "wrong password".
+- **Guards run outside the request's transaction.** An audit row written in a guard needs
+  its own `host.run()`.
+
+---
+
+## On process — read this before starting
+
+Stage 2 took about six hours and that was too long. The owner's feedback, verbatim:
+*"too many comments and too long"*, *"more efficient and more productive while not losing
+quality"*.
+
+What cost the time: four agent dispatches per task (implement → review → fix → re-review)
+across twelve tasks, many of those fix rounds over comment wording. What it bought: six real
+defects, three of them in the plan rather than the code.
+
+**For Stage 3 onward:**
+
+- One review per task. Not review-plus-fix-plus-re-review. Minor findings go on a list the
+  final review triages.
+- Batch small same-shape tasks into one dispatch.
+- Code comments: one or two lines, explaining *why* only where a reader would otherwise
+  undo it. No essays about library behaviour — that goes in the commit message, once.
+- Commit messages: subject plus two or three lines.
+- Keep replies to the owner short. Lead with the answer.
+
+**What does not get traded away:** tests that discriminate, invariants in the database, a
+security review before auth/token/permission code lands. The speed comes out of ceremony,
+not out of correctness.
+
+The recurring defect across both stages has been **tests that pass against badly broken
+code** — Stage 2's review caught one on nine of twelve tasks. Before trusting a test, name
+the broken implementation it would catch. If you cannot, it is not testing anything.
