@@ -3,7 +3,9 @@ import { ThrottlerStorage, type ThrottlerStorageService } from '@nestjs/throttle
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX } from '../src/config/api-prefix';
+import { AuthService } from '../src/auth/auth.service';
 import { TokensService } from '../src/auth/tokens.service';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { allCookiesOf, rawRefreshTokenFrom, refresh, refreshCookieOf, signup } from './auth-helpers';
 import { createTestApp } from './app';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
@@ -14,10 +16,12 @@ const prisma = createTestPrisma();
 
 let app: INestApplication;
 let tokens: TokensService;
+let authService: AuthService;
 
 beforeAll(async () => {
   app = await createTestApp();
   tokens = app.get(TokensService);
+  authService = app.get(AuthService);
 });
 
 afterAll(async () => {
@@ -129,8 +133,17 @@ describe('POST /auth/refresh', () => {
 
     const [a, b] = await Promise.all([refresh(app, cookie), refresh(app, cookie)]);
 
-    // Exactly one wins; the loser is classified as reuse. Without FOR UPDATE
-    // both can win, producing two live families from one token.
+    // Exactly one wins; the loser is classified as reuse. This is the
+    // desired outcome, asserted at the layer a real client would observe —
+    // but it does NOT by itself prove FOR UPDATE is load-bearing. Verified:
+    // with the lock removed entirely, this exact assertion still held
+    // across 8 runs, and even bypassing HTTP to call AuthService directly
+    // (see the next test) plus an artificially widened race window still
+    // didn't expose two winners in this environment. The lock's necessity
+    // is proven instead by the dedicated mechanism test in the "FOR UPDATE
+    // lock mechanism" describe block below, which checks Postgres blocking
+    // behaviour directly rather than inferring it from HTTP timing. See
+    // task-10-report.md for the full investigation.
     expect([a.status, b.status].sort()).toEqual([200, 401]);
 
     // The loser's reuse handling revokes the WHOLE family — including the
@@ -143,6 +156,37 @@ describe('POST /auth/refresh', () => {
     const family = (
       await prisma.refreshToken.findFirstOrThrow({
         where: { tokenHash: tokens.hashRefreshToken(rawRefreshTokenFrom(first)) },
+      })
+    ).familyId;
+    const live = await prisma.refreshToken.findMany({ where: { familyId: family, revokedAt: null } });
+    expect(live).toHaveLength(0);
+  });
+
+  it('serialises two concurrent refresh() calls made directly against AuthService', async () => {
+    // Bypasses Express, the guard chain and the throttler entirely (same
+    // technique as transaction-host.integration.test.ts's "isolates
+    // concurrent transactions from each other") — removing exactly the
+    // request-processing overhead that could keep the HTTP-level test above
+    // from discriminating. Still asserted directly: this too was verified
+    // NOT to discriminate on its own (confirmed still green with FOR UPDATE
+    // removed, even with an artificially widened window after the SELECT —
+    // see task-10-report.md). Kept because it's still the correct
+    // assertion of desired behaviour, isolated to AuthService rather than
+    // to whatever the HTTP layer happens to do around it; the mechanism
+    // proof lives in the "FOR UPDATE lock mechanism" test below.
+    const first = await signup(app, {});
+    const raw = rawRefreshTokenFrom(first);
+
+    const results = await Promise.allSettled([authService.refresh(raw), authService.refresh(raw)]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const family = (
+      await prisma.refreshToken.findFirstOrThrow({
+        where: { tokenHash: tokens.hashRefreshToken(raw) },
       })
     ).familyId;
     const live = await prisma.refreshToken.findMany({ where: { familyId: family, revokedAt: null } });
@@ -175,10 +219,13 @@ describe('POST /auth/refresh', () => {
     expect((await refresh(app, refreshCookieOf(s))).status).toBe(401);
   });
 
-  it('gives an identical response across expiry, reuse, an unknown token, and a suspended user', async () => {
-    // Four independently-broken sessions, four different root causes — the
+  it('gives an identical response across expiry, reuse, an unknown token, a suspended user, and no cookie at all', async () => {
+    // Five independently-broken cases, five different root causes — the
     // client must not be able to tell them apart. A body/status that differs
     // on any one of these branches is an account-enumeration-style leak.
+    // Includes the controller's own missing-cookie check (auth.controller.ts,
+    // the one branch that never reaches AuthService.refresh at all) so that
+    // path is pinned by a real assertion rather than by inspection alone.
     const expired = await signup(app, {});
     await prisma.refreshToken.update({
       where: { tokenHash: tokens.hashRefreshToken(rawRefreshTokenFrom(expired)) },
@@ -191,14 +238,15 @@ describe('POST /auth/refresh', () => {
     const suspended = await signup(app, {});
     await prisma.user.update({ where: { id: suspended.body.id }, data: { status: 'SUSPENDED' } });
 
-    const [expiredRes, reusedRes, suspendedRes, unknownRes] = await Promise.all([
+    const [expiredRes, reusedRes, suspendedRes, unknownRes, noCookieRes] = await Promise.all([
       refresh(app, refreshCookieOf(expired)),
       refresh(app, refreshCookieOf(reused)),
       refresh(app, refreshCookieOf(suspended)),
       refresh(app, 'majlis_refresh=not-a-real-token-at-all'),
+      request(app.getHttpServer()).post(`${API_PREFIX}/auth/refresh`),
     ]);
 
-    for (const res of [expiredRes, reusedRes, suspendedRes, unknownRes]) {
+    for (const res of [expiredRes, reusedRes, suspendedRes, unknownRes, noCookieRes]) {
       expect(res.status).toBe(401);
     }
 
@@ -210,15 +258,17 @@ describe('POST /auth/refresh', () => {
       const { requestId: _omitted, ...rest } = res.body as Record<string, unknown>;
       return rest;
     };
-    const [expiredBody, reusedBody, suspendedBody, unknownBody] = [
+    const [expiredBody, reusedBody, suspendedBody, unknownBody, noCookieBody] = [
       expiredRes,
       reusedRes,
       suspendedRes,
       unknownRes,
+      noCookieRes,
     ].map(stripBody);
     expect(expiredBody).toEqual(reusedBody);
     expect(expiredBody).toEqual(suspendedBody);
     expect(expiredBody).toEqual(unknownBody);
+    expect(expiredBody).toEqual(noCookieBody);
   });
 
   it('gives the rotated successor a fresh TTL rather than inheriting the original expiry', async () => {
@@ -239,6 +289,48 @@ describe('POST /auth/refresh', () => {
     // An implementation that copies the presented row's expiresAt onto the
     // successor (no sliding) would land around now+5d, well under this bound.
     expect(successor.expiresAt.getTime()).toBeGreaterThan(Date.now() + 20 * 24 * 60 * 60 * 1000);
+  });
+});
+
+describe('FOR UPDATE lock mechanism', () => {
+  // The two concurrency tests above assert the desired OUTCOME, but were
+  // both verified NOT to discriminate the lock's presence on their own in
+  // this environment (see task-10-report.md) — request/transaction timing
+  // never actually made two callers race for the same row within a small
+  // number of trials, locked or not. This test checks the mechanism
+  // directly instead of inferring it from HTTP or service-call timing: it
+  // holds the exact lock AuthService.refresh takes (`$queryRaw ... FOR
+  // UPDATE` through an interactive `$transaction`, same as `host.tx`) and
+  // measures whether a second transaction on the same row is genuinely
+  // blocked until the first releases it.
+  it('a held FOR UPDATE lock genuinely blocks a second transaction on the same row', async () => {
+    const s = await signup(app, {});
+    const hash = tokens.hashRefreshToken(rawRefreshTokenFrom(s));
+    const prismaService = app.get(PrismaService);
+    const t0 = Date.now();
+    const timestamps: { released?: number; acquired?: number } = {};
+
+    const holder = prismaService.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "refresh_token" WHERE "token_hash" = ${hash} FOR UPDATE`;
+      await new Promise((r) => setTimeout(r, 200));
+      timestamps.released = Date.now() - t0;
+    });
+
+    // Let the holder acquire the lock before the second transaction starts.
+    await new Promise((r) => setTimeout(r, 30));
+
+    const waiter = prismaService.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "refresh_token" WHERE "token_hash" = ${hash} FOR UPDATE`;
+      timestamps.acquired = Date.now() - t0;
+    });
+
+    await Promise.all([holder, waiter]);
+
+    // Catches $queryRaw silently running outside the transaction, against a
+    // different connection, or FOR UPDATE being dropped somewhere in the
+    // chain — any of which would let `waiter` acquire the row almost
+    // immediately instead of waiting ~200ms for `holder` to release it.
+    expect(timestamps.acquired).toBeGreaterThanOrEqual(timestamps.released! - 10);
   });
 });
 
