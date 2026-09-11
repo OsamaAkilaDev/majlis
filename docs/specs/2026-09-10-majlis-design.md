@@ -60,7 +60,7 @@ These are settled. Do not re-litigate without asking the human.
 | Frontend | **Next.js** (App Router) |
 | UI | **Tailwind CSS v4 + shadcn/ui** (Radix primitives owned in-repo) |
 | Contracts | **Zod** in a shared package, via `nestjs-zod`, generating OpenAPI |
-| Auth | **NestJS-native** — Passport, argon2id, httpOnly cookies, rotating refresh tokens. Identity lives entirely in our Postgres. Not Supabase Auth. |
+| Auth | **NestJS-native** — argon2id, httpOnly cookies, rotating refresh tokens, guards written directly. Identity lives entirely in our Postgres. Not Supabase Auth. ~~Passport~~ — dropped 2026-09-11, see Stage 2 design §9.1. |
 | Background work | **Plain code.** No queue, no Redis, no BullMQ. |
 | Client data | TanStack Query + react-hook-form (sharing the Zod schemas) |
 | File storage | Supabase Storage, uploaded direct from browser via signed URL |
@@ -581,7 +581,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | # | Stage | Contents |
 |---|---|---|
 | 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
-| 2 | Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard skeleton, user suspension, audit writer, transaction host |
+| 2 | 🔨 **In progress** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in detail in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md); its §9 carries three approved deviations from this document — Passport dropped, auth rate limiting pulled forward from Stage 12, and the permission mechanism built in full rather than as a skeleton |
 | 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline |
 | 4 | Clubs & team | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance |
 | 5 | Membership | Four policies, requests and decisions, member lists, leaving |
