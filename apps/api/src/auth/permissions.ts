@@ -18,6 +18,51 @@ export type PlatformRole = 'STUDENT' | 'ADMIN';
 export type ClubRole = 'LEAD' | 'VICE_LEAD' | 'MARKETING' | 'CTO' | 'OPERATIONS';
 export type EventResponsibility = 'EVENT_LEAD' | 'OPERATIONS' | 'MARKETING';
 
+// The three unions above are declared locally, by literal, rather than
+// imported as values from the generated Prisma client — that would drag
+// Prisma's runtime into a module whose whole point is to have none. But a
+// role RENAMED or REMOVED in the schema is dangerous if these silently
+// drift: Task 8's guard reconciles ActorFacts against the real enum, so a
+// renamed role would make facts.clubRoles carry the new string while
+// PERMISSIONS still lists the old one — `.includes()` quietly returns
+// false and an authorized officer is denied with no type error and no
+// failing test, just a support ticket.
+//
+// So import ONLY the generated *types* (elided at compile time by
+// `import type` — zero runtime, same as any other type-only import) and
+// assert both unions describe the same set of strings. `[T] extends [U]`
+// (not the naked `T extends U`) on both sides is deliberate: a bare
+// conditional distributes over a union member-by-member, which would let
+// this pass even when the two unions differ; wrapping each side in a
+// tuple suppresses that distribution and forces a single, whole-set
+// comparison.
+import type {
+  ClubRole as PrismaClubRole,
+  EventResponsibility as PrismaEventResponsibility,
+  PlatformRole as PrismaPlatformRole,
+} from '../generated/prisma/enums';
+
+type _SyncPlatformRole = [PlatformRole] extends [PrismaPlatformRole]
+  ? [PrismaPlatformRole] extends [PlatformRole]
+    ? true
+    : never
+  : never;
+export const _syncPlatformRole: _SyncPlatformRole = true;
+
+type _SyncClubRole = [ClubRole] extends [PrismaClubRole]
+  ? [PrismaClubRole] extends [ClubRole]
+    ? true
+    : never
+  : never;
+export const _syncClubRole: _SyncClubRole = true;
+
+type _SyncEventResponsibility = [EventResponsibility] extends [PrismaEventResponsibility]
+  ? [PrismaEventResponsibility] extends [EventResponsibility]
+    ? true
+    : never
+  : never;
+export const _syncEventResponsibility: _SyncEventResponsibility = true;
+
 /**
  * Facts about the actor making a request, already scoped by the guard.
  *
