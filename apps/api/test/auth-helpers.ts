@@ -1,12 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { SESSION_COOKIE } from '../src/auth/cookies';
+import { REFRESH_COOKIE, SESSION_COOKIE } from '../src/auth/cookies';
 import { API_PREFIX } from '../src/config/api-prefix';
 import { createTestPrisma } from './db';
 import { uniq } from './factories';
 
 const SIGNUP_PATH = `${API_PREFIX}/auth/signup`;
 const LOGIN_PATH = `${API_PREFIX}/auth/login`;
+const REFRESH_PATH = `${API_PREFIX}/auth/refresh`;
 
 export interface SignupInput {
   email?: string;
@@ -53,11 +54,48 @@ export function login(app: INestApplication, credentials: LoginInput): request.T
   return request(app.getHttpServer()).post(LOGIN_PATH).send(credentials);
 }
 
+/**
+ * POSTs to /auth/refresh with the given `Cookie` header value, returning the
+ * raw supertest response. `cookie` is normally the output of
+ * `refreshCookieOf(...)` — a single `name=value` pair is all the refresh
+ * route reads, so there's no need to send the session cookie alongside it.
+ */
+export function refresh(app: INestApplication, cookie: string): request.Test {
+  return request(app.getHttpServer()).post(REFRESH_PATH).set('Cookie', cookie);
+}
+
 function sessionCookieFromResponse(res: request.Response): string {
   const setCookie = res.headers['set-cookie'] as unknown as string[] | undefined;
   const raw = setCookie?.find((c) => c.startsWith(`${SESSION_COOKIE}=`));
   if (!raw) throw new Error('Response carried no session cookie — was the request rejected?');
   return raw.split(';')[0]!;
+}
+
+/**
+ * Extracts the refresh cookie's `name=value` pair from any response that set
+ * one — signup, login, or a previous refresh — ready to pass straight to
+ * `refresh(app, ...)` or `.set('Cookie', ...)`.
+ */
+export function refreshCookieOf(res: request.Response): string {
+  const setCookie = res.headers['set-cookie'] as unknown as string[] | undefined;
+  const raw = setCookie?.find((c) => c.startsWith(`${REFRESH_COOKIE}=`));
+  if (!raw) throw new Error('Response carried no refresh cookie — was the request rejected?');
+  return raw.split(';')[0]!;
+}
+
+/** The raw refresh token value carried in a response's refresh cookie. */
+export function rawRefreshTokenFrom(res: request.Response): string {
+  return refreshCookieOf(res).split('=')[1]!;
+}
+
+/**
+ * Both cookies a response set, combined into one `Cookie` header value — for
+ * a request (like logout) that should work regardless of which cookies are
+ * presented.
+ */
+export function allCookiesOf(res: request.Response): string {
+  const setCookie = res.headers['set-cookie'] as unknown as string[];
+  return setCookie.map((c) => c.split(';')[0]).join('; ');
 }
 
 /**
