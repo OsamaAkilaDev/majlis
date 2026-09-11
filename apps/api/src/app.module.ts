@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
+import { AuditModule } from './audit/audit.module';
 import { RequestContextModule } from './common/request-context.module';
 import { resolveRequestId } from './common/request-id';
 import { ConfigModule } from './config/config.module';
@@ -44,6 +45,7 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     RequestContextModule,
     PrismaModule,
+    AuditModule,
     HealthModule,
   ],
 })
