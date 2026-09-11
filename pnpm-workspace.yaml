@@ -13,3 +13,5 @@ peerDependencyRules:
   allowedVersions:
     "nestjs-zod>@nestjs/common": "12"
     "nestjs-zod>@nestjs/swagger": "12"
+    "@nestjs/throttler>@nestjs/common": "12"
+    "@nestjs/throttler>@nestjs/core": "12"

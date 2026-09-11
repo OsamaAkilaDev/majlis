@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { setupOpenApi } from './common/openapi';
@@ -16,6 +17,7 @@ export function configureApp(app: INestApplication): void {
   const logger = app.get(Logger);
 
   app.useLogger(logger);
+  app.use(cookieParser());
   // See api-prefix.ts for why this must keep its leading slash.
   app.setGlobalPrefix(API_PREFIX);
   app.useGlobalPipes(new ZodValidationPipe());
