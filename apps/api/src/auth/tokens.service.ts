@@ -11,9 +11,10 @@ import type { Env } from '../config/env.schema';
 export class TokensService {
   /**
    * jsonwebtoken's `expiresIn` type is a template-literal `StringValue`
-   * ("15m", "30d", ...) narrower than the plain `string` the env schema
-   * validates — the value itself (any string `ms()` parses) is already
-   * checked at boot, so this cast just aligns the two types.
+   * ("15m", "30d", ...) narrower than the plain `string` type the env schema
+   * exposes here — `envSchema` validates the value's actual format (against
+   * the grammar `ms()` accepts) at boot, so this cast just aligns the two
+   * TypeScript types; it is not doing any of the real validation.
    */
   private readonly accessTtl: JwtSignOptions['expiresIn'];
 

@@ -26,6 +26,16 @@ describe('TokensService', () => {
       expect(hash).toMatch(/^[0-9a-f]{64}$/);
     });
 
+    it('draws 32 bytes (256 bits) of entropy for the raw token', () => {
+      // Catches: a regression to a short or predictable generator (e.g.
+      // randomBytes(8), or Math.random().toString(36)) — SHA-256 always
+      // emits 64 hex chars no matter what it's fed, so the hash-shape
+      // assertion above passes regardless of the raw token's real entropy.
+      // This is the only assertion that constrains the raw token itself.
+      const { raw } = service.mintRefreshToken();
+      expect(Buffer.from(raw, 'base64url').length).toBe(32);
+    });
+
     it('mints a different token every time', () => {
       const seen = new Set(Array.from({ length: 50 }, () => service.mintRefreshToken().raw));
       expect(seen.size).toBe(50);

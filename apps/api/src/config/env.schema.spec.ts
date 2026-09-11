@@ -70,3 +70,30 @@ describe('SESSION_SECRET', () => {
     expect(r.REFRESH_TOKEN_TTL).toBe('30d');
   });
 });
+
+describe('token TTL format', () => {
+  // Catches: no format validation at all (the pre-fix state), where a typo
+  // like "15 minutes" or "fifteen" boots the server cleanly and then makes
+  // jsonwebtoken's sign() throw a plain, uncaught Error on the first login —
+  // an accidental 500 instead of a boot-time failure.
+  it.each(['15m', '30d', '15 m', '15min', '1h', '900', '0s', '-1s', '1.5h', '1000ms', '15 minutes'])(
+    'accepts %s, a form ms() parses',
+    (ttl) => {
+      const r = envSchema.safeParse({ ...base, ACCESS_TOKEN_TTL: ttl });
+      expect(r.success).toBe(true);
+    },
+  );
+
+  it.each(['fifteen', '15mo', 'm15', '', '15h ago', 'x'.repeat(101)])(
+    'rejects %s, a form ms() cannot parse',
+    (ttl) => {
+      const r = envSchema.safeParse({ ...base, ACCESS_TOKEN_TTL: ttl });
+      expect(r.success).toBe(false);
+    },
+  );
+
+  it('applies the same validation to REFRESH_TOKEN_TTL', () => {
+    const r = envSchema.safeParse({ ...base, REFRESH_TOKEN_TTL: 'not-a-duration' });
+    expect(r.success).toBe(false);
+  });
+});
