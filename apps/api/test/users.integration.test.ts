@@ -97,6 +97,23 @@ describe('GET /users', () => {
     expect((await get(USERS_PATH, me.sessionCookie)).status).toBe(403);
   });
 
+  it('throttles a student looping a denied route past 60/min, so denials cannot flood the audit log unbounded', async () => {
+    // AuditLog is append-only by statement-level trigger — there is no
+    // delete path, ever. Without a ThrottlerGuard on UsersController, a
+    // signed-in STUDENT could loop this 403 forever, committing one
+    // permission.denied row per request with no limit. Catches a missing
+    // (or misconfigured) @UseGuards(ThrottlerGuard) on the controller —
+    // this test only completes green if the 61st request is actually
+    // blocked at exactly the registered 60/min default bucket.
+    const me = await loginAsStudent(app);
+    for (let i = 0; i < 60; i++) {
+      const res = await get(USERS_PATH, me.sessionCookie);
+      expect(res.status).toBe(403);
+    }
+    const blocked = await get(USERS_PATH, me.sessionCookie);
+    expect(blocked.status).toBe(429);
+  });
+
   it('allows an ADMIN to list users', async () => {
     // A positive control: without it, a guard that denies every request
     // outright would still pass the test above.
@@ -104,6 +121,16 @@ describe('GET /users', () => {
     const res = await get(USERS_PATH, admin.sessionCookie);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.items)).toBe(true);
+  });
+
+  it('rejects a malformed cursor with 400, not 500', async () => {
+    // Same P2023 gap as PATCH /users/{id}/status: `cursor: { id: query.cursor }`
+    // against User.id's @db.Uuid column throws Prisma's P2023 for a
+    // non-uuid string, which surfaced as a bare 500 before problem.filter.ts
+    // mapped it.
+    const admin = await loginAsAdmin(app);
+    const res = await get(`${USERS_PATH}?cursor=not-a-uuid`, admin.sessionCookie);
+    expect(res.status).toBe(400);
   });
 
   it('caps the user list however large a limit is asked for', async () => {
@@ -226,5 +253,46 @@ describe('PATCH /users/{id}/status', () => {
     expect(await prisma.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({
       status: 'ACTIVE',
     });
+  });
+
+  it('serialises two concurrent suspends of the same account to one 200 and one 409', async () => {
+    // Catches a plain `findUnique` (no lock): both requests would read
+    // ACTIVE, both pass the "already in that state" guard, and both commit
+    // — two 200s and two user.suspended audit rows for one transition,
+    // instead of the second one correctly seeing the first's write and
+    // bouncing off the 409 guard.
+    const admin = await loginAsAdmin(app);
+    const victim = await loginAsStudent(app);
+
+    const [a, b] = await Promise.all([
+      patchStatus(app, admin.sessionCookie, victim.userId, 'SUSPENDED', 'first'),
+      patchStatus(app, admin.sessionCookie, victim.userId, 'SUSPENDED', 'second'),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(await prisma.auditLog.count({ where: { entityId: victim.userId, action: 'user.suspended' } })).toBe(
+      1,
+    );
+  });
+
+  it('rejects a malformed id with 400, not 500', async () => {
+    // Catches the pre-fix gap: User.id is @db.Uuid, and a plain findUnique
+    // against a non-uuid string throws Prisma's P2023, which problem.filter.ts
+    // did not map — surfacing as a bare 500 instead of a client error.
+    const admin = await loginAsAdmin(app);
+    const res = await patchStatus(app, admin.sessionCookie, 'not-a-uuid', 'SUSPENDED', 'x');
+    expect(res.status).toBe(400);
+  });
+
+  it('still 404s a well-formed but unknown id', async () => {
+    const admin = await loginAsAdmin(app);
+    const res = await patchStatus(
+      app,
+      admin.sessionCookie,
+      '00000000-0000-7000-8000-000000000000',
+      'SUSPENDED',
+      'x',
+    );
+    expect(res.status).toBe(404);
   });
 });

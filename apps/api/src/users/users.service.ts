@@ -14,6 +14,13 @@ import type { User } from '../generated/prisma/client';
 import { TransactionHost } from '../prisma/transaction.host';
 
 /**
+ * Canonical UUID shape, used only to decide whether `updateStatus`'s FOR
+ * UPDATE lock (below) is safe to run as raw SQL — see the comment at its
+ * call site.
+ */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * Picks exactly the fields a profile response ever carries — never the raw
  * Prisma `User` row, which also has `passwordHash`. Shared by `/me` and the
  * admin status endpoint, which return the same shape for two different
@@ -111,8 +118,31 @@ export class UsersService {
         throw new UnprocessableError('You cannot change your own account status.');
       }
 
-      const before = await this.host.tx.user.findUnique({ where: { id: targetId } });
-      if (!before) throw new NotFoundError('No such user.');
+      // A malformed (non-UUID) id would fail the ::uuid cast below as a raw
+      // Postgres error (P2010) rather than the typed Prisma validation error
+      // (P2023) problem.filter.ts maps to 400 — routing it through the same
+      // typed call the pre-lock code always made keeps that mapping intact
+      // for this route too. A well-formed id proceeds to the lock below
+      // regardless of whether it matches a row.
+      if (!UUID_SHAPE.test(targetId)) {
+        await this.host.tx.user.findUniqueOrThrow({ where: { id: targetId } });
+      }
+
+      // Locks the target row before the read that decides the two checks
+      // below — same FOR UPDATE-then-Prisma-read pattern as
+      // AuthService.refresh — so two concurrent suspend calls on the same
+      // user serialise on this row instead of both reading ACTIVE, both
+      // passing the no-op guard, and both writing a user.suspended audit row
+      // for one transition. "user" is a reserved word in Postgres and must
+      // be quoted in raw SQL.
+      const locked = await this.host.tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "user" WHERE "id" = ${targetId}::uuid FOR UPDATE`;
+      if (locked.length === 0) throw new NotFoundError('No such user.');
+
+      // Re-read under the lock just taken, so this is the fresh value a
+      // concurrent updater's commit would have changed — not a stale read
+      // from before the lock was acquired.
+      const before = await this.host.tx.user.findUniqueOrThrow({ where: { id: targetId } });
       if (before.status === next) throw new ConflictError('That account is already in that state.');
 
       const after = await this.host.tx.user.update({
