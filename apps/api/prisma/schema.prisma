@@ -1,0 +1,505 @@
+// Majlis schema. Database objects are snake_case; the client is camelCase.
+//
+// Prisma 7 notes:
+//  - the `prisma-client` generator replaces `prisma-client-js`
+//  - `output` is required; the client is NOT written into node_modules
+//  - default output is ESM, so `moduleFormat = "cjs"` keeps NestJS on CommonJS
+//  - a driver adapter (@prisma/adapter-pg) is mandatory at runtime
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("user_status")
+}
+
+enum PlatformRole {
+  STUDENT
+  ADMIN
+
+  @@map("platform_role")
+}
+
+/// A person. There is no separate university identifier — the verified email
+/// is the identity key, and Operations verifies a scanned pass against name + email.
+model User {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  fullName     String       @map("full_name")
+  avatarUrl    String?      @map("avatar_url")
+  status       UserStatus   @default(ACTIVE)
+  platformRole PlatformRole @default(STUDENT) @map("platform_role")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+  memberships   ClubMembership[]
+  appointments  ClubTeamAppointment[]
+  registrations    EventRegistration[]
+  eventAssignments EventAssignment[]
+  qrPass       QrPass?
+  attendance   AttendanceRecord[]
+  certificates Certificate[]
+  notifications Notification[]
+
+  @@map("user")
+}
+
+/// One row per issued refresh token. Rotation replaces a row and links it via
+/// replacedById; presenting an already-rotated token revokes the whole family.
+model RefreshToken {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  familyId     String    @map("family_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  ip           String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_token")
+}
+
+enum ClubStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+
+  @@map("club_status")
+}
+
+enum MembershipPolicy {
+  OPEN
+  APPROVAL_REQUIRED
+  INVITE_ONLY
+  CLOSED
+
+  @@map("membership_policy")
+}
+
+enum ClubRole {
+  LEAD
+  VICE_LEAD
+  MARKETING
+  CTO
+  OPERATIONS
+
+  @@map("club_role")
+}
+
+enum AppointmentStatus {
+  INVITED
+  ACTIVE
+  DECLINED
+  EXPIRED
+  ENDED
+
+  @@map("appointment_status")
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  LEFT
+  REMOVED
+
+  @@map("membership_status")
+}
+
+model Department {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clubs Club[]
+
+  @@map("department")
+}
+
+/// A club is ACTIVE the moment an Admin creates it. There is deliberately no
+/// review or approval state anywhere in the product.
+model Club {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  departmentId     String           @map("department_id") @db.Uuid
+  name             String           @unique
+  slug             String           @unique
+  description      String
+  category         String
+  academicYear     String           @map("academic_year")
+  logoUrl          String           @map("logo_url")
+  bannerUrl        String?          @map("banner_url")
+  membershipPolicy MembershipPolicy @default(OPEN) @map("membership_policy")
+  status           ClubStatus       @default(ACTIVE)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  department   Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  appointments ClubTeamAppointment[]
+  memberships  ClubMembership[]
+  events       Event[]
+
+  @@index([departmentId])
+  @@index([status])
+  @@map("club")
+}
+
+/// Club-scoped authority. No permission is active until status = ACTIVE.
+/// Appointments end; they are never deleted, so history survives.
+model ClubTeamAppointment {
+  id                    String            @id @default(uuid(7)) @db.Uuid
+  clubId                String            @map("club_id") @db.Uuid
+  userId                String            @map("user_id") @db.Uuid
+  role                  ClubRole
+  status                AppointmentStatus @default(INVITED)
+  invitedById           String            @map("invited_by_id") @db.Uuid
+  invitationTokenHash   String?           @unique @map("invitation_token_hash")
+  invitationExpiresAt   DateTime?         @map("invitation_expires_at") @db.Timestamptz(3)
+  termStart             DateTime?         @map("term_start") @db.Timestamptz(3)
+  termEnd               DateTime?         @map("term_end") @db.Timestamptz(3)
+  acceptedAt            DateTime?         @map("accepted_at") @db.Timestamptz(3)
+  endedAt               DateTime?         @map("ended_at") @db.Timestamptz(3)
+  endedReason           String?           @map("ended_reason")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([clubId, status])
+  @@index([userId, status])
+  @@map("club_team_appointment")
+}
+
+/// Ordinary membership. Separate from appointment: being a member grants
+/// no management permission of any kind.
+model ClubMembership {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  clubId         String           @map("club_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  status         MembershipStatus @default(PENDING)
+  requestedAt    DateTime         @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedAt      DateTime?        @map("decided_at") @db.Timestamptz(3)
+  decidedById    String?          @map("decided_by_id") @db.Uuid
+  decisionReason String?          @map("decision_reason")
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([clubId, status])
+  @@index([userId, status])
+  @@map("club_membership")
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  REGISTRATION_CLOSED
+  ONGOING
+  COMPLETED
+  CERTIFIED
+  CANCELLED
+
+  @@map("event_status")
+}
+
+/// Extensible. CHECK_IN_AND_OUT and MINIMUM_DURATION are a later additive
+/// stage; no columns for them are added now.
+enum AttendancePolicy {
+  CHECK_IN_ONLY
+
+  @@map("attendance_policy")
+}
+
+enum EventResponsibility {
+  EVENT_LEAD
+  OPERATIONS
+  MARKETING
+
+  @@map("event_responsibility")
+}
+
+enum RegistrationStatus {
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+  CHECKED_IN
+  ATTENDED
+  NO_SHOW
+  REMOVED
+
+  @@map("registration_status")
+}
+
+enum RegistrationSource {
+  SELF
+  ADMIN_OVERRIDE
+
+  @@map("registration_source")
+}
+
+/// A Lead publishing an event makes it live immediately — there is no approval
+/// gate. Status beyond DRAFT/PUBLISHED/CANCELLED is a pure function of the
+/// timestamp columns, which is what makes the lazy lifecycle possible.
+model Event {
+  id                   String           @id @default(uuid(7)) @db.Uuid
+  clubId               String           @map("club_id") @db.Uuid
+  title                String
+  slug                 String
+  summary              String
+  description          String
+  eventType            String           @map("event_type")
+  audience             String
+  venue                String?
+  onlineUrl            String?          @map("online_url")
+  bannerUrl            String?          @map("banner_url")
+  timezone             String           @default("Asia/Dubai")
+  startsAt             DateTime         @map("starts_at") @db.Timestamptz(3)
+  endsAt               DateTime         @map("ends_at") @db.Timestamptz(3)
+  registrationOpensAt  DateTime         @map("registration_opens_at") @db.Timestamptz(3)
+  registrationClosesAt DateTime         @map("registration_closes_at") @db.Timestamptz(3)
+  checkInOpensAt       DateTime         @map("check_in_opens_at") @db.Timestamptz(3)
+  checkInClosesAt      DateTime         @map("check_in_closes_at") @db.Timestamptz(3)
+  capacity             Int
+  confirmedCount       Int              @default(0) @map("confirmed_count")
+  waitlistEnabled      Boolean          @default(true) @map("waitlist_enabled")
+  requiresClubMembership Boolean        @default(false) @map("requires_club_membership")
+  eligibilityRules     Json?            @map("eligibility_rules")
+  certificateEnabled   Boolean          @default(false) @map("certificate_enabled")
+  certificateTitle     String?          @map("certificate_title")
+  certificateSignatory String?          @map("certificate_signatory")
+  attendancePolicy     AttendancePolicy @default(CHECK_IN_ONLY) @map("attendance_policy")
+  status               EventStatus      @default(DRAFT)
+  cancelledReason      String?          @map("cancelled_reason")
+  createdById          String           @map("created_by_id") @db.Uuid
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  club          Club                @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  assignments   EventAssignment[]
+  registrations EventRegistration[]
+  attendance   AttendanceRecord[]
+  certificates Certificate[]
+
+  @@unique([clubId, slug])
+  @@index([status, startsAt])
+  @@index([clubId, status])
+  @@map("event")
+}
+
+/// Per-event operational responsibility. This is how a Lead grants scan rights
+/// for a single event without creating a standing officer appointment.
+model EventAssignment {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  eventId        String              @map("event_id") @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  responsibility EventResponsibility
+  assignedById   String              @map("assigned_by_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([eventId, userId, responsibility])
+  @@index([userId])
+  @@map("event_assignment")
+}
+
+model EventRegistration {
+  id              String             @id @default(uuid(7)) @db.Uuid
+  eventId         String             @map("event_id") @db.Uuid
+  userId          String             @map("user_id") @db.Uuid
+  status          RegistrationStatus @default(CONFIRMED)
+  waitlistPosition Int?              @map("waitlist_position")
+  registeredAt    DateTime           @default(now()) @map("registered_at") @db.Timestamptz(3)
+  cancelledAt     DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById   String?            @map("cancelled_by_id") @db.Uuid
+  promotedAt      DateTime?          @map("promoted_at") @db.Timestamptz(3)
+  source          RegistrationSource @default(SELF)
+  overrideReason  String?            @map("override_reason")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  attendance   AttendanceRecord?
+  certificates Certificate[]
+
+  @@index([eventId, status])
+  @@index([userId, status])
+  @@index([eventId, waitlistPosition])
+  @@map("event_registration")
+}
+
+enum AttendanceMethod {
+  QR_SCAN
+  MANUAL
+
+  @@map("attendance_method")
+}
+
+enum CertificateStatus {
+  ACTIVE
+  REVOKED
+
+  @@map("certificate_status")
+}
+
+/// One persistent identity pass per user. The QR carries a signed token of
+/// { userId, tokenVersion, issuedAt } and nothing else — no event data, no
+/// personal data. Only the version is persisted; the raw token never is.
+/// Rotation bumps tokenVersion, which every scan re-checks, so previously
+/// issued images die immediately.
+model QrPass {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  userId        String    @unique @map("user_id") @db.Uuid
+  tokenVersion  Int       @default(1) @map("token_version")
+  issuedAt      DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+  lastRotatedAt DateTime? @map("last_rotated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("qr_pass")
+}
+
+/// One row per registration, ever. The unique constraint on registrationId is
+/// what makes a repeated scan return "already checked in" instead of creating
+/// a second record — including when two operators scan at the same instant.
+model AttendanceRecord {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  registrationId    String           @unique @map("registration_id") @db.Uuid
+  eventId           String           @map("event_id") @db.Uuid
+  userId            String           @map("user_id") @db.Uuid
+  checkedInAt       DateTime         @default(now()) @map("checked_in_at") @db.Timestamptz(3)
+  checkedInById     String           @map("checked_in_by_id") @db.Uuid
+  method            AttendanceMethod
+  deviceHint        String?          @map("device_hint")
+  manualReason      String?          @map("manual_reason")
+  correctedAt       DateTime?        @map("corrected_at") @db.Timestamptz(3)
+  correctedById     String?          @map("corrected_by_id") @db.Uuid
+  correctionReason  String?          @map("correction_reason")
+
+  // Restrict, not Cascade: a registration with attendance but no certificate
+  // can otherwise be deleted, destroying the proof a person was in the room.
+  // Certificate.registration is already Restrict for the same reason — this
+  // makes the two consistent.
+  registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@index([eventId])
+  @@index([userId])
+  @@map("attendance_record")
+}
+
+/// Snapshots are taken at issuance so a later club rename or rebrand cannot
+/// retroactively alter an already-issued certificate. pdfUrl stays null until
+/// the document is first downloaded and rendered.
+model Certificate {
+  id                  String            @id @default(uuid(7)) @db.Uuid
+  registrationId      String            @map("registration_id") @db.Uuid
+  eventId             String            @map("event_id") @db.Uuid
+  userId              String            @map("user_id") @db.Uuid
+  serialNumber        String            @unique @map("serial_number")
+  verificationCode    String            @unique @map("verification_code")
+  status              CertificateStatus @default(ACTIVE)
+  holderNameSnapshot  String            @map("holder_name_snapshot")
+  eventTitleSnapshot  String            @map("event_title_snapshot")
+  clubNameSnapshot    String            @map("club_name_snapshot")
+  clubLogoSnapshotUrl String            @map("club_logo_snapshot_url")
+  issuedAt            DateTime          @default(now()) @map("issued_at") @db.Timestamptz(3)
+  pdfUrl              String?           @map("pdf_url")
+  revokedAt           DateTime?         @map("revoked_at") @db.Timestamptz(3)
+  revokedById         String?           @map("revoked_by_id") @db.Uuid
+  revokedReason       String?           @map("revoked_reason")
+
+  registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([eventId])
+  @@map("certificate")
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+
+  @@map("email_status")
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+
+  @@map("audit_outcome")
+}
+
+/// Written in the same transaction as the action that triggers it. dedupeKey
+/// is unique per user, so a retried action cannot notify twice. A failed email
+/// is recorded here and never rolls back the action that caused it.
+model Notification {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  type        String
+  payload     Json
+  dedupeKey   String      @map("dedupe_key")
+  readAt      DateTime?   @map("read_at") @db.Timestamptz(3)
+  emailStatus EmailStatus @default(PENDING) @map("email_status")
+  emailError  String?     @map("email_error")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+/// Append-only. Enforced by database triggers, not convention. Never contains
+/// a raw QR token, password, session token or refresh token.
+///
+/// There is deliberately NO foreign key on actorUserId. An audit row is an
+/// immutable historical fact, not a live reference: a FK would force either a
+/// cascade (destroying the trail) or a SET NULL (an UPDATE, which the
+/// append-only trigger must refuse). Storing the id verbatim keeps the trail
+/// correct and keeps the trigger absolute.
+model AuditLog {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String       @map("entity_type")
+  entityId    String       @map("entity_id")
+  outcome     AuditOutcome
+  reason      String?
+  before      Json?
+  after       Json?
+  requestId   String       @map("request_id")
+  ip          String?
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_log")
+}

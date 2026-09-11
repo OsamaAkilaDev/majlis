@@ -1,0 +1,29 @@
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
+import { ConfigService } from '@nestjs/config';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client';
+import type { Env } from '../config/env.schema';
+
+/**
+ * Prisma 7 requires a driver adapter. On Vercel the connection string points
+ * at Supabase's transaction pooler with connection_limit=1; pgBouncer's
+ * transaction mode still supports row locks, so SELECT ... FOR UPDATE and the
+ * capacity guarantee are unaffected.
+ */
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  constructor(config: ConfigService<Env, true>) {
+    super({
+      adapter: new PrismaPg({ connectionString: config.get('DATABASE_URL', { infer: true }) }),
+    });
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.$connect();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect();
+  }
+}

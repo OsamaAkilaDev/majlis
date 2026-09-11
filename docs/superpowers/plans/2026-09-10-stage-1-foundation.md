@@ -13,14 +13,18 @@
 ## Global Constraints
 
 - **Pin every version exactly.** Never `latest`. ⚠️ `prisma@latest` currently resolves to `8.0.0-rc.13`, a release candidate — the Prisma packages pin to **7.10.0**.
+- **Never pin a package published in the last 48 hours.** pnpm 11 enforces a default 24-hour `minimumReleaseAge` supply-chain policy and refuses the install outright. **Do not add a `minimumReleaseAgeExclude` entry to work around it** — that bypass exists for emergencies, not for chasing a fresh release. Pick an older patch instead. This is why `zod` pins to `4.5.4` rather than the newer `4.6.1`.
 - **CommonJS, not ESM.** Prisma 7's generator defaults to ESM; the generator block must set `moduleFormat = "cjs"`. Do not add `"type": "module"` to `apps/api/package.json`.
 - Prisma 7 requires a **driver adapter** (`@prisma/adapter-pg`) and an explicit **`output`** path on the generator. It no longer auto-runs `generate` or `seed`.
+- **Hand-written migration SQL survives later migrations.** Tasks 5–9 each append partial unique indexes and CHECK constraints that Prisma cannot express in `schema.prisma`. Verified empirically against `prisma.10.0`: a subsequent `migrate dev` does **not** treat them as drift and does **not** generate drops for them — the next migration contains only the genuinely new objects. Layering constraints this way is safe.
 - **IDs are UUID v7** via Prisma's `@default(uuid(7))` — generated client-side, so it works regardless of the server's Postgres version. Do not use Postgres 18's native `uuidv7()`; Supabase may be on an older major.
 - **All timestamps are `timestamptz`, stored UTC.** In Prisma: `@db.Timestamptz(3)`.
 - **No unbounded list queries anywhere**, in any code, ever.
 - **Never log or persist** a raw QR token, password, session token, or refresh token.
 - **English only.** No localisation fields.
 - Database object naming is `snake_case` (via `@@map` / `@map`); TypeScript is `camelCase`.
+- **Enums need `@@map` too.** Without one, Prisma emits a PascalCase Postgres type (`"UserStatus"`) sitting beside snake_case tables, and every raw-SQL reference to it then needs double-quoting to survive case-folding. Every enum in this plan carries an explicit `@@map`.
+- **Subjects get a foreign key; actors do not.** A `userId` naming the *subject* of a record (the member, the registrant, the certificate holder) declares a real `User` relation, so Postgres enforces referential integrity. A `*ById` field naming the *actor* who performed an action (`invitedById`, `decidedById`, `cancelledById`, `checkedInById`, `revokedById`, `createdById`, `auditLog.actorUserId`) is stored as a plain UUID with no FK — the historical record of who did something must outlive the account that did it. Deletes are `Restrict` except `QrPass` and `RefreshToken`, which are meaningless without their user and so `Cascade`.
 - Every task ends with a passing test run and a commit. Conventional commit messages.
 - Commit trailer for every commit: `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
 
@@ -100,16 +104,26 @@ Root `package.json`:
     "format": "prettier --write \"**/*.{ts,tsx,json,md,yaml,yml}\""
   },
   "devDependencies": {
-    "@eslint/js": "9.40.0",
-    "eslint": "9.40.0",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
-    "prettier": "3.6.2",
+    "prettier": "3.9.6",
     "turbo": "2.10.12",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.0"
+    "typescript-eslint": "8.70.0"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "nestjs-zod>@nestjs/common": "12",
+        "nestjs-zod>@nestjs/swagger": "12"
+      }
+    }
   }
 }
 ```
+
+`nestjs-zod@5.5.0` (added in Task 4) declares peers of `@nestjs/common ^10 || ^11` and `@nestjs/swagger ^7.4.2 || ^8 || ^11`, so NestJS 12 falls outside its stated range. The override records the deliberate judgement that the pipe and DTO surface is unchanged between Nest 11 and 12, rather than leaving an unexplained warning on every install. It is scoped to that one package — it does not relax peer checking generally.
 
 - [ ] **Step 2: Create the Turborepo pipeline**
 
@@ -274,7 +288,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "test": "vitest run",
     "test:integration": "echo \"no integration tests in contracts\""
   },
-  "dependencies": { "zod": "4.6.1" },
+  "dependencies": { "zod": "4.5.4" },
   "devDependencies": { "typescript": "5.9.3", "vitest": "5.0.0" }
 }
 ```
@@ -476,6 +490,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `scripts/bootstrap-db.sql`
 - Modify: root `package.json` — add a `db:check` script
 
+> Naming, because it has bitten once: `majlis` is a **role**, not a database. Exactly **two** databases exist — `majlis_dev` and `majlis_test`. Do not create a database called `majlis`.
+
 **Interfaces:**
 - Consumes: Task 1's root manifest.
 - Produces: a running Postgres 18 on `localhost:5432`, role `majlis`, databases `majlis_dev` and `majlis_test`, and these environment variables, which every later task depends on by these exact names: `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL`, `NODE_ENV`, `PORT`, `LOG_LEVEL`.
@@ -585,8 +601,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ## Task 4: Prisma wiring and the integration test harness
 
 **Files:**
-- Create: `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/vitest.config.ts`, `apps/api/vitest.integration.config.ts`
-- Create: `apps/api/prisma/schema.prisma`
+- Create: `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/tsconfig.build.json`, `apps/api/vitest.config.ts`, `apps/api/vitest.integration.config.ts`
+- Create: `apps/api/prisma/schema.prisma`, `apps/api/prisma.config.ts`
 - Create: `apps/api/test/db.ts`, `apps/api/test/global-setup.ts`
 - Test: `apps/api/test/harness.integration.test.ts`
 
@@ -607,20 +623,20 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
-    "start:dev": "nest start --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "start:dev": "node --watch -r @swc-node/register src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test prisma",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "dotenv -e ../../.env -c -- vitest run --config vitest.integration.config.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts"
+    "db:seed": "dotenv -e ../../.env -c -- tsx prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.0.1",
-    "@nestjs/config": "5.0.0",
+    "@nestjs/config": "12.0.0",
     "@nestjs/core": "12.0.1",
     "@nestjs/platform-express": "12.0.1",
     "@nestjs/swagger": "12.0.1",
@@ -630,19 +646,22 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "nestjs-pino": "5.1.0",
     "nestjs-zod": "5.5.0",
     "pg": "8.16.3",
-    "pino-http": "10.5.0",
+    "pino": "10.3.1",
+    "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "uuid": "13.0.0",
-    "zod": "4.6.1"
+    "zod": "4.5.4"
   },
   "devDependencies": {
-    "@nestjs/cli": "12.0.1",
     "@nestjs/testing": "12.0.1",
+    "@swc/core": "1.16.2",
+    "@swc-node/register": "1.12.1",
     "@types/express": "5.0.3",
     "@types/node": "22.14.0",
     "@types/pg": "8.15.6",
     "@types/supertest": "6.0.3",
+    "dotenv": "17.2.3",
     "dotenv-cli": "10.0.0",
     "pino-pretty": "13.1.2",
     "prisma": "7.10.0",
@@ -650,6 +669,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "unplugin-swc": "1.5.7",
+    "vite": "8.2.2",
     "vitest": "5.0.0"
   }
 }
@@ -673,16 +693,23 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 }
 ```
 
-`apps/api/nest-cli.json`:
+**There is deliberately no `@nestjs/cli` and no `nest-cli.json`.** `@nestjs/cli@12.0.0` is the only stable 12.x release and it is broken: it pins `ora@9.4.1`, which is ESM-only, and `@angular-devkit/schematics@22.1.5` `require()`s it in a cycle, so *any* invocation — even `nest --version` — dies with `ERR_REQUIRE_CYCLE_MODULE` on Node 22. Verified directly, not assumed. `@nestjs/cli@11.0.24` works (it uses the CJS `ora@5.4.1`) but mixes majors and drags in a large Angular-derived dependency tree this project never otherwise uses.
+
+So the build is plain `tsc`. Nothing here needs schematics or asset copying, and `tsc` is faster.
+
+**The dev loop cannot be `tsx`, though.** `tsx` transforms via esbuild, and esbuild does not implement `emitDecoratorMetadata` at all — so NestJS constructor injection silently breaks, with `ConfigService` arriving as `undefined` in `PrismaService`. Verified, not theorised. The dev runner is therefore `node --watch -r @swc-node/register`: SWC does implement decorator metadata, it reads `emitDecoratorMetadata` straight from `tsconfig.json`, and `@swc/core` is already a pinned dependency because Vitest uses it for the same reason.
+
+`apps/api/tsconfig.build.json`:
 
 ```json
 {
-  "$schema": "https://json.schemastore.org/nest-cli",
-  "collection": "@nestjs/schematics",
-  "sourceRoot": "src",
-  "compilerOptions": { "deleteOutDir": true }
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": "src" },
+  "exclude": ["dist", "node_modules", "test", "src/**/*.spec.ts", "prisma/seed.ts"]
 }
 ```
+
+`rootDir` is narrowed to `src` here deliberately. The base `tsconfig.json` uses `"."` so that tests and the seed are type-checked, but leaving it at `"."` for the build puts the entry point at `dist/src/main.js` instead of `dist/main.js`.
 
 Vitest must compile decorators, so both configs use the SWC plugin.
 
@@ -715,9 +742,11 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     globalSetup: ['./test/global-setup.ts'],
-    // The test database is shared state; a single fork keeps truncation honest.
+    // The test database is shared state; serializing file execution keeps
+    // truncation honest. Vitest 5 removed `poolOptions.forks.singleFork` —
+    // this top-level flag replaces it and forces maxWorkers to 1.
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,
   },
@@ -745,11 +774,37 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 ```
+
+**The datasource block carries no `url`.** Prisma 7 removed it — a `url` here is now a hard validation error (`P1012`), not a deprecation. Connection strings live in `prisma.config.ts`, created in the next step. This was verified against `prisma@7.10.0` directly, not assumed.
+
+- [ ] **Step 3b: Create the Prisma config**
+
+`apps/api/prisma.config.ts`:
+
+```ts
+import { config } from 'dotenv';
+import { defineConfig, env } from 'prisma/config';
+
+// The workspace keeps one .env at the repo root, two levels up from here.
+config({ path: '../../.env' });
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: { path: 'prisma/migrations' },
+  // Migrations use the DIRECT connection. The application uses the pooled
+  // one via the driver adapter in PrismaService — on Supabase those differ
+  // (:5432 direct, :6543 transaction pooler), and migrations cannot run
+  // through pgBouncer.
+  datasource: { url: env('DIRECT_URL') },
+});
+```
+
+Add `dotenv` to `apps/api` devDependencies: `"dotenv": "17.2.3"`.
+
+Because this file loads the root `.env` itself, the Prisma CLI no longer needs a `dotenv-cli` wrapper — `pnpm prisma migrate dev` works directly. `dotenv` does not override variables already present in the environment, so the test harness can still point migrations at `majlis_test` by setting `DIRECT_URL` in the child process.
 
 - [ ] **Step 4: Write the failing harness test**
 
@@ -780,11 +835,11 @@ describe('integration test harness', () => {
     expect(rows[0]!.db).toBe('majlis_test');
   });
 
-  it('has applied migrations, so the _prisma_migrations table exists', async () => {
-    const rows = await prisma.$queryRaw<{ n: bigint }[]>`
-      SELECT count(*) AS n FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = '_prisma_migrations'`;
-    expect(Number(rows[0]!.n)).toBe(1);
+  it('refuses a connection string that does not name the test database', async () => {
+    const saved = process.env.TEST_DATABASE_URL;
+    process.env.TEST_DATABASE_URL = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
+    expect(() => createTestPrisma()).toThrow(/non-test database/);
+    process.env.TEST_DATABASE_URL = saved;
   });
 
   it('truncateAll runs without error when there are no application tables yet', async () => {
@@ -844,11 +899,26 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
 
 ```ts
 import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { testDatabaseUrl } from './db';
 
-/** Applies all migrations to the test database once, before any test file runs. */
+/**
+ * Applies all migrations to the test database once, before any test file runs.
+ *
+ * `prisma migrate deploy` errors on an empty migrations directory, which is
+ * the state until the first schema task lands — so this is a no-op until
+ * there is something to apply.
+ */
 export default function setup(): void {
   const url = testDatabaseUrl();
+  const dir = join(__dirname, '..', 'prisma', 'migrations');
+
+  const hasMigrations =
+    existsSync(dir) && readdirSync(dir, { withFileTypes: true }).some((e) => e.isDirectory());
+
+  if (!hasMigrations) return;
+
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
@@ -857,18 +927,19 @@ export default function setup(): void {
 }
 ```
 
-- [ ] **Step 7: Install, generate the client, and create the baseline migration**
+- [ ] **Step 7: Install and generate the client**
 
 Vitest does not read `.env` on its own, which is why the `test:integration` script above is wrapped in `dotenv-cli`. The `-c` flag makes a missing `.env` non-fatal, so CI can supply the same variables through its own `env:` block instead.
+
+**Do not create a migration in this task.** There are no models yet, and Prisma will not produce an empty migration — which is exactly why `global-setup.ts` above skips `migrate deploy` while the migrations directory is empty. The first real migration arrives in Task 5.
 
 ```bash
 pnpm install
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name init --create-only
 pnpm prisma generate
 ```
 
-Expected: `prisma/migrations/<timestamp>_init/migration.sql` exists (empty, since there are no models yet) and `src/generated/prisma/` is populated.
+Expected: `src/generated/prisma/` is populated with a CommonJS client, and `prisma/migrations/` does not exist yet.
 
 - [ ] **Step 8: Run the test to verify it passes**
 
@@ -892,6 +963,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `apps/api/prisma/schema.prisma`
 - Create: `apps/api/prisma/migrations/<ts>_identity/migration.sql`
 - Test: `apps/api/test/schema/identity.integration.test.ts`
+
+> **`user` is a reserved word in Postgres.** `@@map("user")` produces a table literally named `user`, so every raw-SQL reference to it must be double-quoted — `ALTER TABLE "user"`, `TRUNCATE "public"."user"`. Unquoted `FROM user` resolves to the `user` keyword (an alias for `current_user`) and fails confusingly rather than obviously. Prisma quotes automatically, so this only affects hand-written migration SQL. The table stays singular for consistency with `club`, `event`, and the rest of the schema.
 
 **Interfaces:**
 - Consumes: Task 4's harness (`createTestPrisma`, `truncateAll`, `disconnectTestPrisma`).
@@ -997,11 +1070,15 @@ Append to `apps/api/prisma/schema.prisma`:
 enum UserStatus {
   ACTIVE
   SUSPENDED
+
+  @@map("user_status")
 }
 
 enum PlatformRole {
   STUDENT
   ADMIN
+
+  @@map("platform_role")
 }
 
 /// A person. There is no separate university identifier — the verified email
@@ -1048,7 +1125,7 @@ model RefreshToken {
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name identity --create-only
+pnpm prisma migrate dev --name identity --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -1063,7 +1140,7 @@ ALTER TABLE "user"
 Apply it and regenerate the client:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
@@ -1238,6 +1315,15 @@ describe('ClubMembership — one open membership per (user, club)', () => {
     await expect(join(club.id, user.id, 'PENDING')).rejects.toMatchObject({ code: 'P2002' });
   });
 
+  it('scopes the rule per user — two students may both hold open memberships in one club', async () => {
+    // Without this, a (club_id)-only index would pass every other test in
+    // this block while capping each club at one member platform-wide.
+    const club = await aClub();
+    const [a, b] = [await aUser(), await aUser()];
+    await join(club.id, a.id, 'ACTIVE');
+    await expect(join(club.id, b.id, 'ACTIVE')).resolves.toBeDefined();
+  });
+
   it('allows re-joining after LEFT, and keeps the historic row', async () => {
     const club = await aClub();
     const user = await aUser();
@@ -1262,6 +1348,8 @@ enum ClubStatus {
   ACTIVE
   SUSPENDED
   ARCHIVED
+
+  @@map("club_status")
 }
 
 enum MembershipPolicy {
@@ -1269,6 +1357,8 @@ enum MembershipPolicy {
   APPROVAL_REQUIRED
   INVITE_ONLY
   CLOSED
+
+  @@map("membership_policy")
 }
 
 enum ClubRole {
@@ -1277,6 +1367,8 @@ enum ClubRole {
   MARKETING
   CTO
   OPERATIONS
+
+  @@map("club_role")
 }
 
 enum AppointmentStatus {
@@ -1285,6 +1377,8 @@ enum AppointmentStatus {
   DECLINED
   EXPIRED
   ENDED
+
+  @@map("appointment_status")
 }
 
 enum MembershipStatus {
@@ -1293,6 +1387,8 @@ enum MembershipStatus {
   REJECTED
   LEFT
   REMOVED
+
+  @@map("membership_status")
 }
 
 model Department {
@@ -1352,6 +1448,7 @@ model ClubTeamAppointment {
   createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([clubId, status])
   @@index([userId, status])
@@ -1371,6 +1468,7 @@ model ClubMembership {
   decisionReason String?          @map("decision_reason")
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([clubId, status])
   @@index([userId, status])
@@ -1378,11 +1476,18 @@ model ClubMembership {
 }
 ```
 
+Add the matching back-relations to `User` (modify the existing model):
+
+```prisma
+  memberships  ClubMembership[]
+  appointments ClubTeamAppointment[]
+```
+
 - [ ] **Step 4: Generate the migration and add the partial unique indexes**
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name organisation --create-only
+pnpm prisma migrate dev --name organisation --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -1406,14 +1511,14 @@ CREATE UNIQUE INDEX "club_membership_one_open_per_user"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/organisation.integration.test.ts`
-Expected: PASS — 12 tests.
+Expected: PASS — 13 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1528,6 +1633,18 @@ describe('Event', () => {
     ).rejects.toThrow(/event_capacity_bounds/);
   });
 
+  it('rejects an event created with zero capacity', async () => {
+    // capacity > 0 is the third conjunct of event_capacity_bounds and is
+    // otherwise untested â both other capacity tests only vary the counter.
+    await expect(anEvent({ capacity: 0 })).rejects.toThrow(/event_capacity_bounds/);
+  });
+
+  it('allows registration to close exactly when the event ends', async () => {
+    // The predicate is registration_closes_at <= ends_at. This boundary case
+    // is what distinguishes it from a stricter <.
+    await expect(anEvent({ registrationClosesAt: at(26), endsAt: at(26) })).resolves.toBeDefined();
+  });
+
   it('rejects a negative confirmed count', async () => {
     const event = await anEvent();
     await expect(
@@ -1571,6 +1688,22 @@ describe('EventRegistration — one open registration per (user, event)', () => 
   async function register(eventId: string, userId: string, status: 'CONFIRMED' | 'WAITLISTED' | 'CANCELLED' | 'REMOVED' | 'NO_SHOW') {
     return prisma.eventRegistration.create({ data: { eventId, userId, status } });
   }
+
+  it('scopes the rule per user and per event', async () => {
+    // Without this, an index on (event_id) alone would cap each event at one
+    // registrant, and one on (user_id) alone would let a student register
+    // only once ever — both would pass every other test in this block.
+    const event = await anEvent();
+    const [a, b] = [await aUser(), await aUser()];
+    await register(event.id, a.id, 'CONFIRMED');
+
+    // a different student may register for the same event
+    await expect(register(event.id, b.id, 'CONFIRMED')).resolves.toBeDefined();
+
+    // and the same student may register for a different event
+    const other = await anEvent();
+    await expect(register(other.id, a.id, 'CONFIRMED')).resolves.toBeDefined();
+  });
 
   it('rejects a second CONFIRMED registration', async () => {
     const event = await anEvent();
@@ -1647,18 +1780,24 @@ enum EventStatus {
   COMPLETED
   CERTIFIED
   CANCELLED
+
+  @@map("event_status")
 }
 
 /// Extensible. CHECK_IN_AND_OUT and MINIMUM_DURATION are a later additive
 /// stage; no columns for them are added now.
 enum AttendancePolicy {
   CHECK_IN_ONLY
+
+  @@map("attendance_policy")
 }
 
 enum EventResponsibility {
   EVENT_LEAD
   OPERATIONS
   MARKETING
+
+  @@map("event_responsibility")
 }
 
 enum RegistrationStatus {
@@ -1669,11 +1808,15 @@ enum RegistrationStatus {
   ATTENDED
   NO_SHOW
   REMOVED
+
+  @@map("registration_status")
 }
 
 enum RegistrationSource {
   SELF
   ADMIN_OVERRIDE
+
+  @@map("registration_source")
 }
 
 /// A Lead publishing an event makes it live immediately — there is no approval
@@ -1734,6 +1877,7 @@ model EventAssignment {
   createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([eventId, userId, responsibility])
   @@index([userId])
@@ -1754,6 +1898,7 @@ model EventRegistration {
   overrideReason  String?            @map("override_reason")
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([eventId, status])
   @@index([userId, status])
@@ -1762,11 +1907,24 @@ model EventRegistration {
 }
 ```
 
+Add the matching back-relations to `User` (modify the existing model):
+
+```prisma
+  registrations    EventRegistration[]
+  eventAssignments EventAssignment[]
+```
+
+And to `Club` — Prisma requires the other side of the `Event.club` relation, and validation fails without it:
+
+```prisma
+  events Event[]
+```
+
 - [ ] **Step 4: Generate the migration and add the CHECK constraints and partial index**
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name events --create-only
+pnpm prisma migrate dev --name events --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -1803,14 +1961,14 @@ CREATE UNIQUE INDEX "event_registration_one_open_per_user"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/events.integration.test.ts`
-Expected: PASS — 17 tests.
+Expected: PASS — 20 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1922,9 +2080,17 @@ describe('QrPass', () => {
   it('stores no token column at all, only the version', async () => {
     const cols = await prisma.$queryRaw<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'qr_pass'`;
-    const names = cols.map((c) => c.column_name);
-    expect(names).toContain('token_version');
-    expect(names.some((n) => n.includes('token') && n !== 'token_version')).toBe(false);
+    // Asserts the EXACT column set rather than matching on the substring
+    // "token". A raw secret named `signature`, `qr_secret` or `raw_code`
+    // would sail past a substring check, and this test is the only
+    // automated defence of the no-raw-token guarantee.
+    expect(cols.map((c) => c.column_name).sort()).toEqual([
+      'id',
+      'issued_at',
+      'last_rotated_at',
+      'token_version',
+      'user_id',
+    ]);
   });
 });
 
@@ -1943,6 +2109,62 @@ describe('AttendanceRecord', () => {
     });
     expect(record.method).toBe('QR_SCAN');
     expect(record.checkedInAt).toBeInstanceOf(Date);
+  });
+
+  it('scopes attendance per registration, not per event — a queue of students all check in', async () => {
+    // The catastrophic failure this guards against: a unique index on
+    // event_id instead of registration_id would pass every other test here
+    // while allowing exactly one check-in per event, ever.
+    const { event, user, registration } = await aRegistration();
+    const scanner = await aUser();
+    await prisma.attendanceRecord.create({
+      data: { registrationId: registration.id, eventId: event.id, userId: user.id, checkedInById: scanner.id, method: 'QR_SCAN' },
+    });
+
+    const second = await aUser();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: event.id, userId: second.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.attendanceRecord.create({
+        data: { registrationId: secondReg.id, eventId: event.id, userId: second.id, checkedInById: scanner.id, method: 'QR_SCAN' },
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('scopes attendance per registration, not per user — one student attends two events', async () => {
+    // The mirror image of the event-scoping catastrophe: a unique index on
+    // user_id would let a student check in to exactly one event for their
+    // entire time at the university. Every other test here passes either way.
+    const first = await aRegistration();
+    const scanner = await aUser();
+    await prisma.attendanceRecord.create({
+      data: {
+        registrationId: first.registration.id,
+        eventId: first.event.id,
+        userId: first.user.id,
+        checkedInById: scanner.id,
+        method: 'QR_SCAN',
+      },
+    });
+
+    const second = await aRegistration();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: second.event.id, userId: first.user.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.attendanceRecord.create({
+        data: {
+          registrationId: secondReg.id,
+          eventId: second.event.id,
+          userId: first.user.id,
+          checkedInById: scanner.id,
+          method: 'QR_SCAN',
+        },
+      }),
+    ).resolves.toBeDefined();
   });
 
   it('makes a double check-in impossible, even from two simultaneous scanners', async () => {
@@ -1983,6 +2205,24 @@ describe('Certificate', () => {
     expect(cert.pdfUrl).toBeNull(); // rendered lazily on first download
   });
 
+  it('scopes certificates per registration — two attendees of one event each get one', async () => {
+    const { event, user, registration } = await aRegistration();
+    await prisma.certificate.create({
+      data: certData({ registrationId: registration.id, eventId: event.id, userId: user.id }),
+    });
+
+    const second = await aUser();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: event.id, userId: second.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.certificate.create({
+        data: certData({ registrationId: secondReg.id, eventId: event.id, userId: second.id }),
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('rejects a second ACTIVE certificate for one registration, so re-running issuance is safe', async () => {
     const { event, user, registration } = await aRegistration();
     const base = { registrationId: registration.id, eventId: event.id, userId: user.id };
@@ -2001,6 +2241,35 @@ describe('Certificate', () => {
     });
     await expect(prisma.certificate.create({ data: certData(base) })).resolves.toBeDefined();
     expect(await prisma.certificate.count()).toBe(2);
+  });
+
+  it('rejects a duplicate serial number', async () => {
+    // serial_number is the certificate's human-facing identifier and is
+    // @unique exactly as verification_code is; only one of the two symmetric
+    // guarantees was covered.
+    const a = await aRegistration();
+    const b = await aRegistration();
+    const serial = 'MJL-SHARED-0001';
+
+    await prisma.certificate.create({
+      data: certData({
+        registrationId: a.registration.id,
+        eventId: a.event.id,
+        userId: a.user.id,
+        serialNumber: serial,
+      }),
+    });
+
+    await expect(
+      prisma.certificate.create({
+        data: certData({
+          registrationId: b.registration.id,
+          eventId: b.event.id,
+          userId: b.user.id,
+          serialNumber: serial,
+        }),
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
   });
 
   it('rejects a duplicate verification code', async () => {
@@ -2032,11 +2301,15 @@ Append to `apps/api/prisma/schema.prisma`:
 enum AttendanceMethod {
   QR_SCAN
   MANUAL
+
+  @@map("attendance_method")
 }
 
 enum CertificateStatus {
   ACTIVE
   REVOKED
+
+  @@map("certificate_status")
 }
 
 /// One persistent identity pass per user. The QR carries a signed token of
@@ -2050,6 +2323,8 @@ model QrPass {
   tokenVersion  Int       @default(1) @map("token_version")
   issuedAt      DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
   lastRotatedAt DateTime? @map("last_rotated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("qr_pass")
 }
@@ -2072,6 +2347,8 @@ model AttendanceRecord {
   correctionReason  String?          @map("correction_reason")
 
   registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
 
   @@index([eventId])
   @@index([userId])
@@ -2100,6 +2377,8 @@ model Certificate {
   revokedReason       String?           @map("revoked_reason")
 
   registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
 
   @@index([userId, status])
   @@index([eventId])
@@ -2110,7 +2389,22 @@ model Certificate {
 Add the back-relations to `EventRegistration` (modify the existing model):
 
 ```prisma
-  attendance  AttendanceRecord?
+  attendance   AttendanceRecord?
+  certificates Certificate[]
+```
+
+And to `User`:
+
+```prisma
+  qrPass       QrPass?
+  attendance   AttendanceRecord[]
+  certificates Certificate[]
+```
+
+And to `Event`:
+
+```prisma
+  attendance   AttendanceRecord[]
   certificates Certificate[]
 ```
 
@@ -2118,7 +2412,7 @@ Add the back-relations to `EventRegistration` (modify the existing model):
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name attendance_certificates --create-only
+pnpm prisma migrate dev --name attendance_certificates --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -2135,14 +2429,14 @@ CREATE UNIQUE INDEX "certificate_one_active_per_registration"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/attendance.integration.test.ts`
-Expected: PASS — 9 tests.
+Expected: PASS — 13 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2214,8 +2508,11 @@ async function anAuditRow() {
 describe('AuditLog', () => {
   it('stores before and after snapshots as JSON', async () => {
     const row = await anAuditRow();
-    expect(row.before).toEqual({ status: 'ACTIVE' });
-    expect(row.after).toEqual({ status: 'SUSPENDED' });
+    // Re-read rather than trusting the object create() echoes back, so this
+    // proves the JSON was actually persisted.
+    const persisted = await prisma.auditLog.findUniqueOrThrow({ where: { id: row.id } });
+    expect(persisted.before).toEqual({ status: 'ACTIVE' });
+    expect(persisted.after).toEqual({ status: 'SUSPENDED' });
   });
 
   it('records a denial as well as a success', async () => {
@@ -2249,6 +2546,24 @@ describe('AuditLog', () => {
     await anAuditRow();
     await expect(prisma.$executeRawUnsafe(`UPDATE "audit_log" SET "reason" = 'x'`))
       .rejects.toThrow(/append-only/i);
+  });
+
+  it('rejects an UPDATE matching no rows — proving the trigger is statement-level', async () => {
+    // The existing bulk-UPDATE test would also pass against a FOR EACH ROW
+    // trigger, since it touches a real row. Only a zero-row statement
+    // distinguishes the two, and that is the form a careless bulk migration
+    // takes.
+    await anAuditRow();
+    await expect(
+      prisma.$executeRawUnsafe(`UPDATE "audit_log" SET "reason" = 'x' WHERE 1 = 0`),
+    ).rejects.toThrow(/append-only/i);
+  });
+
+  it('rejects a DELETE matching no rows, for the same reason', async () => {
+    await anAuditRow();
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM "audit_log" WHERE 1 = 0`),
+    ).rejects.toThrow(/append-only/i);
   });
 
   it('survives its actor being deleted, because the trail outlives the account', async () => {
@@ -2289,6 +2604,18 @@ describe('Notification', () => {
     await expect(prisma.notification.create({ data: { ...base, userId: b.id } })).resolves.toBeDefined();
   });
 
+  it('cascades away when its user is deleted', async () => {
+    // The AuditLog half of this contrast is exercised above; without this the
+    // cascade is only ever verified by reading the migration SQL.
+    const user = await aUser();
+    await prisma.notification.create({
+      data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: `k-${uniq()}` },
+    });
+
+    await prisma.user.delete({ where: { id: user.id } });
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
   it('starts unread with a PENDING email status', async () => {
     const user = await aUser();
     const n = await prisma.notification.create({
@@ -2315,11 +2642,15 @@ enum EmailStatus {
   SENT
   FAILED
   SKIPPED
+
+  @@map("email_status")
 }
 
 enum AuditOutcome {
   SUCCESS
   DENIED
+
+  @@map("audit_outcome")
 }
 
 /// Written in the same transaction as the action that triggers it. dedupeKey
@@ -2382,7 +2713,7 @@ Add the back-relation to `User` (modify the existing model). Note there is **no*
 
 ```bash
 cd apps/api
-pnpm dotenv -e ../../.env -- prisma migrate dev --name notifications_audit --create-only
+pnpm prisma migrate dev --name notifications_audit --create-only
 ```
 
 Append to the generated `migration.sql`:
@@ -2410,14 +2741,14 @@ CREATE TRIGGER "audit_log_no_delete"
 Apply and regenerate:
 
 ```bash
-pnpm dotenv -e ../../.env -- prisma migrate dev
+pnpm prisma migrate dev
 pnpm prisma generate
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/schema/audit.integration.test.ts`
-Expected: PASS — 10 tests.
+Expected: PASS — 13 tests.
 
 - [ ] **Step 6: Run the whole integration suite to confirm nothing regressed**
 
@@ -2456,6 +2787,37 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   - `AppModule` — the root module
   - `GET /api/v1/health` returning `{ status: 'ok'; database: 'up'; uptimeSeconds: number }`
 - The global route prefix is `api/v1`. Every later controller relies on this being set in `main.ts`, not repeated per controller.
+
+- [ ] **Step 0: Point integration tests at the test database, before anything imports**
+
+`@nestjs/config`'s `forRoot()` reads the environment, validates it, and caches the result **at import time** — the moment `config.module.ts` is first imported, which happens as soon as a test file imports `AppModule`. Setting `process.env.DATABASE_URL` inside `beforeAll` is therefore too late: the value is already captured, and `PrismaService` would connect to `majlis_dev`. Integration tests would silently read and write the development database, sailing straight past the `testDatabaseUrl()` guard, and every test would still pass.
+
+Fix it once, globally, with a Vitest setup file that runs before any test module is imported.
+
+Create `apps/api/test/setup-env.ts`:
+
+```ts
+// Runs before any test file is imported — which matters, because
+// @nestjs/config captures and validates the environment at import time.
+// Assigning these inside a beforeAll hook would be too late and the API
+// under test would quietly connect to the development database.
+if (!process.env.TEST_DATABASE_URL) {
+  throw new Error('TEST_DATABASE_URL is not set. Copy .env.example to .env.');
+}
+
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+process.env.DIRECT_URL = process.env.TEST_DATABASE_URL;
+```
+
+Then register it in `apps/api/vitest.integration.config.ts`, alongside the existing `globalSetup`:
+
+```ts
+    setupFiles: ['./test/setup-env.ts'],
+```
+
+`dotenv` does not overwrite variables already present in the environment, so these assignments survive `ConfigModule`'s own `.env` loading.
+
+Verify it works before moving on: `pnpm --filter @majlis/api test:integration` must still be green, and adding a temporary `console.error(process.env.DATABASE_URL)` to a test must print the `majlis_test` URL. Remove the temporary line afterwards.
 
 - [ ] **Step 1: Write the failing environment test**
 
@@ -2550,7 +2912,86 @@ export const ConfigModule = NestConfigModule.forRoot({
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `pnpm --filter @majlis/api test`
-Expected: PASS — 6 tests.
+Expected: PASS — 6 tests (the redaction tests arrive in Step 4b).
+
+- [ ] **Step 4b: Make log redaction provable**
+
+Redaction is a security control, not formatting: a missing or mis-keyed path means a session cookie or password in the logs. Put the paths in their own module so a test can exercise them against real pino output.
+
+`apps/api/src/config/log-redaction.ts`:
+
+```ts
+/**
+ * Paths stripped from every log line. A missing entry here means a secret in
+ * the logs, so this is a security control rather than formatting.
+ *
+ * The shapes match what pino-http actually serialises: request headers live
+ * under `req.headers`, and response headers come from `res.getHeaders()`.
+ */
+export const LOG_REDACT_PATHS = [
+  'req.headers.cookie',
+  'req.headers.authorization',
+  'req.body.password',
+  'req.body.token',
+  'res.headers["set-cookie"]',
+] as const;
+```
+
+`apps/api/src/config/log-redaction.spec.ts`:
+
+```ts
+import pino from 'pino';
+import { Writable } from 'node:stream';
+import { describe, expect, it } from 'vitest';
+import { LOG_REDACT_PATHS } from './log-redaction';
+
+describe('LOG_REDACT_PATHS', () => {
+  it('covers every path a secret is known to travel', () => {
+    // Pinned explicitly: silently dropping a path is exactly the regression
+    // this guards against, and a laxer assertion would not notice.
+    expect([...LOG_REDACT_PATHS]).toEqual([
+      'req.headers.cookie',
+      'req.headers.authorization',
+      'req.body.password',
+      'req.body.token',
+      'res.headers["set-cookie"]',
+    ]);
+  });
+
+  it('actually strips those values from an emitted log line', () => {
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+
+    logger.info(
+      {
+        req: {
+          headers: {
+            cookie: 'majlis_session=LEAKED',
+            authorization: 'Bearer LEAKED',
+          },
+          body: { password: 'LEAKED', token: 'LEAKED' },
+        },
+        res: { headers: { 'set-cookie': 'majlis_session=LEAKED' } },
+      },
+      'request completed',
+    );
+
+    const output = lines.join('');
+    expect(output).toContain('request completed');
+    expect(output).not.toContain('LEAKED');
+  });
+});
+```
+
+Run: `pnpm --filter @majlis/api test`
+Expected: PASS — 8 tests (6 env + 2 redaction).
 
 - [ ] **Step 5: Write the failing health test**
 
@@ -2566,8 +3007,6 @@ import { AppModule } from '../src/app.module';
 let app: INestApplication;
 
 beforeAll(async () => {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DIRECT_URL = process.env.TEST_DATABASE_URL;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
@@ -2694,6 +3133,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
 import { ConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
+import { LOG_REDACT_PATHS } from './config/log-redaction';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -2710,17 +3150,9 @@ import { PrismaModule } from './prisma/prisma.module';
             res.setHeader('x-request-id', id);
             return id;
           },
-          // Nothing secret ever reaches a log line.
-          redact: {
-            paths: [
-              'req.headers.cookie',
-              'req.headers.authorization',
-              'req.body.password',
-              'req.body.token',
-              'res.headers["set-cookie"]',
-            ],
-            remove: true,
-          },
+          // Nothing secret ever reaches a log line. The paths live in their
+          // own module so they can be tested against real pino output.
+          redact: { paths: [...LOG_REDACT_PATHS], remove: true },
           transport:
             config.get('NODE_ENV', { infer: true }) === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true } }
@@ -2869,6 +3301,28 @@ describe('TransactionHost', () => {
     expect(await prisma.auditLog.count()).toBe(0);
   });
 
+  it('returns the callback result, from both the opening and the joining path', async () => {
+    // run() has two distinct return paths — one that opens a transaction and
+    // one that joins an ambient one. Every other test here asserts only on
+    // database side effects, so a regression that awaited the callback but
+    // discarded its value would pass all of them.
+    expect(await host.run(async () => 'outer')).toBe('outer');
+
+    const joined = await host.run(async () => host.run(async () => 'inner'));
+    expect(joined).toBe('inner');
+  });
+
+  it('restores the base client once run() resolves', async () => {
+    // Proves the AsyncLocalStorage scope does not leak past the callback.
+    expect(host.tx).toBe(prisma);
+
+    await host.run(async () => {
+      expect(host.tx).not.toBe(prisma);
+    });
+
+    expect(host.tx).toBe(prisma);
+  });
+
   it('isolates concurrent transactions from each other', async () => {
     const results = await Promise.allSettled([
       host.run(async () => {
@@ -2899,14 +3353,15 @@ Expected: FAIL — cannot resolve `../src/prisma/transaction.host`.
 ```ts
 import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { PrismaClient } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
 
-/** A Prisma client scoped to a transaction: the connection-level methods are gone. */
-export type TransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'
->;
+/**
+ * A Prisma client scoped to a transaction: the connection-level methods are
+ * gone. This is Prisma's own type rather than a hand-rolled `Omit`, so it
+ * stays exactly in step with whatever `$transaction` actually hands back.
+ */
+export type TransactionClient = Prisma.TransactionClient;
 
 /**
  * Carries the current transaction implicitly through the call stack.
@@ -2938,7 +3393,7 @@ export class TransactionHost {
     const ambient = this.storage.getStore();
     if (ambient) return fn();
 
-    return this.prisma.$transaction((tx) => this.storage.run(tx as TransactionClient, fn));
+    return this.prisma.$transaction((tx) => this.storage.run(tx, fn));
   }
 }
 ```
@@ -2963,7 +3418,7 @@ export class PrismaModule {}
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/transaction-host.integration.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS — 7 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2985,7 +3440,6 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `apps/api/src/common/problem/domain-error.ts`, `src/common/problem/problem.filter.ts`
 - Create: `apps/api/src/common/openapi.ts`
 - Modify: `apps/api/src/main.ts` — register the pipe, the filter, and OpenAPI
-- Modify: `apps/api/src/health/health.controller.ts` — add a probe route used only by tests
 - Test: `apps/api/src/common/problem/problem.filter.spec.ts`, `test/problem.integration.test.ts`
 
 **Interfaces:**
@@ -3004,6 +3458,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```ts
 import { BadRequestException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import { ZodValidationException } from 'nestjs-zod';
 import { ZodError, z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError } from './domain-error';
 import { ProblemExceptionFilter } from './problem.filter';
@@ -3072,6 +3527,25 @@ describe('ProblemExceptionFilter', () => {
         expect.objectContaining({ path: 'capacity' }),
       ]),
     );
+  });
+
+  it("maps nestjs-zod's ZodValidationException to 400 WITH field errors", () => {
+    // This is the shape the global pipe actually throws. Because it extends
+    // BadRequestException, a filter checking HttpException first would return
+    // a bare 400 and silently drop every field error.
+    const schema = z.object({ title: z.string() });
+    let inner: ZodError;
+    try {
+      schema.parse({});
+      throw new Error('should not reach');
+    } catch (e) {
+      inner = e as ZodError;
+    }
+
+    const { body, status } = invokeFilter(new ZodValidationException(inner!));
+    expect(status).toBe(400);
+    expect(body.title).toBe('Validation failed');
+    expect(body.errors).toEqual([expect.objectContaining({ path: 'title' })]);
   });
 
   it('maps a Prisma unique-violation to 409, not 500 — a lost race is expected, not a fault', () => {
@@ -3184,6 +3658,7 @@ import {
 } from '@nestjs/common';
 import type { ProblemDetails, ProblemFieldError } from '@majlis/contracts';
 import { Logger } from 'nestjs-pino';
+import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 import { DomainError } from './domain-error';
 
@@ -3192,6 +3667,20 @@ const PROBLEM_BASE = 'https://majlis.app/problems';
 /** Narrow structural check — avoids importing Prisma error classes here. */
 function isPrismaError(e: unknown): e is { code: string; message: string } {
   return typeof e === 'object' && e !== null && typeof (e as { code?: unknown }).code === 'string';
+}
+
+/**
+ * Validation failures reach us two ways: a bare ZodError from code that parses
+ * a schema directly, and a ZodValidationException from nestjs-zod's global
+ * pipe, which wraps one. Both must produce the same field-level response.
+ */
+function asZodError(e: unknown): ZodError | undefined {
+  if (e instanceof ZodError) return e;
+  if (e instanceof ZodValidationException) {
+    const inner = e.getZodError();
+    if (inner instanceof ZodError) return inner;
+  }
+  return undefined;
 }
 
 @Catch()
@@ -3229,8 +3718,12 @@ export class ProblemExceptionFilter implements ExceptionFilter {
       };
     }
 
-    if (exception instanceof ZodError) {
-      const errors: ProblemFieldError[] = exception.issues.map((i) => ({
+    // MUST come before the HttpException branch: nestjs-zod's
+    // ZodValidationException extends BadRequestException, so checking
+    // HttpException first would swallow it and drop every field error.
+    const zodError = asZodError(exception);
+    if (zodError) {
+      const errors: ProblemFieldError[] = zodError.issues.map((i) => ({
         path: i.path.join('.'),
         message: i.message,
         code: i.code,
@@ -3309,7 +3802,7 @@ export class ProblemExceptionFilter implements ExceptionFilter {
 - [ ] **Step 5: Run the unit test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test`
-Expected: PASS — 16 tests (6 env + 10 filter).
+Expected: PASS — 21 tests (6 env + 2 redaction + 2 prefix + 11 filter).
 
 - [ ] **Step 6: Write the failing integration test**
 
@@ -3327,8 +3820,6 @@ import { ProblemExceptionFilter } from '../src/common/problem/problem.filter';
 let app: INestApplication;
 
 beforeAll(async () => {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DIRECT_URL = process.env.TEST_DATABASE_URL;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
@@ -3367,6 +3858,50 @@ describe('error responses', () => {
 Run: `pnpm --filter @majlis/api test:integration test/problem.integration.test.ts`
 Expected: FAIL — the 404 body is Nest's default shape, missing `requestId` and the problem content type.
 
+- [ ] **Step 7b: Put the route prefix behind a guarded constant**
+
+The global prefix **must** carry a leading slash, and this is not cosmetic. `@nestjs/core`'s `registerNotFoundHandler` and `registerExceptionHandler` skip the `addLeadingSlash` normalisation that `registerRouter` applies, so a prefix of `'api/v1'` silently routes 404s and unhandled errors *around every exception filter* — they come back in Nest's default shape instead of Problem Details, and nothing fails.
+
+A comment is not enough protection for a trap this quiet, and tests that set their own prefix string can drift from what `main.ts` actually does. Share one constant and assert the property.
+
+`apps/api/src/config/api-prefix.ts`:
+
+```ts
+/**
+ * The global route prefix.
+ *
+ * The leading slash is load-bearing. @nestjs/core's registerNotFoundHandler
+ * and registerExceptionHandler skip the addLeadingSlash normalisation that
+ * registerRouter applies, so 'api/v1' would route 404s and unhandled errors
+ * around every exception filter — returning Nest's default error shape
+ * instead of Problem Details, silently.
+ */
+export const API_PREFIX = '/api/v1';
+```
+
+`apps/api/src/config/api-prefix.spec.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { API_PREFIX } from './api-prefix';
+
+describe('API_PREFIX', () => {
+  it('keeps the leading slash the 404 and error paths depend on', () => {
+    expect(API_PREFIX.startsWith('/')).toBe(true);
+  });
+
+  it('is the versioned prefix every route is served under', () => {
+    expect(API_PREFIX).toBe('/api/v1');
+  });
+});
+```
+
+Then use it everywhere the prefix is set — `main.ts` and **both** integration test files — so no test app is configured differently from production:
+
+```ts
+app.setGlobalPrefix(API_PREFIX);
+```
+
 - [ ] **Step 8: Wire the filter, the Zod pipe, and OpenAPI into main.ts**
 
 `apps/api/src/common/openapi.ts`:
@@ -3374,15 +3909,17 @@ Expected: FAIL — the 404 body is Nest's default shape, missing `requestId` and
 ```ts
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { patchNestJsSwagger } from 'nestjs-zod';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 
 /**
  * The OpenAPI document is generated from the Zod-derived DTOs, never written
- * by hand. patchNestJsSwagger teaches @nestjs/swagger how to read a ZodDto.
+ * by hand.
+ *
+ * nestjs-zod v5 relies on Zod 4's native JSON Schema output, so there is no
+ * `patchNestJsSwagger` any more — it was removed in v5. `cleanupOpenApiDoc`
+ * post-processes the generated document instead.
  */
 export function setupOpenApi(app: INestApplication): void {
-  patchNestJsSwagger();
-
   const config = new DocumentBuilder()
     .setTitle('Majlis API')
     .setDescription('University club and event management.')
@@ -3390,9 +3927,12 @@ export function setupOpenApi(app: INestApplication): void {
     .addCookieAuth('majlis_session')
     .build();
 
-  SwaggerModule.setup('api/v1/docs', app, SwaggerModule.createDocument(app, config));
+  const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup('api/v1/docs', app, document);
 }
 ```
+
+> **Peer-range caveat, verified against the published package.** `nestjs-zod@5.5.0` declares peers of `@nestjs/common ^10 || ^11` and `@nestjs/swagger ^7.4.2 || ^8 || ^11` — it does **not** list NestJS 12. The root `package.json` carries a `pnpm.peerDependencyRules.allowedVersions` override permitting 12, on the judgement that the `PipeTransform` and DTO-class surface did not change between Nest 11 and 12. If `ZodValidationPipe` or `createZodDto` actually misbehaves at runtime, do **not** downgrade NestJS. Fall back to dropping `nestjs-zod`: a `ZodValidationPipe` is roughly 25 lines implementing `PipeTransform`, and Zod 4 ships `z.toJSONSchema()` natively for the OpenAPI side. Say in your report which path you took.
 
 Update `apps/api/src/main.ts`:
 
@@ -3403,6 +3943,7 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
+import { API_PREFIX } from './config/api-prefix';
 import { setupOpenApi } from './common/openapi';
 import { ProblemExceptionFilter } from './common/problem/problem.filter';
 import type { Env } from './config/env.schema';
@@ -3412,7 +3953,7 @@ async function bootstrap(): Promise<void> {
   const logger = app.get(Logger);
 
   app.useLogger(logger);
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_PREFIX);
   app.useGlobalPipes(new ZodValidationPipe());
   app.useGlobalFilters(new ProblemExceptionFilter(logger));
   app.enableShutdownHooks();
@@ -3467,7 +4008,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ```ts
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { seed } from '../prisma/seed';
+import { assertSafeToSeed, seed } from '../prisma/seed';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
 const prisma = createTestPrisma();
@@ -3496,6 +4037,45 @@ describe('seed', () => {
     expect(await prisma.clubTeamAppointment.count({ where: { clubId: club.id, role: 'OPERATIONS', status: 'ACTIVE' } })).toBe(1);
   });
 
+  it('appoints the right people to those roles, not merely the right number', async () => {
+    // Counting by role alone passes even if the two people were swapped —
+    // the right number of wrong rows.
+    await seed(prisma);
+    const club = await prisma.club.findFirstOrThrow();
+    const lead = await prisma.user.findUniqueOrThrow({ where: { email: 'lead@uni.ac.ae' } });
+    const ops = await prisma.user.findUniqueOrThrow({ where: { email: 'ops@uni.ac.ae' } });
+
+    await expect(
+      prisma.clubTeamAppointment.findFirstOrThrow({
+        where: { clubId: club.id, userId: lead.id, role: 'LEAD', status: 'ACTIVE' },
+      }),
+    ).resolves.toBeDefined();
+
+    await expect(
+      prisma.clubTeamAppointment.findFirstOrThrow({
+        where: { clubId: club.id, userId: ops.id, role: 'OPERATIONS', status: 'ACTIVE' },
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('makes admin@uni.ac.ae specifically the Admin', async () => {
+    await seed(prisma);
+    const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@uni.ac.ae' } });
+    expect(admin.platformRole).toBe('ADMIN');
+  });
+
+  it('refuses to seed a non-local database without an explicit opt-in', () => {
+    const remote = 'postgresql://u:p@db.example.supabase.co:5432/postgres';
+    expect(() => assertSafeToSeed(remote, {})).toThrow(/non-local/i);
+    expect(() => assertSafeToSeed(remote, { ALLOW_REMOTE_SEED: 'yes' })).not.toThrow();
+  });
+
+  it('refuses to seed when NODE_ENV is production, even locally', () => {
+    const local = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
+    expect(() => assertSafeToSeed(local, { NODE_ENV: 'production' })).toThrow(/production/i);
+    expect(() => assertSafeToSeed(local, {})).not.toThrow();
+  });
+
   it('gives every user a QR pass', async () => {
     await seed(prisma);
     expect(await prisma.qrPass.count()).toBe(await prisma.user.count());
@@ -3508,6 +4088,8 @@ describe('seed', () => {
       clubs: await prisma.club.count(),
       events: await prisma.event.count(),
       appointments: await prisma.clubTeamAppointment.count(),
+      memberships: await prisma.clubMembership.count(),
+      departments: await prisma.department.count(),
       passes: await prisma.qrPass.count(),
     };
 
@@ -3517,6 +4099,8 @@ describe('seed', () => {
       clubs: await prisma.club.count(),
       events: await prisma.event.count(),
       appointments: await prisma.clubTeamAppointment.count(),
+      memberships: await prisma.clubMembership.count(),
+      departments: await prisma.department.count(),
       passes: await prisma.qrPass.count(),
     };
 
@@ -3661,9 +4245,36 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 }
 
+/**
+ * This script writes placeholder accounts carrying a fake password hash, plus
+ * a PUBLISHED event. It must never reach a real database.
+ *
+ * The test harness refuses any connection string not naming `majlis_test`;
+ * this is the reciprocal guard for the development path. A `.env` pointed at
+ * a deployed database is an ordinary mistake, and without this the only
+ * symptom would be placeholder credentials appearing in production.
+ */
+export function assertSafeToSeed(url: string, env: NodeJS.ProcessEnv): void {
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed: NODE_ENV is production.');
+  }
+
+  const { hostname } = new URL(url);
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+  if (!isLocal && env.ALLOW_REMOTE_SEED !== 'yes') {
+    throw new Error(
+      `Refusing to seed the non-local database at ${hostname}. ` +
+        'Set ALLOW_REMOTE_SEED=yes if that is genuinely what you want.',
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set.');
+
+  assertSafeToSeed(url, process.env);
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
   try {
@@ -3682,7 +4293,7 @@ if (require.main === module) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm --filter @majlis/api test:integration test/seed.integration.test.ts`
-Expected: PASS — 6 tests.
+Expected: PASS — 10 tests.
 
 - [ ] **Step 5: Run the seed against the development database**
 
@@ -3705,7 +4316,6 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Create: `.github/workflows/ci.yml`
 - Create: `README.md`
-- Modify: root `package.json` — add a `ci` script
 
 **Interfaces:**
 - Consumes: every workspace script defined in Tasks 1–13.
@@ -3752,13 +4362,14 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.0
+      # No `version:` input on purpose. The root package.json pins
+      # `packageManager: pnpm@11.15.0`, which this action reads; supplying
+      # both is a known conflict and risks the two drifting apart.
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -3778,17 +4389,18 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # There is no .env in CI. The `test:integration` script wraps vitest in
+      # `dotenv -e ../../.env -c`, and dotenv silently no-ops on a missing
+      # file without overriding variables already set — so the job-level env
+      # block above is what actually supplies the connection strings.
       - name: Integration tests
         run: pnpm --filter @majlis/api test:integration
-        env:
-          # No .env file in CI; dotenv-cli must not fail on its absence.
-          DOTENV_CONFIG_PATH: ''
 
       - name: Build
         run: pnpm build
 ```
 
-> There is no `.env` in CI. The `test:integration` script already uses `dotenv-cli`'s `-c` flag (Task 4), which tolerates a missing file, so the workflow's `env:` block supplies the values instead. If the integration step fails with a missing-`.env` error, that flag was dropped — restore it rather than deleting the `dotenv` wrapper, which local runs depend on.
+> There is no `.env` in CI. The `test:integration` script uses `dotenv-cli`'s `-c` flag (Task 4), which tolerates a missing file, so the workflow's job-level `env:` block supplies the values instead — `dotenv` does not override variables already present. If the integration step fails with a missing-`.env` error, that flag was dropped: restore it rather than deleting the `dotenv` wrapper, which local runs depend on.
 
 - [ ] **Step 2: Write the README**
 

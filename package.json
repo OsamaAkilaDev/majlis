@@ -1,0 +1,29 @@
+{
+  "name": "majlis",
+  "private": true,
+  "packageManager": "pnpm@11.15.0",
+  "engines": {
+    "node": ">=22.14.0",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,yaml,yml}\"",
+    "db:check": "node --env-file=.env -e \"const{Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query('select version()')).then(r=>{console.error(r.rows[0].version);return c.end()}).catch(e=>{console.error(e.message);process.exit(1)})\""
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/pg": "8.15.6",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "pg": "8.16.3",
+    "prettier": "3.9.6",
+    "turbo": "2.10.12",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.0"
+  }
+}
