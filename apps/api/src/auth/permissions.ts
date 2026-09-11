@@ -1,0 +1,77 @@
+/**
+ * The permission matrix — pure data plus a deciding function. No I/O, no
+ * database, no Nest. The guard (PermissionsGuard) loads ActorFacts from the
+ * database per request and calls `evaluate`; this module only decides.
+ *
+ * The matrix is data. Later stages add rows (e.g. `club:edit`); neither this
+ * function nor the guard changes.
+ *
+ * ADMIN is listed explicitly in every rule that admits it. There is
+ * deliberately no `if (platformRole === 'ADMIN') return true` shortcut —
+ * spec §6.1's "Register for an event" row reads "as student" in the Admin
+ * column, not "override". A blanket Admin-wins branch would silently grant
+ * the one permission the matrix deliberately withholds. See the
+ * "no implicit Admin superuser branch" test in permissions.spec.ts.
+ */
+
+export type PlatformRole = 'STUDENT' | 'ADMIN';
+export type ClubRole = 'LEAD' | 'VICE_LEAD' | 'MARKETING' | 'CTO' | 'OPERATIONS';
+export type EventResponsibility = 'EVENT_LEAD' | 'OPERATIONS' | 'MARKETING';
+
+/**
+ * Facts about the actor making a request, already scoped by the guard.
+ *
+ * `clubRoles` holds only the actor's ACTIVE appointments in the club that
+ * the current request is scoped to — NOT every club they hold a role in.
+ * `eventResponsibilities` is the same narrowing for the event in scope. A
+ * reader who takes `clubRoles` to mean "every club the actor leads anywhere"
+ * will write a cross-club authorization bug: the guard, not this module, is
+ * what narrows to the scoped club/event before calling evaluate.
+ */
+export interface ActorFacts {
+  userId: string;
+  platformRole: PlatformRole;
+  clubRoles: ClubRole[];
+  eventResponsibilities: EventResponsibility[];
+}
+
+export interface PermissionRule {
+  platform?: PlatformRole[];
+  club?: ClubRole[];
+  event?: EventResponsibility[];
+}
+
+export const PERMISSIONS = {
+  'user:list': { platform: ['ADMIN'] },
+  'user:suspend': { platform: ['ADMIN'] },
+} as const satisfies Record<string, PermissionRule>;
+
+export type Permission = keyof typeof PERMISSIONS;
+
+// A separately-typed indexed view of the same object, so an unrecognised
+// string key looks up to `undefined` instead of a type error — `evaluate`
+// takes the narrow `Permission` union at its own boundary (typo protection
+// at compile time), but must still handle an unknown value cast through at
+// runtime (e.g. `'x' as Permission`), which is exactly what the "denies an
+// unknown permission" test does.
+const RULES: Record<string, PermissionRule> = PERMISSIONS;
+
+export function evaluate(permission: Permission, facts: ActorFacts): boolean {
+  const rule = RULES[permission];
+  // Unknown permission denies. A typo in a @RequirePermission argument must
+  // fail closed, not fail open.
+  if (!rule) return false;
+  return matches(rule, facts);
+}
+
+/**
+ * Exported so a rule that is not (yet) in PERMISSIONS can be exercised
+ * directly — that's how the "no implicit Admin superuser branch" test
+ * proves ADMIN isn't silently granted a permission it wasn't listed for.
+ */
+export function matches(rule: PermissionRule, facts: ActorFacts): boolean {
+  if (rule.platform?.includes(facts.platformRole)) return true;
+  if (rule.club?.some((r) => facts.clubRoles.includes(r))) return true;
+  if (rule.event?.some((r) => facts.eventResponsibilities.includes(r))) return true;
+  return false;
+}
