@@ -176,6 +176,21 @@ describe('AttendanceRecord', () => {
     await prisma.attendanceRecord.create({ data });
     await expect(prisma.attendanceRecord.create({ data })).rejects.toMatchObject({ code: 'P2002' });
   });
+
+  it('refuses to delete a registration that has an attendance record', async () => {
+    // registration is Restrict, not Cascade: a registration with attendance
+    // but no certificate must not be deletable, since that would destroy the
+    // proof a person was in the room.
+    const { user, event, registration } = await aRegistration();
+    const scanner = await aUser();
+    await prisma.attendanceRecord.create({
+      data: { registrationId: registration.id, eventId: event.id, userId: user.id, checkedInById: scanner.id, method: 'QR_SCAN' },
+    });
+
+    await expect(
+      prisma.eventRegistration.delete({ where: { id: registration.id } }),
+    ).rejects.toMatchObject({ code: 'P2003' });
+  });
 });
 
 describe('Certificate', () => {
@@ -215,6 +230,36 @@ describe('Certificate', () => {
     await expect(
       prisma.certificate.create({
         data: certData({ registrationId: secondReg.id, eventId: event.id, userId: second.id }),
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('scopes active certificates per registration, not per student — one student attends two events', async () => {
+    // The catastrophic failure this guards against: a unique index on
+    // user_id (instead of registration_id) would allow one active
+    // certificate per student for their entire degree, and would pass every
+    // other test here, because aRegistration() mints a fresh user each call.
+    const first = await aRegistration();
+    await prisma.certificate.create({
+      data: certData({
+        registrationId: first.registration.id,
+        eventId: first.event.id,
+        userId: first.user.id,
+      }),
+    });
+
+    const second = await aRegistration();
+    const secondReg = await prisma.eventRegistration.create({
+      data: { eventId: second.event.id, userId: first.user.id, status: 'CONFIRMED' },
+    });
+
+    await expect(
+      prisma.certificate.create({
+        data: certData({
+          registrationId: secondReg.id,
+          eventId: second.event.id,
+          userId: first.user.id,
+        }),
       }),
     ).resolves.toBeDefined();
   });
@@ -280,5 +325,16 @@ describe('Certificate', () => {
         data: certData({ registrationId: b.registration.id, eventId: b.event.id, userId: b.user.id, verificationCode: code }),
       }),
     ).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('refuses to delete a registration that has an active certificate', async () => {
+    const { event, user, registration } = await aRegistration();
+    await prisma.certificate.create({
+      data: certData({ registrationId: registration.id, eventId: event.id, userId: user.id }),
+    });
+
+    await expect(
+      prisma.eventRegistration.delete({ where: { id: registration.id } }),
+    ).rejects.toMatchObject({ code: 'P2003' });
   });
 });

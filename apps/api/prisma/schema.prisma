@@ -396,7 +396,11 @@ model AttendanceRecord {
   correctedById     String?          @map("corrected_by_id") @db.Uuid
   correctionReason  String?          @map("correction_reason")
 
-  registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  // Restrict, not Cascade: a registration with attendance but no certificate
+  // can otherwise be deleted, destroying the proof a person was in the room.
+  // Certificate.registration is already Restrict for the same reason — this
+  // makes the two consistent.
+  registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
 
