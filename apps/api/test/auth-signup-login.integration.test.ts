@@ -80,8 +80,9 @@ describe('POST /auth/signup', () => {
     expect(session).toMatch(/HttpOnly/);
     expect(refresh).toMatch(/HttpOnly/);
     // Widened from /api/v1/auth to / in Stage 3 so Next.js middleware can see
-    // the refresh cookie on a page navigation, not only on API calls.
-    expect(refresh).toMatch(/Path=\//);
+    // the refresh cookie on a page navigation, not only on API calls. Anchored
+    // to end-of-string or ';' so this cannot match Path=/api/v1/auth too.
+    expect(refresh).toMatch(/Path=\/(;|$)/);
   });
 
   it('persists a hashed refresh token, never the raw cookie value', async () => {

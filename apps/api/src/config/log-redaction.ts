@@ -30,4 +30,10 @@ export const LOG_REDACT_PATHS = [
   'req.query.token',
   'req.query.code',
   'res.headers["set-cookie"]',
+  // ProblemExceptionFilter logs `{ err }` on every 5xx; an error carrying an
+  // attached request (e.g. an axios/http client error) would serialize that
+  // request's headers unredacted, since the paths above are rooted at req/res
+  // and do not reach err.*. The wildcard covers err at any nesting depth.
+  '*.headers.cookie',
+  '*.headers.authorization',
 ] as const;
