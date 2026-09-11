@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #FAF7F2;
+  --surface: #FFFFFF;
+  --surface-2: #F2EDE4;
+  --border: #E3DACE;
+  --border-control: #90867A;
+  --ink: #1C1713;
+  --ink-2: #5B5045;
+  --ink-3: #7C6F62;
+  --primary: #0E5F55;
+  --primary-hover: #0A4A42;
+  --primary-fg: #FFFFFF;
+  --primary-soft: #DEEDE9;
+  --primary-soft-fg: #0A443D;
+  --ok-soft: #DDEEDF;
+  --ok-fg: #14602F;
+  --warn-soft: #FBEBCE;
+  --warn-fg: #7A4B06;
+  --bad-soft: #F8DFDA;
+  --bad-fg: #98291F;
+  --bad: #A33228;
+  --info-soft: #E1E6F2;
+  --info-fg: #3A4A80;
+  --mute-soft: #EDE7DD;
+  --mute-fg: #5B5045;
+
+  --shadow-sm: 0 1px 2px rgba(28, 23, 19, .06), 0 1px 1px rgba(28, 23, 19, .04);
+  --shadow-md: 0 4px 12px -2px rgba(28, 23, 19, .10), 0 2px 4px -2px rgba(28, 23, 19, .06);
+  --shadow-sheet: 0 -8px 32px -8px rgba(28, 23, 19, .18);
+  --lattice: 14, 95, 85;
+
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #15110E;
+  --surface: #1D1815;
+  --surface-2: #251F1B;
+  --border: #372F28;
+  --border-control: #78675A;
+  --ink: #F6F0E8;
+  --ink-2: #B6A899;
+  --ink-3: #948577;
+  --primary: #5CC3AE;
+  --primary-hover: #7BD3C1;
+  --primary-fg: #062520;
+  --primary-soft: #123830;
+  --primary-soft-fg: #8EDCCB;
+  --ok-soft: #15321F;
+  --ok-fg: #82D497;
+  --warn-soft: #3A2A0D;
+  --warn-fg: #EFBB63;
+  --bad-soft: #3A1C18;
+  --bad-fg: #F0A197;
+  --bad: #E2695C;
+  --info-soft: #1C2338;
+  --info-fg: #A9B8E8;
+  --mute-soft: #2A241F;
+  --mute-fg: #B6A899;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, .55), 0 2px 4px -2px rgba(0, 0, 0, .4);
+  --shadow-sheet: 0 -8px 32px -8px rgba(0, 0, 0, .6);
+  --lattice: 92, 195, 174;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-control: var(--border-control);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-fg: var(--primary-soft-fg);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-fg: var(--ok-fg);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-fg: var(--warn-fg);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-fg: var(--bad-fg);
+  --color-bad: var(--bad);
+  --color-info-soft: var(--info-soft);
+  --color-info-fg: var(--info-fg);
+  --color-mute-soft: var(--mute-soft);
+  --color-mute-fg: var(--mute-fg);
+
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+
+  --text-display: 2.5rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.022em;
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: -0.018em;
+  --text-h1: 1.375rem;
+  --text-h1--line-height: 1.25;
+  --text-h1--letter-spacing: -0.012em;
+  --text-h2: 1.125rem;
+  --text-h2--line-height: 1.35;
+  --text-h2--letter-spacing: -0.006em;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.45;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.35;
+  --text-label--letter-spacing: 0.07em;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-sheet: 20px;
+
+  --ease-out: cubic-bezier(.2, .8, .25, 1);
+}
+
+:root {
+  --dur-fast: 160ms;
+  --dur: 220ms;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+
+/* Collapsed once, at the token level, so no component has to remember it. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0.01ms; --dur: 0.01ms; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Browser surfaces take the palette instead of shipping defaults. */
+  ::selection { background: var(--color-primary); color: var(--color-primary-fg); }
+  :root { accent-color: var(--color-primary); caret-color: var(--color-primary); scrollbar-color: var(--color-border-control) transparent; }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  /* Figures line up everywhere a count, capacity, time or ID is shown. */
+  .tabular { font-variant-numeric: tabular-nums; }
+}
+
+@utility lattice {
+  background-image:
+    repeating-linear-gradient(45deg, rgb(var(--lattice) / .05) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(-45deg, rgb(var(--lattice) / .05) 0 1px, transparent 1px 22px);
+}
