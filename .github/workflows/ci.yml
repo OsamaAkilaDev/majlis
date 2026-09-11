@@ -20,6 +20,9 @@ env:
   # having CREATEDB, it errors with P1003 if the database doesn't already
   # exist — so the step below creates it explicitly first.
   SHADOW_DATABASE_URL: postgresql://majlis:majlis@localhost:5432/majlis_shadow?schema=public
+  # apps/web throws rather than silently rewriting /api/v1 to localhost in a
+  # production build, so the build step needs this set.
+  API_ORIGIN: http://localhost:3001
 
 jobs:
   verify:
@@ -90,3 +93,75 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  # The axe accessibility gate lives in this suite. Without this job it would
+  # hold for one commit and decay from the next.
+  e2e:
+    runs-on: ubuntu-latest
+
+    env:
+      # apps/api refuses to boot without one, and 32 characters is the floor.
+      SESSION_SECRET: ci-only-session-secret-not-a-real-one
+      PORT: 3001
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: majlis
+          POSTGRES_PASSWORD: majlis
+          POSTGRES_DB: majlis_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U majlis"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @majlis/api prisma:generate
+
+      - name: Apply migrations
+        run: pnpm --filter @majlis/api prisma:deploy
+
+      # The suite signs in as four seeded personas; an empty database fails
+      # every test with a wrong-password error rather than a useful one.
+      - name: Seed
+        run: pnpm --filter @majlis/api db:seed
+
+      - name: Install Playwright browser
+        run: pnpm --filter @majlis/web exec playwright install --with-deps chromium
+
+      # Playwright's own webServer starts Next; only the API is ours to run.
+      - name: Start the API
+        run: |
+          nohup pnpm --filter @majlis/api exec node -r @swc-node/register src/main.ts > api.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:3001/api/v1/health > /dev/null && exit 0
+            sleep 2
+          done
+          echo "API did not become healthy" >&2
+          cat api.log >&2
+          exit 1
+
+      - name: End-to-end and accessibility tests
+        run: pnpm --filter @majlis/web test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
