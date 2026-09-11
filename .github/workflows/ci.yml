@@ -14,6 +14,12 @@ env:
   TEST_DATABASE_URL: postgresql://majlis:majlis@localhost:5432/majlis_test?schema=public
   DATABASE_URL: postgresql://majlis:majlis@localhost:5432/majlis_test?schema=public
   DIRECT_URL: postgresql://majlis:majlis@localhost:5432/majlis_test?schema=public
+  # Used only by `prisma migrate diff` (see prisma.config.ts) to check the
+  # migrations directory still matches schema.prisma. Prisma does not create
+  # this database itself for a --from-migrations/--to-schema diff — despite
+  # having CREATEDB, it errors with P1003 if the database doesn't already
+  # exist — so the step below creates it explicitly first.
+  SHADOW_DATABASE_URL: postgresql://majlis:majlis@localhost:5432/majlis_shadow?schema=public
 
 jobs:
   verify:
@@ -51,6 +57,20 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm --filter @majlis/api prisma:generate
+
+      # `prisma migrate diff` against a migrations directory needs
+      # datasource.shadowDatabaseUrl to already point at a real, existing
+      # database — the local `majlis` role has CREATEDB, but Prisma does not
+      # use it to create this database on the fly for this command.
+      - name: Create shadow database
+        run: PGPASSWORD=majlis psql -h localhost -U majlis -d postgres -c "CREATE DATABASE majlis_shadow;"
+
+      - name: Migrations match schema
+        run: >
+          pnpm --filter @majlis/api exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema prisma/schema.prisma
+          --exit-code
 
       - name: Typecheck
         run: pnpm typecheck
