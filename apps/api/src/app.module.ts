@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
-import { randomUUID } from 'node:crypto';
+import { RequestContextModule } from './common/request-context.module';
 import { ConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
 import { LOG_REDACT_PATHS } from './config/log-redaction';
@@ -16,11 +16,12 @@ import { PrismaModule } from './prisma/prisma.module';
       useFactory: (config: ConfigService<Env, true>) => ({
         pinoHttp: {
           level: config.get('LOG_LEVEL', { infer: true }),
-          genReqId: (req, res) => {
-            const id = (req.headers['x-request-id'] as string) ?? randomUUID();
-            res.setHeader('x-request-id', id);
-            return id;
-          },
+          // No genReqId here: configure-app.ts's request-context middleware
+          // assigns req.id (from x-request-id if the caller sent one, else a
+          // fresh uuid) and sets the response header before pino-http ever
+          // runs. pino-http's own `req.id = req.id || genReqId(...)` then
+          // just adopts that value, so this stays the one place that
+          // derives it.
           // Nothing secret ever reaches a log line. The paths live in their
           // own module so they can be tested against real pino output.
           redact: { paths: [...LOG_REDACT_PATHS], remove: true },
@@ -31,6 +32,7 @@ import { PrismaModule } from './prisma/prisma.module';
         },
       }),
     }),
+    RequestContextModule,
     PrismaModule,
     HealthModule,
   ],

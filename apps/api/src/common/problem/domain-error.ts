@@ -16,6 +16,12 @@ export abstract class DomainError extends Error {
   }
 }
 
+export class UnauthorizedError extends DomainError {
+  readonly status = 401;
+  readonly type = `${PROBLEM_BASE}/unauthorized`;
+  readonly title = 'Unauthorized';
+}
+
 export class NotFoundError extends DomainError {
   readonly status = 404;
   readonly type = `${PROBLEM_BASE}/not-found`;
