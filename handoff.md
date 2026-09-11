@@ -20,15 +20,15 @@ not yet merged to `master`. Nothing pushed anywhere; no remote exists.
 Seeded accounts log in: `admin@` / `lead@` / `ops@` / `student@uni.ac.ae`, password `Passw0rd!`.
 Re-seeding now repairs password hashes and event capacity; it previously could not.
 
-**Next: Stage 4 — clubs, team and membership.**
+**Next: Stage 4, clubs, team and membership.**
 
 ---
 
 ## Read order
 
-1. `docs/specs/2026-09-10-majlis-design.md` — binding. §13 has the stages and the completion notes.
-2. `docs/specs/2026-09-11-stage-3-shells-design.md` — the design system, tokens, and §10's six deviations.
-3. `docs/specs/2026-09-11-stage-2-auth-design.md` — how auth works.
+1. `docs/specs/2026-09-10-majlis-design.md`: binding. §13 has the stages and the completion notes.
+2. `docs/specs/2026-09-11-stage-3-shells-design.md`: the design system, tokens, and §10's six deviations.
+3. `docs/specs/2026-09-11-stage-2-auth-design.md`: how auth works.
 4. This file.
 
 ---
@@ -93,7 +93,7 @@ or scope the scan. That converts verification back into assertion, which spec §
 
 ## Gaps, in the order I would fix them
 
-1. **`__Host-` cookie prefix — Stage 9, and treat it as blocking.** Widening `majlis_refresh`
+1. **`__Host-` cookie prefix, Stage 9, and treat it as blocking.** Widening `majlis_refresh`
    to `Path=/` removed the accidental protection RFC 6265 path ordering gave against a
    sibling-subdomain shadowing attack. Renaming both cookies to `__Host-` fixes it, but not
    as a two-line change: the prefix requires `Secure`, and `secureCookies()` deliberately
