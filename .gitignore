@@ -3,9 +3,14 @@ dist/
 .next/
 .turbo/
 coverage/
+test-results/
 *.tsbuildinfo
 .env
 .env.*
 !.env.example
 apps/api/src/generated/
 .DS_Store
+
+# next dev generates these next to the real root CLAUDE.md
+apps/web/AGENTS.md
+apps/web/CLAUDE.md

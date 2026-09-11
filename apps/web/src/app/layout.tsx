@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Toaster } from 'sonner';
+import { RegisterSW } from '@/components/RegisterSW';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { BRAND } from '@/lib/brand';
 import { fraunces, plex } from '@/lib/fonts';
@@ -9,6 +10,7 @@ import '@/styles/globals.css';
 export const metadata: Metadata = {
   title: { default: BRAND.product, template: `%s · ${BRAND.product}` },
   applicationName: BRAND.product,
+  manifest: '/manifest.webmanifest',
 };
 
 export const viewport: Viewport = {
@@ -30,6 +32,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Skip to content
           </a>
           {children}
+          <RegisterSW />
           <Toaster position="top-center" />
         </ThemeProvider>
       </body>
