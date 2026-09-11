@@ -30,8 +30,8 @@ detection, the session guard, the permission guard skeleton, user suspension. Sp
 ## Getting running
 
 ```bash
+cp .env.example .env               # must come first: postinstall needs DIRECT_URL
 pnpm install                       # postinstall runs prisma generate
-cp .env.example .env
 pnpm --filter @majlis/api prisma:deploy
 pnpm --filter @majlis/api db:seed
 pnpm --filter @majlis/api start:dev

@@ -17,8 +17,10 @@ later stage.
 Prerequisites: Node 22.14, pnpm 11.15, PostgreSQL 18 on `localhost:5432`.
 
 ```bash
-pnpm install
+# .env first: postinstall runs `prisma generate`, which loads
+# prisma.config.ts and needs DIRECT_URL.
 cp .env.example .env
+pnpm install
 
 # One-time database bootstrap
 psql -U postgres -h localhost -f scripts/bootstrap-db.sql
