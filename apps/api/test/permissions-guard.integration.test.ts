@@ -87,6 +87,7 @@ describe('PermissionsGuard — HTTP', () => {
 
     const rows = await prisma.auditLog.findMany({ where: { entityId: target.id } });
     expect(rows).toHaveLength(1);
+    expect(rows[0]?.action).toBe('permission.denied');
     expect(rows[0]?.outcome).toBe('DENIED');
     expect(rows[0]?.actorUserId).toBe(student.id);
 
@@ -131,17 +132,23 @@ describe('PermissionsGuard — HTTP', () => {
     expect(outsiderRes.status).toBe(403);
   });
 
-  it('denies rather than 500s when the scope path in the decorator is malformed', async () => {
-    // readScopeId must resolve a missing/unreadable path to "no scope
-    // found" and let evaluate() decide from empty facts, never throw — an
-    // unresolvable scope must DENY, not crash the request into a 500.
-    const user = await mkUser();
+  it('denies rather than 500s when the scope path in the decorator is unresolvable', async () => {
+    // Unlike an empty `:clubId` segment (Express 5's router never matches
+    // it, so the guard never runs and `expect([403,404])` would pass
+    // against ANY implementation of the guard), `broken-scope` is a route
+    // the router genuinely matches. Its decorator points `from` at
+    // `params.missing.deeper` — a dotted path with no real value behind it.
+    // readScopeId/readAt must resolve that to "no scope found" and let
+    // evaluate() deny from empty facts, never throw: without the
+    // `typeof acc !== 'object'` guard in readAt, indexing a property off
+    // the `undefined` that `params.missing` resolves to throws a raw
+    // TypeError, surfacing as an unhandled 500.
+    const user = await mkUser(); // STUDENT, no club roles — evaluate() must deny
+    const club = await mkClub();
     const res = await request(app.getHttpServer())
-      .get(`${API_PREFIX}/__test/clubs/${encodeURIComponent('')}/edit`)
+      .get(`${API_PREFIX}/__test/clubs/${club.id}/broken-scope`)
       .set('Cookie', await sessionCookieFor(user.id));
-    // Either Express 404s the empty path segment or the guard denies it —
-    // either way it must never be a 200 or an unhandled 500.
-    expect([403, 404]).toContain(res.status);
+    expect(res.status).toBe(403);
   });
 });
 

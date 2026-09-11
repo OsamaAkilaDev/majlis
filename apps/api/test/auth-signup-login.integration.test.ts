@@ -243,12 +243,31 @@ describe('POST /auth/login', () => {
         department: { create: { name: `Dept ${uniq('dept')}`, code: uniq('DEPT').toUpperCase() } },
       },
     });
+    const otherClub = await prisma.club.create({
+      data: {
+        name: `Club ${uniq('club')}`,
+        slug: uniq('club'),
+        description: 'A club.',
+        category: 'Technology',
+        academicYear: '2026/2027',
+        logoUrl: 'https://example.test/logo.png',
+        department: { create: { name: `Dept ${uniq('dept')}`, code: uniq('DEPT').toUpperCase() } },
+      },
+    });
     const { userId } = await loginAsStudent(app, {
       email: 'lead@uni.ac.ae',
       password: 'correct-horse-battery',
     });
     await prisma.clubTeamAppointment.create({
       data: { clubId: club.id, userId, role: 'LEAD', status: 'ACTIVE', invitedById: userId },
+    });
+    // A second, non-ACTIVE appointment in a DIFFERENT club. Without it, the
+    // fixture only ever inserts ACTIVE rows, so deleting `buildSessionUser`'s
+    // `status: 'ACTIVE'` filter entirely would still leave this test green —
+    // there'd be nothing else in the table for the unfiltered query to
+    // wrongly pick up.
+    await prisma.clubTeamAppointment.create({
+      data: { clubId: otherClub.id, userId, role: 'MARKETING', status: 'INVITED', invitedById: userId },
     });
 
     const res = await login(app, { email: 'lead@uni.ac.ae', password: 'correct-horse-battery' });

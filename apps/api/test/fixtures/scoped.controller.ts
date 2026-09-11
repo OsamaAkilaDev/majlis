@@ -19,6 +19,21 @@ export class ScopedTestController {
   edit(): { ok: true } {
     return { ok: true };
   }
+
+  /**
+   * A route the router genuinely matches (unlike an empty `:clubId`
+   * segment, which 404s before the guard ever runs) whose decorator points
+   * `from` at a dotted path with no real value behind it —
+   * `params.missing.deeper` reads a property off `undefined`. Exercises
+   * readScopeId/readAt's guard against exactly that: without the
+   * `typeof acc !== 'object'` check in readAt, this throws a raw TypeError
+   * instead of resolving to "no scope", surfacing as an unhandled 500.
+   */
+  @Get('broken-scope')
+  @RequirePermission('club:edit', { scope: 'club', from: 'params.missing.deeper' })
+  brokenScope(): { ok: true } {
+    return { ok: true };
+  }
 }
 
 /**
