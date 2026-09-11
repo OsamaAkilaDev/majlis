@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+/**
+ * Base URI for every Problem Details `type` this API emits. Both the
+ * DomainError subclasses and the exception filter's own ad-hoc problem
+ * types (validation, conflict, not-found, http-error, internal) build their
+ * full URI from this constant, so the two never drift into different bases.
+ */
+export const PROBLEM_BASE = 'https://majlis.app/problems';
+
 /** A single field-level validation failure inside a Problem Details response. */
 export const problemFieldErrorSchema = z.object({
   path: z.string(),

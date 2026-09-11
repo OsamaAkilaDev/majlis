@@ -5,13 +5,11 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
-import type { ProblemDetails, ProblemFieldError } from '@majlis/contracts';
+import { PROBLEM_BASE, type ProblemDetails, type ProblemFieldError } from '@majlis/contracts';
 import type { Logger } from 'nestjs-pino';
 import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 import { DomainError } from './domain-error';
-
-const PROBLEM_BASE = 'https://majlis.app/problems';
 
 /** Narrow structural check — avoids importing Prisma error classes here. */
 function isPrismaError(e: unknown): e is { code: string; message: string } {

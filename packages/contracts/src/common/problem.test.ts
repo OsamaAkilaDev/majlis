@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { problemDetailsSchema } from './problem';
+import { PROBLEM_BASE, problemDetailsSchema } from './problem';
+
+describe('PROBLEM_BASE', () => {
+  it('is the single source every problem type URI is built from', () => {
+    expect(PROBLEM_BASE).toBe('https://majlis.app/problems');
+  });
+});
 
 describe('problemDetailsSchema', () => {
   it('defaults type to about:blank when omitted', () => {

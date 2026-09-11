@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
+import { API_PREFIX } from '../config/api-prefix';
 
 /**
  * The OpenAPI document is generated from the Zod-derived DTOs, never written
@@ -19,5 +20,8 @@ export function setupOpenApi(app: INestApplication): void {
     .build();
 
   const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
-  SwaggerModule.setup('api/v1/docs', app, document);
+  // SwaggerModule.setup is not covered by setGlobalPrefix, so the path must
+  // still be spelled out here — but built from the constant rather than
+  // duplicating the literal '/api/v1'.
+  SwaggerModule.setup(`${API_PREFIX}/docs`, app, document);
 }
