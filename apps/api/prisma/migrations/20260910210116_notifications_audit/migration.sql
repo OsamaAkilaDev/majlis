@@ -58,6 +58,12 @@ ALTER TABLE "notification" ADD CONSTRAINT "notification_user_id_fkey" FOREIGN KE
 -- The audit log is append-only. Application discipline is not enough: a bug,
 -- a migration, or a console session must all be refused. Statement-level
 -- triggers mean even a bulk UPDATE that touches no rows is rejected.
+--
+-- Exception: TRUNCATE is deliberately NOT refused by these triggers (BEFORE
+-- UPDATE/DELETE only — TRUNCATE fires neither). The integration test harness
+-- (test/db.ts truncateAll) depends on being able to TRUNCATE every table,
+-- audit_log included, between tests. Do not add a TRUNCATE trigger here; it
+-- would break that harness.
 CREATE OR REPLACE FUNCTION audit_log_is_append_only() RETURNS trigger AS $$
 BEGIN
   RAISE EXCEPTION 'audit_log is append-only: % is not permitted', TG_OP
