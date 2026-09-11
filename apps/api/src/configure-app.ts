@@ -2,11 +2,11 @@ import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
 import { Logger } from 'nestjs-pino';
-import { randomUUID } from 'node:crypto';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { setupOpenApi } from './common/openapi';
 import { ProblemExceptionFilter } from './common/problem/problem.filter';
 import { RequestContext } from './common/request-context';
+import { resolveRequestId } from './common/request-id';
 import { API_PREFIX } from './config/api-prefix';
 
 /**
@@ -42,10 +42,16 @@ export function configureApp(app: INestApplication): void {
   // instead — and letting pino-http adopt the value already on the request
   // (its own logic is `req.id = req.id || genReqId(req, res)`) — is what
   // actually makes a log line and an audit row for one request share an id.
+  //
+  // app.module.ts's LoggerModule config keeps its own genReqId as a
+  // defensive fallback for a bootstrap entry point that never calls
+  // configureApp() — deliberately redundant with this, not dead: pino-http's
+  // `req.id || genReqId(...)` makes the fallback completely inert whenever
+  // this middleware has already run, but req.id still ends up populated (and
+  // RequestContext's absence is the only gap) if it hasn't.
   const requestContext = app.get(RequestContext);
   app.use((req: Request, res: Response, next: NextFunction) => {
-    const requestId =
-      typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : randomUUID();
+    const requestId = resolveRequestId(req.headers['x-request-id']);
     req.id = requestId;
     res.setHeader('x-request-id', requestId);
 

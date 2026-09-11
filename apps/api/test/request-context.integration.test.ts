@@ -67,4 +67,19 @@ describe('request context wiring in the real bootstrap', () => {
 
     expect(seenRequestId).toBe('trace-me-456');
   });
+
+  it('treats a blank x-request-id header as absent rather than adopting it verbatim', async () => {
+    // Catches a `typeof v === 'string'` check with no blank check: it would
+    // satisfy audit_log.request_id's NOT NULL constraint while writing an
+    // empty string into every audit row for the request — useless for
+    // correlating anything, and not caught by the "not 'unknown'" assertion
+    // above.
+    const res = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/health`)
+      .set('x-request-id', '')
+      .expect(200);
+
+    expect(seenRequestId).toBeTruthy();
+    expect(seenRequestId).toBe(res.headers['x-request-id']);
+  });
 });
