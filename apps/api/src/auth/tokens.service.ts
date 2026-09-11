@@ -17,12 +17,14 @@ export class TokensService {
    * TypeScript types; it is not doing any of the real validation.
    */
   private readonly accessTtl: JwtSignOptions['expiresIn'];
+  private readonly refreshTtl: JwtSignOptions['expiresIn'];
 
   constructor(
     private readonly jwt: JwtService,
     config: ConfigService<Env, true>,
   ) {
     this.accessTtl = config.get('ACCESS_TOKEN_TTL', { infer: true }) as JwtSignOptions['expiresIn'];
+    this.refreshTtl = config.get('REFRESH_TOKEN_TTL', { infer: true }) as JwtSignOptions['expiresIn'];
   }
 
   /**
@@ -61,5 +63,21 @@ export class TokensService {
 
   hashRefreshToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
+  }
+
+  /**
+   * `RefreshToken.expiresAt` needs a concrete Date, but REFRESH_TOKEN_TTL is
+   * a human duration string like "30d" — the same grammar `ms()` accepts
+   * that envSchema already validates at boot (see JWT_DURATION_PATTERN).
+   * Rather than hand-roll a second parser for that grammar — one that could
+   * quietly disagree with jsonwebtoken's own — this borrows jsonwebtoken's
+   * parsing by round-tripping a throwaway signed token through it and
+   * reading back the `exp` claim it computed. No new dependency, and the
+   * same library that governs the access token's expiry governs this too.
+   */
+  async refreshTokenExpiresAt(): Promise<Date> {
+    const throwaway = await this.jwt.signAsync({}, { expiresIn: this.refreshTtl });
+    const { exp } = this.jwt.decode<{ exp: number }>(throwaway);
+    return new Date(exp * 1000);
   }
 }

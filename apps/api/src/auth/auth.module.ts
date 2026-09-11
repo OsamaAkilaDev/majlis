@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerModule } from '@nestjs/throttler';
 import type { Env } from '../config/env.schema';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
 import { PermissionsGuard } from './permissions.guard';
 import { SessionGuard } from './session.guard';
 import { TokensService } from './tokens.service';
@@ -15,9 +18,17 @@ import { TokensService } from './tokens.service';
         secret: config.get('SESSION_SECRET', { infer: true }),
       }),
     }),
+    // A generous, unnamed "default" bucket — @Throttle on signup/login
+    // overrides it with the specific limits Task 9 requires. Applied via
+    // ThrottlerGuard on AuthController only (see auth.controller.ts), never
+    // as a global APP_GUARD, so no other endpoint inherits a rate limit it
+    // never asked for.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
   ],
+  controllers: [AuthController],
   providers: [
     TokensService,
+    AuthService,
     // Fail-closed by design: every route is protected unless @Public(). Task
     // 8 adds PermissionsGuard as a second APP_GUARD immediately after this
     // one — Nest runs APP_GUARD providers in registration order, and

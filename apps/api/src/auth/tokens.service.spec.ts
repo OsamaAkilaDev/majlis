@@ -5,8 +5,8 @@ import { UnauthorizedError } from '../common/problem/domain-error';
 import type { Env } from '../config/env.schema';
 import { TokensService } from './tokens.service';
 
-function configWithTtl(accessTokenTtl: string): ConfigService<Env, true> {
-  return new ConfigService({ ACCESS_TOKEN_TTL: accessTokenTtl });
+function configWithTtl(accessTokenTtl: string, refreshTokenTtl = '30d'): ConfigService<Env, true> {
+  return new ConfigService({ ACCESS_TOKEN_TTL: accessTokenTtl, REFRESH_TOKEN_TTL: refreshTokenTtl });
 }
 
 describe('TokensService', () => {
@@ -79,6 +79,28 @@ describe('TokensService', () => {
 
     it('rejects garbage input rather than throwing an unhandled error', async () => {
       await expect(service.verifyAccessToken('not-a-jwt')).rejects.toThrow(UnauthorizedError);
+    });
+  });
+
+  describe('refreshTokenExpiresAt', () => {
+    it('resolves a TTL string into a Date roughly that far in the future', async () => {
+      // Catches a parser that silently drops the unit (e.g. treats "30d" as
+      // 30 milliseconds) — the assertion window is wide but would still
+      // fail for an off-by-a-thousand or off-by-86400 error.
+      const before = Date.now();
+      const expiresAt = await service.refreshTokenExpiresAt();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      expect(expiresAt.getTime()).toBeGreaterThan(before + thirtyDaysMs - 5000);
+      expect(expiresAt.getTime()).toBeLessThan(before + thirtyDaysMs + 5000);
+    });
+
+    it('reflects a different configured duration', async () => {
+      const oneHour = new TokensService(new JwtService({ secret }), configWithTtl('15m', '1h'));
+      const before = Date.now();
+      const expiresAt = await oneHour.refreshTokenExpiresAt();
+      const oneHourMs = 60 * 60 * 1000;
+      expect(expiresAt.getTime()).toBeGreaterThan(before + oneHourMs - 5000);
+      expect(expiresAt.getTime()).toBeLessThan(before + oneHourMs + 5000);
     });
   });
 });
