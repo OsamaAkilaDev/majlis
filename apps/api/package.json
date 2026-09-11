@@ -9,6 +9,7 @@
     "lint": "eslint --no-error-on-unmatched-pattern src test prisma",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "dotenv -e ../../.env -c -- vitest run --config vitest.integration.config.ts",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",

@@ -65,7 +65,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     ['ops@uni.ac.ae', 'OPERATIONS'],
   ] as const) {
     const existing = await prisma.clubTeamAppointment.findFirst({
-      where: { clubId: club.id, userId: users[email], role, status: 'ACTIVE' },
+      where: { clubId: club.id, userId: users[email]!, role, status: 'ACTIVE' },
     });
     if (!existing) {
       await prisma.clubTeamAppointment.create({
@@ -82,7 +82,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
 
     // Team members hold an ordinary membership too, kept as a separate record.
     const membership = await prisma.clubMembership.findFirst({
-      where: { clubId: club.id, userId: users[email], status: 'ACTIVE' },
+      where: { clubId: club.id, userId: users[email]!, status: 'ACTIVE' },
     });
     if (!membership) {
       await prisma.clubMembership.create({
