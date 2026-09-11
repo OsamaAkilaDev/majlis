@@ -24,12 +24,32 @@ describe('integration test harness', () => {
 
   it('refuses a connection string that does not name the test database', async () => {
     const saved = process.env.TEST_DATABASE_URL;
-    process.env.TEST_DATABASE_URL = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
-    expect(() => createTestPrisma()).toThrow(/non-test database/);
-    process.env.TEST_DATABASE_URL = saved;
+    try {
+      process.env.TEST_DATABASE_URL = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
+      expect(() => createTestPrisma()).toThrow(/non-test database/);
+    } finally {
+      process.env.TEST_DATABASE_URL = saved;
+    }
   });
 
-  it('truncateAll runs without error when there are no application tables yet', async () => {
+  it('refuses a connection string where "majlis_test" appears only in the username, not the database name', async () => {
+    // A substring check on the whole URL would pass this: "majlis_test"
+    // matches the username, but the actual database is majlis_prod. Only a
+    // parsed-pathname comparison catches it.
+    const saved = process.env.TEST_DATABASE_URL;
+    try {
+      process.env.TEST_DATABASE_URL = 'postgresql://majlis_test_ro:pw@prod-host:5432/majlis_prod';
+      expect(() => createTestPrisma()).toThrow(/non-test database/);
+    } finally {
+      process.env.TEST_DATABASE_URL = saved;
+    }
+  });
+
+  it('truncateAll is idempotent', async () => {
+    // There have been application tables since Task 5; this no longer tests
+    // running against an empty schema. It asserts that truncating twice in a
+    // row (beforeEach already truncated once) does not error.
+    await expect(truncateAll(prisma)).resolves.toBeUndefined();
     await expect(truncateAll(prisma)).resolves.toBeUndefined();
   });
 });

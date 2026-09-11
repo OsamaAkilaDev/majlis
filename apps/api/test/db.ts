@@ -1,11 +1,22 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 
-/** Resolves the test connection string, refusing to run against anything else. */
+/**
+ * Resolves the test connection string, refusing to run against anything
+ * else.
+ *
+ * The database name is parsed out of the URL rather than matched as a
+ * substring of the whole string. A substring check on
+ * `postgresql://majlis_test_ro:pw@prod-host/majlis_prod` would pass — the
+ * marker matches the username — and truncateAll would then TRUNCATE every
+ * table in a production database's public schema.
+ */
 export function testDatabaseUrl(): string {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) throw new Error('TEST_DATABASE_URL is not set. Copy .env.example to .env.');
-  if (!url.includes('majlis_test')) {
+
+  const { pathname } = new URL(url);
+  if (pathname !== '/majlis_test') {
     throw new Error(`Refusing to run integration tests against a non-test database: ${url}`);
   }
   return url;
