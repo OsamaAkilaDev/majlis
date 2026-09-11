@@ -21,7 +21,17 @@ const JWT_DURATION_PATTERN =
 const jwtDuration = z
   .string()
   .max(100, 'must be 100 characters or fewer, like ms() requires')
-  .regex(JWT_DURATION_PATTERN, 'must be a duration ms() accepts, e.g. "15m" or "30d"');
+  .regex(JWT_DURATION_PATTERN, 'must be a duration ms() accepts, e.g. "15m" or "30d"')
+  .refine(
+    // ms() parses the leading numeric portion exactly like parseFloat does
+    // (the regex above already guarantees the string matches its grammar),
+    // so this is the same magnitude ms() itself would compute the sign of.
+    // A zero or negative token lifetime is nonsensical — "0s" mints a token
+    // that's already expired, and "-1s" one that expired before it existed
+    // — and jsonwebtoken's sign() accepts either without complaint.
+    (v) => parseFloat(v) > 0,
+    { message: 'must be a positive duration (greater than zero)' },
+  );
 
 /**
  * The value shipped in .env.example. Fine for development — the repo should

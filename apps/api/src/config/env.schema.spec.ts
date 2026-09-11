@@ -76,7 +76,7 @@ describe('token TTL format', () => {
   // like "15 minutes" or "fifteen" boots the server cleanly and then makes
   // jsonwebtoken's sign() throw a plain, uncaught Error on the first login —
   // an accidental 500 instead of a boot-time failure.
-  it.each(['15m', '30d', '15 m', '15min', '1h', '900', '0s', '-1s', '1.5h', '1000ms', '15 minutes'])(
+  it.each(['15m', '30d', '15 m', '15min', '1h', '900', '1.5h', '1000ms', '15 minutes'])(
     'accepts %s, a form ms() parses',
     (ttl) => {
       const r = envSchema.safeParse({ ...base, ACCESS_TOKEN_TTL: ttl });
@@ -92,8 +92,26 @@ describe('token TTL format', () => {
     },
   );
 
+  it.each(['0s', '-1s', '0', '-15m'])(
+    'rejects %s — a zero or negative TTL boots cleanly and mints an already-expired token',
+    (ttl) => {
+      // Catches the pre-fix gap: this note previously (wrongly) claimed a
+      // positivity rule would break tokens.service.spec.ts. It does not —
+      // that spec constructs `new ConfigService({...})` directly, bypassing
+      // envSchema entirely. Only this accept-list asserted the undesired
+      // behaviour, and it was wrong to.
+      const r = envSchema.safeParse({ ...base, ACCESS_TOKEN_TTL: ttl });
+      expect(r.success).toBe(false);
+    },
+  );
+
   it('applies the same validation to REFRESH_TOKEN_TTL', () => {
     const r = envSchema.safeParse({ ...base, REFRESH_TOKEN_TTL: 'not-a-duration' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects a negative REFRESH_TOKEN_TTL too', () => {
+    const r = envSchema.safeParse({ ...base, REFRESH_TOKEN_TTL: '-30d' });
     expect(r.success).toBe(false);
   });
 });

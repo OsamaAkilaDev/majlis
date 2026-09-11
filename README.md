@@ -50,7 +50,7 @@ at <http://localhost:3001/api/v1/docs>.
 
 ## Seeded accounts
 
-Development only. Password `Passw0rd!` once auth lands in Stage 2.
+Development only. Password `Passw0rd!`.
 
 | Email | Role |
 | --- | --- |
