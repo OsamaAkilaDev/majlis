@@ -308,12 +308,29 @@ Beyond shadcn, four components carry Majlis's own vocabulary:
 
 - `StatusBadge` — the single renderer for every status enum in the schema. Always icon
   plus word; colour never carries meaning alone.
-- `EmptyState` — display-face headline, a sentence that teaches the interface, and the
-  action that resolves it. Never "nothing here."
-- `Field` — label, control, description, error. Errors are driven off the API's RFC 9457
-  `errors[]` array and wired with `aria-describedby` + `aria-invalid`.
-- `PageError` — per-shell error boundary. Says the true thing: no access, suspended, or
-  genuinely broken. Spec §10.
+- `EmptyState` — display-face headline and the action that resolves it. No explanatory
+  paragraph. No `description` prop exists, so one cannot be added by habit.
+- `Field` — label, control, error. No description or helper slot. Errors are driven off
+  the API's RFC 9457 `errors[]` array and wired with `aria-describedby` + `aria-invalid`.
+- `PageError` — per-shell error boundary. Says the true thing in one line: no access,
+  suspended, or genuinely broken. Spec §10.
+
+### 5.1 Copy rule
+
+**The interface guides through layout and affordance, not through prose.** Banned
+outright: taglines, field helper text, empty-state explainer paragraphs, and
+instructional microcopy ("tap to enlarge", "you can also…"). A headline plus the action
+is enough; a button names its action and stops.
+
+This is enforced structurally rather than by review — `EmptyState` and `Field` have no
+prop to hang a description on.
+
+Three things are **not** copy and stay:
+
+- A visible `<label>` on every control, and an accessible name on every icon-only control.
+- Error messages that name the problem **and** the recovery. A bare "Invalid" fails
+  WCAG 3.3.3 and leaves the user stuck.
+- The word inside a `StatusBadge`, because colour alone must never carry meaning.
 
 Icons are `lucide-react`, one stroke weight throughout. No emoji standing in for an icon.
 
