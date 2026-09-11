@@ -8,6 +8,7 @@ import { uniq } from './factories';
 const SIGNUP_PATH = `${API_PREFIX}/auth/signup`;
 const LOGIN_PATH = `${API_PREFIX}/auth/login`;
 const REFRESH_PATH = `${API_PREFIX}/auth/refresh`;
+const USER_STATUS_PATH = (id: string) => `${API_PREFIX}/users/${id}/status`;
 
 export interface SignupInput {
   email?: string;
@@ -24,6 +25,12 @@ export interface LoggedInUser {
   userId: string;
   /** A `name=value` pair, ready to pass straight to `.set('Cookie', ...)`. */
   sessionCookie: string;
+}
+
+export interface SignedUpUser extends LoggedInUser {
+  /** A `name=value` pair — kept around so a test can present it again after
+   * acting on the account (e.g. suspending it) to see whether it still works. */
+  refreshCookie: string;
 }
 
 // vitest.integration.config.ts runs one worker per file (see factories.ts's
@@ -129,4 +136,53 @@ export async function loginAsAdmin(
   const student = await loginAsStudent(app, overrides);
   await testDb().user.update({ where: { id: student.userId }, data: { platformRole: 'ADMIN' } });
   return student;
+}
+
+/**
+ * Signs up a fresh STUDENT and keeps its refresh cookie too, not just the
+ * session cookie `loginAsStudent` returns — for a test that needs to present
+ * the refresh cookie again later (e.g. after suspending the account, to
+ * check whether the token that was live at signup still works).
+ */
+export async function signupAndKeepCookies(
+  app: INestApplication,
+  overrides: SignupInput = {},
+): Promise<SignedUpUser> {
+  const res = await signup(app, overrides);
+  if (res.status !== 201) {
+    throw new Error(`signupAndKeepCookies: signup failed with ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  return {
+    userId: (res.body as { id: string }).id,
+    sessionCookie: sessionCookieFromResponse(res),
+    refreshCookie: refreshCookieOf(res),
+  };
+}
+
+/** PATCHes `/users/{id}/status` as whoever `cookie` belongs to. */
+export function patchStatus(
+  app: INestApplication,
+  cookie: string,
+  targetId: string,
+  status: 'ACTIVE' | 'SUSPENDED',
+  reason: string,
+): request.Test {
+  return request(app.getHttpServer())
+    .patch(USER_STATUS_PATH(targetId))
+    .set('Cookie', cookie)
+    .send({ status, reason });
+}
+
+/**
+ * Suspends `targetId` as a freshly-minted ADMIN (created here, thrown away
+ * after) — the shortest path to "some admin suspended this user" for a test
+ * that doesn't care which admin did it.
+ */
+export async function suspendAsAdmin(
+  app: INestApplication,
+  targetId: string,
+  reason: string,
+): Promise<request.Response> {
+  const admin = await loginAsAdmin(app);
+  return patchStatus(app, admin.sessionCookie, targetId, 'SUSPENDED', reason);
 }

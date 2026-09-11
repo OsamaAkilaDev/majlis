@@ -10,6 +10,7 @@ import type { Env } from './config/env.schema';
 import { LOG_REDACT_PATHS } from './config/log-redaction';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     AuditModule,
     AuthModule,
+    UsersModule,
     HealthModule,
   ],
 })

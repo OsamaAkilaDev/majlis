@@ -263,6 +263,17 @@ export class AuthService {
   }
 
   /**
+   * GET /auth/me. Rebuilds the exact SessionUser shape signup/login/refresh
+   * return, from the actor SessionGuard already loaded fresh for this
+   * request — this is deliberately the only endpoint that carries
+   * `clubRoles`; `/me` (Task 11's UsersService) returns the editable profile
+   * and nothing about authorization.
+   */
+  async me(user: User): Promise<SessionUser> {
+    return this.buildSessionUser(user);
+  }
+
+  /**
    * Every auth response's user shape includes the actor's ACTIVE club
    * roles — the same ACTIVE-only filter PermissionsGuard's resolveClubFacts
    * applies (no permission is active until status = 'ACTIVE') — so the

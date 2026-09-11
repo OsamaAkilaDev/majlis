@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
@@ -13,7 +13,9 @@ import {
   REFRESH_COOKIE,
   SESSION_COOKIE,
 } from './cookies';
+import { Actor } from './actor.decorator';
 import { UnauthorizedError } from '../common/problem/domain-error';
+import type { User } from '../generated/prisma/client';
 import { Public } from './public.decorator';
 import type { Env } from '../config/env.schema';
 
@@ -56,6 +58,18 @@ export class AuthController {
     const result = await this.auth.login(body);
     this.setAuthCookies(res, result);
     return result.user;
+  }
+
+  /**
+   * Not @Public(): this is the one endpoint that echoes back session
+   * identity, including `clubRoles` — the same shape signup/login/refresh
+   * return, re-derived from the actor SessionGuard already loaded fresh for
+   * this request. `/me` (UsersController) is the editable-profile route and
+   * deliberately carries none of this.
+   */
+  @Get('me')
+  me(@Actor() actor: User): Promise<SessionUser> {
+    return this.auth.me(actor);
   }
 
   /**
