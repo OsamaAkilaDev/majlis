@@ -1,18 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/configure-app';
 import { API_PREFIX } from '../src/config/api-prefix';
+import { createTestApp } from './app';
 
 let app: INestApplication;
 
 beforeAll(async () => {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = moduleRef.createNestApplication();
-  configureApp(app);
-  await app.init();
+  app = await createTestApp();
 });
 
 afterAll(async () => {

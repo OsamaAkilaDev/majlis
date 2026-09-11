@@ -1,22 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from '../db';
+import { mkUser, uniq } from '../factories';
 
 const prisma = createTestPrisma();
 
 afterAll(async () => { await disconnectTestPrisma(prisma); });
 beforeEach(async () => { await truncateAll(prisma); });
 
-let seq = 0;
-const uniq = () => `${Date.now()}-${seq++}-${Math.random().toString(36).slice(2)}`;
-
-async function aUser() {
-  return prisma.user.create({
-    data: { email: `u.${uniq()}@uni.ac.ae`, passwordHash: 'x', fullName: 'User' },
-  });
-}
-
 async function anAuditRow() {
-  const actor = await aUser();
+  const actor = await mkUser();
   return prisma.auditLog.create({
     data: {
       actorUserId: actor.id,
@@ -43,7 +35,7 @@ describe('AuditLog', () => {
   });
 
   it('records a denial as well as a success', async () => {
-    const actor = await aUser();
+    const actor = await mkUser();
     const row = await prisma.auditLog.create({
       data: {
         actorUserId: actor.id,
@@ -113,7 +105,7 @@ describe('AuditLog', () => {
 
 describe('Notification', () => {
   it('rejects a duplicate dedupe key for the same user, so a retry cannot double-notify', async () => {
-    const user = await aUser();
+    const user = await mkUser();
     const data = {
       userId: user.id,
       type: 'registration.confirmed',
@@ -128,7 +120,7 @@ describe('Notification', () => {
     // A (user_id)-only unique constraint would allow exactly one
     // notification per user, ever, and would pass every other test in this
     // block — both existing tests only vary the user, never the key.
-    const user = await aUser();
+    const user = await mkUser();
     await prisma.notification.create({
       data: {
         userId: user.id,
@@ -150,7 +142,7 @@ describe('Notification', () => {
   });
 
   it('allows the same dedupe key for a different user', async () => {
-    const [a, b] = [await aUser(), await aUser()];
+    const [a, b] = [await mkUser(), await mkUser()];
     const base = { type: 'event.cancelled', payload: {}, dedupeKey: 'event.cancelled:e1' };
     await prisma.notification.create({ data: { ...base, userId: a.id } });
     await expect(prisma.notification.create({ data: { ...base, userId: b.id } })).resolves.toBeDefined();
@@ -159,9 +151,9 @@ describe('Notification', () => {
   it('cascades away when its user is deleted', async () => {
     // The AuditLog half of this contrast is exercised above; without this the
     // cascade is only ever verified by reading the migration SQL.
-    const user = await aUser();
+    const user = await mkUser();
     await prisma.notification.create({
-      data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: `k-${uniq()}` },
+      data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: uniq('k') },
     });
 
     await prisma.user.delete({ where: { id: user.id } });
@@ -169,9 +161,9 @@ describe('Notification', () => {
   });
 
   it('starts unread with a PENDING email status', async () => {
-    const user = await aUser();
+    const user = await mkUser();
     const n = await prisma.notification.create({
-      data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: `k-${uniq()}` },
+      data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: uniq('k') },
     });
     expect(n.readAt).toBeNull();
     expect(n.emailStatus).toBe('PENDING');

@@ -1,42 +1,22 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from '../db';
+import { mkClub, mkUser, uniq } from '../factories';
 
 const prisma = createTestPrisma();
 
 afterAll(async () => { await disconnectTestPrisma(prisma); });
 beforeEach(async () => { await truncateAll(prisma); });
 
-let seq = 0;
-const uniq = () => `${Date.now()}-${seq++}-${Math.random().toString(36).slice(2)}`;
 const at = (h: number) => new Date(Date.now() + h * 3_600_000);
 
-async function aUser() {
-  return prisma.user.create({
-    data: { email: `u.${uniq()}@uni.ac.ae`, passwordHash: 'x', fullName: 'Layla Hassan' },
-  });
-}
-
 async function aRegistration() {
-  const department = await prisma.department.create({
-    data: { name: `Dept ${uniq()}`, code: `D${uniq()}` },
-  });
-  const club = await prisma.club.create({
-    data: {
-      departmentId: department.id,
-      name: `Club ${uniq()}`,
-      slug: `club-${uniq()}`,
-      description: 'A club.',
-      category: 'Technology',
-      academicYear: '2026/2027',
-      logoUrl: 'https://example.test/logo.png',
-    },
-  });
-  const creator = await aUser();
+  const club = await mkClub();
+  const creator = await mkUser();
   const event = await prisma.event.create({
     data: {
       clubId: club.id,
       title: 'Workshop',
-      slug: `event-${uniq()}`,
+      slug: uniq('event'),
       summary: 's',
       description: 'd',
       eventType: 'WORKSHOP',
@@ -52,7 +32,7 @@ async function aRegistration() {
       createdById: creator.id,
     },
   });
-  const user = await aUser();
+  const user = await mkUser();
   const registration = await prisma.eventRegistration.create({
     data: { eventId: event.id, userId: user.id, status: 'CONFIRMED' },
   });
@@ -61,13 +41,13 @@ async function aRegistration() {
 
 describe('QrPass', () => {
   it('is one per user and starts at version 1', async () => {
-    const user = await aUser();
+    const user = await mkUser();
     const pass = await prisma.qrPass.create({ data: { userId: user.id } });
     expect(pass.tokenVersion).toBe(1);
   });
 
   it('rejects a second pass for the same user', async () => {
-    const user = await aUser();
+    const user = await mkUser();
     await prisma.qrPass.create({ data: { userId: user.id } });
     await expect(prisma.qrPass.create({ data: { userId: user.id } }))
       .rejects.toMatchObject({ code: 'P2002' });
@@ -93,7 +73,7 @@ describe('QrPass', () => {
 describe('AttendanceRecord', () => {
   it('records a check-in with the scanner and method', async () => {
     const { event, user, registration } = await aRegistration();
-    const scanner = await aUser();
+    const scanner = await mkUser();
     const record = await prisma.attendanceRecord.create({
       data: {
         registrationId: registration.id,
@@ -112,12 +92,12 @@ describe('AttendanceRecord', () => {
     // event_id instead of registration_id would pass every other test here
     // while allowing exactly one check-in per event, ever.
     const { event, user, registration } = await aRegistration();
-    const scanner = await aUser();
+    const scanner = await mkUser();
     await prisma.attendanceRecord.create({
       data: { registrationId: registration.id, eventId: event.id, userId: user.id, checkedInById: scanner.id, method: 'QR_SCAN' },
     });
 
-    const second = await aUser();
+    const second = await mkUser();
     const secondReg = await prisma.eventRegistration.create({
       data: { eventId: event.id, userId: second.id, status: 'CONFIRMED' },
     });
@@ -134,7 +114,7 @@ describe('AttendanceRecord', () => {
     // user_id would let a student check in to exactly one event for their
     // entire time at the university. Every other test here passes either way.
     const first = await aRegistration();
-    const scanner = await aUser();
+    const scanner = await mkUser();
     await prisma.attendanceRecord.create({
       data: {
         registrationId: first.registration.id,
@@ -165,7 +145,7 @@ describe('AttendanceRecord', () => {
 
   it('makes a double check-in impossible, even from two simultaneous scanners', async () => {
     const { event, user, registration } = await aRegistration();
-    const scanner = await aUser();
+    const scanner = await mkUser();
     const data = {
       registrationId: registration.id,
       eventId: event.id,
@@ -182,7 +162,7 @@ describe('AttendanceRecord', () => {
     // but no certificate must not be deletable, since that would destroy the
     // proof a person was in the room.
     const { user, event, registration } = await aRegistration();
-    const scanner = await aUser();
+    const scanner = await mkUser();
     await prisma.attendanceRecord.create({
       data: { registrationId: registration.id, eventId: event.id, userId: user.id, checkedInById: scanner.id, method: 'QR_SCAN' },
     });
@@ -196,8 +176,8 @@ describe('AttendanceRecord', () => {
 describe('Certificate', () => {
   function certData<T extends Record<string, unknown>>(over: T) {
     return {
-      serialNumber: `MJL-${uniq()}`,
-      verificationCode: `VC${uniq()}`.replace(/[^A-Z0-9]/gi, '').toUpperCase(),
+      serialNumber: uniq('MJL'),
+      verificationCode: uniq('VC').replace(/[^A-Z0-9]/gi, '').toUpperCase(),
       holderNameSnapshot: 'Layla Hassan',
       eventTitleSnapshot: 'Workshop',
       clubNameSnapshot: 'Robotics Club',
@@ -222,7 +202,7 @@ describe('Certificate', () => {
       data: certData({ registrationId: registration.id, eventId: event.id, userId: user.id }),
     });
 
-    const second = await aUser();
+    const second = await mkUser();
     const secondReg = await prisma.eventRegistration.create({
       data: { eventId: event.id, userId: second.id, status: 'CONFIRMED' },
     });
