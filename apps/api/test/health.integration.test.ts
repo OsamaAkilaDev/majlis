@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/configure-app';
 import { API_PREFIX } from '../src/config/api-prefix';
 
 let app: INestApplication;
@@ -10,8 +11,7 @@ let app: INestApplication;
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
-  // See api-prefix.ts for why this must keep its leading slash.
-  app.setGlobalPrefix(API_PREFIX);
+  configureApp(app);
   await app.init();
 });
 
@@ -35,6 +35,25 @@ describe(`GET ${API_PREFIX}/health`, () => {
   });
 
   it('is served under the api/v1 prefix, not at the root', async () => {
-    await request(app.getHttpServer()).get('/health').expect(404);
+    // Before this suite used configureApp, this app instance registered only
+    // setGlobalPrefix, so this assertion checked nothing but the bare status
+    // code. The assumption going in was that fully bootstrapping the app
+    // (Nest's own global prefix + exception filter, exactly as main.ts runs
+    // it) would turn this into Problem Details, matching the rest of the
+    // API's error contract.
+    //
+    // That assumption does not hold, and this is a real, separate finding,
+    // not just a stale comment: a path outside the global prefix entirely
+    // (no "/api/v1") never reaches Nest's routing or exception-filter
+    // pipeline at all — Express's own bare fallback handler answers first,
+    // with "Cannot GET /health" as HTML. This is unrelated to whether
+    // ZodValidationPipe/ProblemExceptionFilter are registered; it reproduces
+    // identically with or without configureApp, because the request never
+    // enters Nest's machinery in the first place. Only unmatched paths
+    // *inside* the prefix (see problem.integration.test.ts's `${API_PREFIX}/nope`)
+    // go through the filter and come back as Problem Details.
+    const res = await request(app.getHttpServer()).get('/health').expect(404);
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.text).toContain('Cannot GET /health');
   });
 });

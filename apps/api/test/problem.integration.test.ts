@@ -1,10 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Logger } from 'nestjs-pino';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
-import { ProblemExceptionFilter } from '../src/common/problem/problem.filter';
+import { configureApp } from '../src/configure-app';
 import { API_PREFIX } from '../src/config/api-prefix';
 
 let app: INestApplication;
@@ -12,9 +11,7 @@ let app: INestApplication;
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
-  // See api-prefix.ts for why this must keep its leading slash.
-  app.setGlobalPrefix(API_PREFIX);
-  app.useGlobalFilters(new ProblemExceptionFilter(app.get(Logger)));
+  configureApp(app);
   await app.init();
 });
 
