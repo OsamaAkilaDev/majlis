@@ -87,3 +87,13 @@ test('the account menu has no violations while open', async ({ page }) => {
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
   await scan(page);
 });
+
+test('the console navigation sheet has no violations while open', async ({ page }) => {
+  // A modal sheet is where focus management and aria-hidden break, and it is the
+  // one interactive overlay this suite did not cover.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, 'admin@uni.ac.ae');
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await scan(page);
+});
