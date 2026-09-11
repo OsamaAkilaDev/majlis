@@ -53,6 +53,35 @@ review afterwards:
 - `dataviz` — **before** writing any chart for the admin dashboard (Stage 11).
 - `web-perf` — Core Web Vitals, once there are real screens.
 
+**Keeping the code minimal — `ponytail`:**
+
+`ponytail` (lazy senior dev mode) is installed and its hooks activate it
+automatically, including inside subagents. Run it at `full`; use it on
+implementation, refactoring and dependency choices. Its ladder — does this need to
+exist at all → is it already in the codebase → stdlib → native platform feature →
+already-installed dependency → can it be one line — is the right instinct here, and
+its "DB constraint over app code" rung *is* this project's premise.
+
+**But it must ask before cutting anything significant.** A minimalism heuristic will
+read several deliberate things in this codebase as bloat. They are not:
+
+- The **duplicate capacity guard** — a row lock *and* a `CHECK` constraint. Belt and
+  braces on the last-seat guarantee, on purpose.
+- **Tests that exist only to prove an index discriminates.** They look redundant
+  next to the test above them. They are the reason four broken indexes were caught.
+- **The audit row written in the same transaction** as every sensitive action.
+- **Snapshot columns on `Certificate`**, which duplicate data by design so a later
+  rename cannot alter an issued certificate.
+- **`@@map` on every enum**, and `API_PREFIX`'s leading slash — both look cosmetic
+  and are load-bearing.
+
+So: small local simplifications, go ahead. Anything that removes a constraint, a
+test, a transaction boundary, a dependency the spec names, or a whole file — **stop
+and ask first.** Never run `ultra` on auth, tokens, or permissions.
+
+`/ponytail-review`, `/ponytail-audit` and `/ponytail-debt` are useful at the end of a
+stage, under the same rule.
+
 **Quality gates:** `/code-review` before merging a stage, `/simplify` for a
 clean-up pass, `/security-review` before anything touching auth, tokens, or
 permissions lands.
