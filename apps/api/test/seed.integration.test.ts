@@ -132,6 +132,25 @@ describe('seed', () => {
     expect(res.body.email).toBe('admin@uni.ac.ae');
   });
 
+  it('restores a corrupted event capacity and certificate flags on re-seed', async () => {
+    // Catches the `update: {}` branch: a developer who hand-edits capacity to
+    // reproduce a bug keeps that value through every re-seed, and Stage 5's
+    // last-seat concurrency tests then run against the wrong number.
+    await seed(prisma);
+    const before = await prisma.event.findFirstOrThrow();
+    await prisma.event.update({
+      where: { id: before.id },
+      data: { capacity: 1, certificateEnabled: false, waitlistEnabled: false },
+    });
+
+    await seed(prisma);
+
+    const after = await prisma.event.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.capacity).toBe(30);
+    expect(after.certificateEnabled).toBe(true);
+    expect(after.waitlistEnabled).toBe(true);
+  });
+
   it('never violates the one-active-Lead index on a re-run', async () => {
     await seed(prisma);
     await expect(seed(prisma)).resolves.toBeUndefined();
