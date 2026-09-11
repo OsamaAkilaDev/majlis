@@ -64,11 +64,13 @@ export function aClub(departmentId: string, overrides: Partial<ClubSeed> = {}): 
   };
 }
 
-// One connection, lazily created and shared by every mk* helper below.
-// vitest.integration.config.ts runs the suite with fileParallelism off, so
-// there is only ever one test file's worth of traffic on it, and the pool
-// process is torn down at the end of the run rather than waiting on a clean
-// event-loop drain — so there is nothing that needs an explicit disconnect.
+// vitest.integration.config.ts runs with pool: 'forks' and isolate left at
+// its default (true), so each test file gets its own worker and its own
+// module instance of this file — one lazily-created client per test file,
+// not one shared across the whole run. It is left to be reclaimed when that
+// file's forked worker exits rather than explicitly disconnected, which is
+// safe at this scale (one extra connection per file, for the suite's
+// lifetime only).
 let db: ReturnType<typeof createTestPrisma> | undefined;
 function testDb() {
   db ??= createTestPrisma();
@@ -96,21 +98,23 @@ export interface AppointmentSeed {
   userId: string;
   clubId: string;
   role: ClubRole;
-  status?: AppointmentStatus;
+  status: AppointmentStatus;
 }
 
 /**
- * Inserts and returns a ClubTeamAppointment row. Defaults to ACTIVE rather
- * than the schema's own INVITED default: an appointment confers no
- * permission until it is ACTIVE, and that is the state every test wiring up
- * a club officer actually wants. `invitedById` has no foreign key (see the
- * schema), so self-inviting is a harmless simplification here.
+ * Inserts and returns a ClubTeamAppointment row. `status` is required, with
+ * no default: the schema defaults a new appointment to INVITED, which
+ * confers no permission at all, and a factory that silently defaulted to
+ * ACTIVE instead would let a permission test that forgets to pass `status`
+ * pass against a broken guard without ever noticing. Every caller states
+ * outright which state it is testing. `invitedById` has no foreign key (see
+ * the schema), so self-inviting is a harmless simplification here.
  */
 export function mkAppointment({
   userId,
   clubId,
   role,
-  status = 'ACTIVE',
+  status,
 }: AppointmentSeed): Promise<ClubTeamAppointment> {
   return testDb().clubTeamAppointment.create({
     data: { userId, clubId, role, status, invitedById: userId },
