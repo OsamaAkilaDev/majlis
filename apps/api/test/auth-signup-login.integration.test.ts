@@ -72,14 +72,16 @@ describe('POST /auth/signup', () => {
     expect(row.passwordHash.startsWith('$argon2id$')).toBe(true);
   });
 
-  it('sets both cookies httpOnly, with the refresh cookie path-scoped', async () => {
+  it('sets both cookies httpOnly, with the refresh cookie scoped to the site root', async () => {
     const res = await signup(app, {});
     const cookies = res.headers['set-cookie'] as unknown as string[];
     const session = cookies.find((c) => c.startsWith('majlis_session'));
     const refresh = cookies.find((c) => c.startsWith('majlis_refresh'));
     expect(session).toMatch(/HttpOnly/);
     expect(refresh).toMatch(/HttpOnly/);
-    expect(refresh).toMatch(/Path=\/api\/v1\/auth/);
+    // Widened from /api/v1/auth to / in Stage 3 so Next.js middleware can see
+    // the refresh cookie on a page navigation, not only on API calls.
+    expect(refresh).toMatch(/Path=\//);
   });
 
   it('persists a hashed refresh token, never the raw cookie value', async () => {

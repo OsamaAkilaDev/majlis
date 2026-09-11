@@ -1,16 +1,16 @@
 import type { CookieOptions } from 'express';
-import { API_PREFIX } from '../config/api-prefix';
 
 export const SESSION_COOKIE = 'majlis_session';
 export const REFRESH_COOKIE = 'majlis_refresh';
 
 /**
- * Built from API_PREFIX rather than written as a literal: a hardcoded
- * '/api/v1/auth' would silently stop matching if the prefix ever changes,
- * the browser would stop sending the refresh cookie, and every session
- * would die after 15 minutes with no error anywhere.
+ * The site root, not `${API_PREFIX}/auth`. A path-scoped cookie is not sent on
+ * a page navigation, so Next.js middleware could not see it and would redirect
+ * a user with a valid 30-day session to /login after 15 minutes. Widening it
+ * lets middleware refresh the session in place. The token stays httpOnly,
+ * Secure, SameSite=Lax and opaque, and is stored only as a SHA-256 hash.
  */
-export const REFRESH_COOKIE_PATH = `${API_PREFIX}/auth`;
+export const REFRESH_COOKIE_PATH = '/';
 
 /**
  * Design spec (§3): Secure whenever `NODE_ENV !== 'development'`, not only in
