@@ -118,6 +118,20 @@ describe('seed', () => {
     expect(after2).toEqual(after1);
   });
 
+  it('repairs a corrupted password hash on re-seed', async () => {
+    // Catches an `update` branch that omits passwordHash: the stored hash
+    // would stay corrupted instead of being restored to the seeded one.
+    await seed(prisma);
+    const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@uni.ac.ae' } });
+    await prisma.user.update({ where: { id: admin.id }, data: { passwordHash: 'corrupted-hash' } });
+
+    await seed(prisma);
+
+    const res = await login(app, { email: 'admin@uni.ac.ae', password: 'Passw0rd!' });
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe('admin@uni.ac.ae');
+  });
+
   it('never violates the one-active-Lead index on a re-run', async () => {
     await seed(prisma);
     await expect(seed(prisma)).resolves.toBeUndefined();
