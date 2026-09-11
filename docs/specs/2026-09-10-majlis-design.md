@@ -582,7 +582,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 |---|---|---|
 | 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
 | 2 | ✅ **Done** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md) |
-| 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline |
+| 3 | Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline. Designed in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) |
 | 4 | Clubs, team & membership | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance, the four membership policies, requests and decisions, member lists, leaving |
 | 5 | Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override |
 | 6 | QR & attendance | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections |
