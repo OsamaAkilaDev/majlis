@@ -86,8 +86,12 @@ describe('Event', () => {
 
   it('allows registration to close exactly when the event ends', async () => {
     // The predicate is registration_closes_at <= ends_at. This boundary case
-    // is what distinguishes it from a stricter <.
-    await expect(anEvent({ registrationClosesAt: at(26), endsAt: at(26) })).resolves.toBeDefined();
+    // is what distinguishes it from a stricter <. Hoisted to one constant:
+    // at() reads Date.now() fresh each call, so two separate calls can
+    // straddle a millisecond and pass even under a stricter <, making the
+    // test intermittently vacuous.
+    const boundary = at(26);
+    await expect(anEvent({ registrationClosesAt: boundary, endsAt: boundary })).resolves.toBeDefined();
   });
 
   it('rejects a negative confirmed count', async () => {
@@ -203,5 +207,29 @@ describe('EventAssignment', () => {
     const data = { eventId: event.id, userId: member.id, responsibility: 'OPERATIONS' as const, assignedById: lead.id };
     await prisma.eventAssignment.create({ data });
     await expect(prisma.eventAssignment.create({ data })).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('scopes the rule per (event, responsibility) — one person can hold two responsibilities on one event, and be assigned across two events', async () => {
+    // Both tests above pass identically against a (user_id)-only unique:
+    // the first test never varies the user or the event, and the second
+    // never varies the responsibility. Only a matrix of user x event x
+    // responsibility tells the two-column index apart from a one-column one.
+    const event = await anEvent();
+    const [member, lead] = [await aUser(), await aUser()];
+    await prisma.eventAssignment.create({
+      data: { eventId: event.id, userId: member.id, responsibility: 'OPERATIONS', assignedById: lead.id },
+    });
+    await expect(
+      prisma.eventAssignment.create({
+        data: { eventId: event.id, userId: member.id, responsibility: 'MARKETING', assignedById: lead.id },
+      }),
+    ).resolves.toBeDefined();
+
+    const otherEvent = await anEvent();
+    await expect(
+      prisma.eventAssignment.create({
+        data: { eventId: otherEvent.id, userId: member.id, responsibility: 'OPERATIONS', assignedById: lead.id },
+      }),
+    ).resolves.toBeDefined();
   });
 });

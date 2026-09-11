@@ -124,6 +124,31 @@ describe('Notification', () => {
     await expect(prisma.notification.create({ data })).rejects.toMatchObject({ code: 'P2002' });
   });
 
+  it('allows two different dedupe keys for the same user', async () => {
+    // A (user_id)-only unique constraint would allow exactly one
+    // notification per user, ever, and would pass every other test in this
+    // block — both existing tests only vary the user, never the key.
+    const user = await aUser();
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        type: 'registration.confirmed',
+        payload: { eventId: 'e1' },
+        dedupeKey: 'registration.confirmed:e1',
+      },
+    });
+    await expect(
+      prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: 'registration.confirmed',
+          payload: { eventId: 'e2' },
+          dedupeKey: 'registration.confirmed:e2',
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('allows the same dedupe key for a different user', async () => {
     const [a, b] = [await aUser(), await aUser()];
     const base = { type: 'event.cancelled', payload: {}, dedupeKey: 'event.cancelled:e1' };

@@ -145,6 +145,15 @@ describe('ClubMembership — one open membership per (user, club)', () => {
     await expect(join(club.id, b.id, 'ACTIVE')).resolves.toBeDefined();
   });
 
+  it('scopes the rule per club — one student may belong to two clubs', async () => {
+    // Mirror of the per-user test above. A (user_id)-only index would cap a
+    // student at one club membership for their entire time at the university.
+    const [first, second] = [await aClub(), await aClub()];
+    const user = await aUser();
+    await join(first.id, user.id, 'ACTIVE');
+    await expect(join(second.id, user.id, 'ACTIVE')).resolves.toBeDefined();
+  });
+
   it('allows re-joining after LEFT, and keeps the historic row', async () => {
     const club = await aClub();
     const user = await aUser();
