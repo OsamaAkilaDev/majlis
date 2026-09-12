@@ -60,6 +60,59 @@ describe('createSignedUploadUrl', () => {
   });
 });
 
+describe('createSignedDownloadUrl', () => {
+  it('posts the expiry and absolutises the relative signedURL it gets back', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const { svc } = serviceWith((async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(
+        JSON.stringify({
+          signedURL: '/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=tok',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch);
+
+    const out = await svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300);
+
+    // Verified live 2026-09-13: the response key is `signedURL` (not `url`,
+    // which is what the upload endpoint returns) and it is relative to
+    // /storage/v1. Returning it straight through sends the browser to the
+    // web app's own origin.
+    expect(out).toBe(
+      'https://example.supabase.co/storage/v1/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=tok',
+    );
+    expect(calls[0]!.url).toBe(
+      'https://example.supabase.co/storage/v1/object/sign/majlis-storage/certificates/c1/certificate.pdf',
+    );
+    expect(calls[0]!.init.method).toBe('POST');
+    // Both headers, and the expiry in the body. The live service answers
+    // "Invalid Compact JWS" without `apikey` alongside the bearer token.
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(headers.apikey).toBe(KEY);
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ expiresIn: 300 });
+  });
+
+  it('throws rather than returning a broken URL when Supabase refuses', async () => {
+    // Same shape as the upload test above: a plausible signedURL alongside
+    // the error, so only the status check can stop a 401 producing a URL
+    // that 400s in the holder's browser.
+    const { svc } = serviceWith((async () =>
+      new Response(
+        JSON.stringify({
+          error: 'Unauthorized',
+          signedURL: '/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=bogus',
+        }),
+        { status: 401 },
+      )) as unknown as typeof fetch);
+
+    await expect(svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300)).rejects.toThrow(
+      /refused to sign a download url: 401/i,
+    );
+  });
+});
+
 describe('statObject', () => {
   it('returns null for a 404, the documented not-found status, without warning', async () => {
     const { svc, logger } = serviceWith((async () => new Response(null, { status: 404 })) as unknown as typeof fetch);
