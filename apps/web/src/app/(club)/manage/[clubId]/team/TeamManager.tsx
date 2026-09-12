@@ -68,7 +68,7 @@ function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => 
         <UserPicker value={picked} onChange={setPicked} />
         <Field label="Role">
           <Select value={role} onValueChange={(v) => setRole(v as ClubRole)}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Role">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -62,6 +62,51 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByRole('heading', { name: /do not have access/i })).toBeVisible();
       await scan(page);
     });
+
+    test('the student club list has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/clubs');
+      await expect(page.getByRole('link', { name: /Robotics Club/ })).toBeVisible();
+      await scan(page);
+    });
+
+    test('a club detail with an actionable join control has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/clubs/robotics-club');
+      await expect(page.getByRole('button', { name: 'Request to join' })).toBeEnabled();
+      await scan(page);
+    });
+
+    test('a club detail with a refused join control has no violations', async ({ page }) => {
+      // A disabled control still needs an accessible name carrying the
+      // reason, or the refusal exists only in the layout and a screen
+      // reader user learns nothing about why they cannot act.
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/clubs/chess-club');
+      await expect(
+        page.getByRole('button', { name: 'This club is not accepting members' }),
+      ).toBeDisabled();
+      await scan(page);
+    });
+
+    test('the student me page has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/me');
+      await expect(page.getByRole('heading', { name: 'My clubs' })).toBeVisible();
+      await scan(page);
+    });
+
+    test('admin departments has no violations', async ({ page }) => {
+      await signIn(page, 'admin@uni.ac.ae');
+      await page.goto('/admin/departments');
+      await scan(page);
+    });
+
+    test('the admin club creation form has no violations', async ({ page }) => {
+      await signIn(page, 'admin@uni.ac.ae');
+      await page.goto('/admin/clubs/new');
+      await scan(page);
+    });
   });
 }
 

@@ -107,7 +107,7 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
         <>
           <Field label="Department" error={error?.fieldError('departmentId')}>
             <Select value={departmentId} onValueChange={setDepartmentId}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Department">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -130,7 +130,7 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
 
           <Field label="Membership policy" error={error?.fieldError('membershipPolicy')}>
             <Select value={membershipPolicy} onValueChange={(v) => setMembershipPolicy(v as MembershipPolicy)}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Membership policy">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

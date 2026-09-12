@@ -1,0 +1,137 @@
+'use client';
+
+import type { Invitation, MyClub } from '@majlis/contracts';
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { EmptyState } from '@/components/EmptyState';
+import { StatusBadge } from '@/components/StatusBadge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations, roleLabel } from '@/lib/clubs';
+
+const PAGE = 20;
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="font-display text-title text-ink">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+export function MeManager() {
+  const [clubs, setClubs] = useState<MyClub[] | null>(null);
+  const [invitations, setInvitations] = useState<Invitation[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [c, i] = await Promise.all([myClubs({ limit: PAGE }), myInvitations({ limit: PAGE })]);
+    setClubs(c.items);
+    setInvitations(i.items);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function act(id: string, fn: () => Promise<unknown>) {
+    setBusy(id);
+    try {
+      await fn();
+      // Accepting moves a club from one list into the other, so both are
+      // refetched rather than patched locally.
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title="Invitations">
+        {invitations === null ? (
+          <Skeleton className="h-16" />
+        ) : invitations.length === 0 ? (
+          <EmptyState title="No invitations" />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {invitations.map((inv) => (
+              <li
+                key={inv.id}
+                className="flex items-center gap-3 rounded-card border border-border bg-surface p-3"
+              >
+                <img src={inv.clubLogoUrl} alt="" className="size-10 shrink-0 rounded-control object-cover" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-ink">{inv.clubName}</span>
+                  <span className="block text-sm text-ink-muted">{roleLabel(inv.role)}</span>
+                </span>
+                <Button
+                  size="sm"
+                  disabled={busy === inv.id}
+                  onClick={() => act(inv.id, () => acceptInvitation(inv.id))}
+                >
+                  Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy === inv.id}
+                  onClick={() => act(inv.id, () => declineInvitation(inv.id))}
+                >
+                  Decline
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <Section title="My clubs">
+        {clubs === null ? (
+          <Skeleton className="h-16" />
+        ) : clubs.length === 0 ? (
+          <EmptyState
+            title="No clubs yet"
+            action={
+              <Button asChild>
+                <Link href="/clubs">Browse clubs</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {clubs.map((club) => (
+              <li
+                key={club.clubId}
+                className="flex items-center gap-3 rounded-card border border-border bg-surface p-3"
+              >
+                <img src={club.logoUrl} alt="" className="size-10 shrink-0 rounded-control object-cover" />
+                <Link href={`/clubs/${club.slug}`} className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-ink">{club.name}</span>
+                  <span className="block text-sm text-ink-muted">
+                    {club.clubRoles.length > 0 ? club.clubRoles.map(roleLabel).join(', ') : 'Member'}
+                  </span>
+                </Link>
+                {club.status === 'PENDING' ? <StatusBadge status="PENDING" /> : null}
+                {club.status === 'ACTIVE' ? (
+                  <ConfirmDialog
+                    title={`Leave ${club.name}?`}
+                    confirmLabel="Leave"
+                    trigger={
+                      <Button size="sm" variant="outline" disabled={busy === club.clubId}>
+                        Leave
+                      </Button>
+                    }
+                    onConfirm={() => act(club.clubId, () => leaveClub(club.clubId))}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+    </div>
+  );
+}

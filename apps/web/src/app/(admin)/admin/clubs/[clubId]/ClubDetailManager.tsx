@@ -75,7 +75,7 @@ function StatusControl({ club, onChanged }: { club: ClubDetail; onChanged: (c: C
         </DialogHeader>
         <Field label="New status">
           <Select value={next} onValueChange={(v) => setNext(v as ClubStatus)}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="New status">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>

@@ -69,7 +69,7 @@ export function ClubCreateForm() {
 
         <Field label="Department" error={error?.fieldError('departmentId')}>
           <Select value={departmentId} onValueChange={setDepartmentId}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Department">
               <SelectValue placeholder="Department" />
             </SelectTrigger>
             <SelectContent>
@@ -92,7 +92,7 @@ export function ClubCreateForm() {
 
         <Field label="Membership policy" error={error?.fieldError('membershipPolicy')}>
           <Select value={membershipPolicy} onValueChange={(v) => setMembershipPolicy(v as MembershipPolicy)}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Membership policy">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

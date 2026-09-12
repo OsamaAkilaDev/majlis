@@ -52,7 +52,7 @@ export function ClubsManager() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <Select value={departmentId || 'all'} onValueChange={(v) => setDepartmentId(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger aria-label="Filter by department" className="w-44">
               <SelectValue placeholder="Department" />
             </SelectTrigger>
             <SelectContent>
@@ -66,7 +66,7 @@ export function ClubsManager() {
           </Select>
 
           <Select value={status || 'all'} onValueChange={(v) => setStatus(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="Filter by status" className="w-36">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
