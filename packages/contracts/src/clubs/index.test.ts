@@ -40,7 +40,7 @@ describe('patchClubStatusBodySchema', () => {
 describe('createClubBodySchema', () => {
   // No logoUrl field to test a scheme against: the client never sends one,
   // see the comment on createClubBodySchema. httpsUrlSchema itself (still
-  // used elsewhere, e.g. patchClubBodySchema) keeps its own coverage.
+  // used elsewhere, e.g. signedUploadSchema.publicUrl) keeps its own coverage.
 
   it('rejects a clubId that is not a UUID', () => {
     // The server minted this id and the client echoes it back. A

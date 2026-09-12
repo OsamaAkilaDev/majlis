@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiResponse } from '@nestjs/swagger';
-import { clubListQuerySchema, createClubBodySchema, type ClubDetail, type ClubPage, type NewClubUpload } from '@majlis/contracts';
+import {
+  clubListQuerySchema,
+  createClubBodySchema,
+  patchClubBodySchema,
+  patchClubStatusBodySchema,
+  type ClubDetail,
+  type ClubPage,
+  type NewClubUpload,
+  type SignedUpload,
+} from '@majlis/contracts';
 import { createZodDto } from 'nestjs-zod';
 import { Actor } from '../auth/actor.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -10,6 +19,8 @@ import type { User } from '../generated/prisma/client';
 import { ClubsService } from './clubs.service';
 
 class CreateClubDto extends createZodDto(createClubBodySchema) {}
+class PatchClubDto extends createZodDto(patchClubBodySchema) {}
+class PatchClubStatusDto extends createZodDto(patchClubStatusBodySchema) {}
 class ClubListQueryDto extends createZodDto(clubListQuerySchema) {}
 
 /**
@@ -47,5 +58,41 @@ export class ClubsController {
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   detail(@Actor() actor: User, @Param('clubId') clubId: string): Promise<ClubDetail> {
     return this.clubs.detail(actor, clubId);
+  }
+
+  @Patch('clubs/:clubId')
+  @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
+  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That club is archived, or the uploaded image failed verification.', type: ProblemDetailsDto })
+  update(@Actor() actor: User, @Param('clubId') clubId: string, @Body() body: PatchClubDto): Promise<ClubDetail> {
+    return this.clubs.update(actor, clubId, body);
+  }
+
+  @Patch('clubs/:clubId/status')
+  @RequirePermission('club:status')
+  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That transition is not allowed.', type: ProblemDetailsDto })
+  updateStatus(
+    @Actor() actor: User,
+    @Param('clubId') clubId: string,
+    @Body() body: PatchClubStatusDto,
+  ): Promise<ClubDetail> {
+    return this.clubs.updateStatus(actor, clubId, body);
+  }
+
+  @Post('clubs/:clubId/logo-upload-url')
+  @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
+  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
+  logoUploadUrl(@Param('clubId') clubId: string): Promise<SignedUpload> {
+    return this.clubs.mintEditUpload(clubId, 'club-logo');
+  }
+
+  @Post('clubs/:clubId/banner-upload-url')
+  @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
+  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
+  bannerUploadUrl(@Param('clubId') clubId: string): Promise<SignedUpload> {
+    return this.clubs.mintEditUpload(clubId, 'club-banner');
   }
 }

@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { SESSION_COOKIE } from '../src/auth/cookies';
+import { API_PREFIX } from '../src/config/api-prefix';
 import type {
   AppointmentStatus,
   Club,
@@ -126,4 +130,32 @@ export function mkAppointment({
   return testDb().clubTeamAppointment.create({
     data: { userId, clubId, role, status, invitedById: userId },
   });
+}
+
+export interface ActiveLead {
+  userId: string;
+  sessionCookie: string;
+  appointmentId: string;
+}
+
+/**
+ * Signs up a fresh STUDENT through the real /auth/signup route, so
+ * `sessionCookie` is a genuine signed access token exercised through
+ * SessionGuard like any other, then gives them an ACTIVE LEAD appointment on
+ * `clubId`. Exported so Tasks 6, 7 and 8 all exercise club-scoped permission
+ * checks against the same fixture.
+ */
+export async function makeActiveLead(app: INestApplication, clubId: string): Promise<ActiveLead> {
+  const res = await request(app.getHttpServer())
+    .post(`${API_PREFIX}/auth/signup`)
+    .send({ email: `${uniq('lead')}@uni.ac.ae`, password: 'correct-horse-battery', fullName: 'Test Lead' });
+  if (res.status !== 201) {
+    throw new Error(`makeActiveLead: signup failed with ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  const userId = (res.body as { id: string }).id;
+  const setCookie = res.headers['set-cookie'] as unknown as string[];
+  const sessionCookie = setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(';')[0]!;
+
+  const appointment = await mkAppointment({ userId, clubId, role: 'LEAD', status: 'ACTIVE' });
+  return { userId, sessionCookie, appointmentId: appointment.id };
 }

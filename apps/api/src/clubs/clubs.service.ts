@@ -1,5 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { IMAGE_KINDS, type ClubDetail, type ClubListQuery, type ClubPage, type ClubSummary, type CreateClubBody, type ImageKind, type NewClubUpload } from '@majlis/contracts';
+import {
+  IMAGE_KINDS,
+  type ClubDetail,
+  type ClubListQuery,
+  type ClubPage,
+  type ClubSummary,
+  type CreateClubBody,
+  type ImageKind,
+  type NewClubUpload,
+  type PatchClubBody,
+  type PatchClubStatusBody,
+  type SignedUpload,
+} from '@majlis/contracts';
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
@@ -10,6 +22,7 @@ import { TransactionHost } from '../prisma/transaction.host';
 import { objectPath } from '../storage/image-kinds';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as AuditService above.
 import { StorageService } from '../storage/storage.service';
+import { assertAcceptsEdits, assertTransition } from './club-status';
 import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
@@ -83,6 +96,17 @@ export class ClubsService {
     const path = objectPath('club-logo', clubId);
     const { signedUrl, token } = await this.storage.createSignedUploadUrl(path);
     return { clubId, path, signedUrl, token, publicUrl: this.storage.publicUrlFor(path, Date.now()) };
+  }
+
+  /**
+   * POST /clubs/:clubId/logo-upload-url and .../banner-upload-url. Unlike
+   * mintLogoUpload, the club already exists, so the object path is derived
+   * from its real id rather than a freshly minted one.
+   */
+  async mintEditUpload(clubId: string, kind: ImageKind): Promise<SignedUpload> {
+    const path = objectPath(kind, clubId);
+    const { signedUrl, token } = await this.storage.createSignedUploadUrl(path);
+    return { path, signedUrl, token, publicUrl: this.storage.publicUrlFor(path, Date.now()) };
   }
 
   /**
@@ -197,5 +221,71 @@ export class ClubsService {
       membership?.status ?? null,
       appointments.map((a) => a.role),
     );
+  }
+
+  /**
+   * PATCH /clubs/:clubId. `data` is built by picking each optional key from
+   * `body` explicitly, never spread, so a body carrying `status` or `slug`
+   * (patchClubBodySchema has no such keys, but a service must not rely on
+   * that alone) cannot smuggle either into the update.
+   */
+  async update(actor: { id: string }, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
+    return this.host.run(async () => {
+      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
+      if (!club) throw new NotFoundError('No such club.');
+      assertAcceptsEdits(club.status);
+
+      const data: Prisma.ClubUncheckedUpdateInput = {};
+      if (body.departmentId !== undefined) data.departmentId = body.departmentId;
+      if (body.description !== undefined) data.description = body.description;
+      if (body.category !== undefined) data.category = body.category;
+      if (body.academicYear !== undefined) data.academicYear = body.academicYear;
+      if (body.membershipPolicy !== undefined) data.membershipPolicy = body.membershipPolicy;
+      if (body.logoUploaded) data.logoUrl = await this.verifyUpload('club-logo', clubId);
+      if (body.bannerUploaded) data.bannerUrl = await this.verifyUpload('club-banner', clubId);
+
+      await this.host.tx.club.update({ where: { id: clubId }, data });
+
+      await this.audit.record({
+        action: 'club.updated',
+        entityType: 'Club',
+        entityId: clubId,
+        outcome: 'SUCCESS',
+        actorUserId: actor.id,
+        after: data as Record<string, unknown>,
+      });
+
+      return this.detail(actor, clubId);
+    });
+  }
+
+  /**
+   * PATCH /clubs/:clubId/status. `assertTransition` is the only gate on the
+   * write; nothing here assigns `status` directly outside it.
+   */
+  async updateStatus(actor: { id: string }, clubId: string, body: PatchClubStatusBody): Promise<ClubDetail> {
+    return this.host.run(async () => {
+      const before = await this.host.tx.club.findUnique({ where: { id: clubId } });
+      if (!before) throw new NotFoundError('No such club.');
+      assertTransition(before.status, body.status);
+
+      const after = await this.host.tx.club.update({ where: { id: clubId }, data: { status: body.status } });
+
+      const action =
+        body.status === 'ARCHIVED' ? 'club.archived' : body.status === 'SUSPENDED' ? 'club.suspended' : 'club.reactivated';
+
+      await this.audit.record({
+        action,
+        entityType: 'Club',
+        entityId: clubId,
+        outcome: 'SUCCESS',
+        reason: body.reason,
+        actorUserId: actor.id,
+        before: { status: before.status },
+        after: { status: after.status },
+      });
+
+      return this.detail(actor, clubId);
+    });
   }
 }

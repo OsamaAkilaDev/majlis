@@ -45,6 +45,13 @@ export const createClubBodySchema = z.object({
   membershipPolicy: membershipPolicySchema,
 });
 
+/**
+ * No `logoUrl`/`bannerUrl` here either, for the same reason as
+ * createClubBodySchema: the server never stores a client-supplied image URL.
+ * `logoUploaded`/`bannerUploaded` mean "I just uploaded one at the path you
+ * gave me, go verify it". The service calls `verifyUpload` and stores what
+ * that returns.
+ */
 export const patchClubBodySchema = z
   .object({
     departmentId: z.uuid(),
@@ -52,8 +59,8 @@ export const patchClubBodySchema = z
     category: z.string().trim().min(2).max(60),
     academicYear: academicYearSchema,
     membershipPolicy: membershipPolicySchema,
-    logoUrl: httpsUrlSchema,
-    bannerUrl: httpsUrlSchema.nullable(),
+    logoUploaded: z.boolean(),
+    bannerUploaded: z.boolean(),
   })
   .partial();
 
