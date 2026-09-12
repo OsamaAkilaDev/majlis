@@ -1,0 +1,23 @@
+import type { ClubStatus } from '@majlis/contracts';
+import { NotFoundError } from '../common/problem/domain-error';
+import type { Club } from '../generated/prisma/client';
+import type { TransactionHost } from '../prisma/transaction.host';
+
+/**
+ * The club behind a `:clubId` path segment, or a 404. Every club-scoped write
+ * starts here so the not-found answer precedes the status answer uniformly: a
+ * club that does not exist must never be reported as one that is archived.
+ *
+ * `assertStatus` is the caller's, because the rule differs per route — edits
+ * are allowed in a SUSPENDED club, new activity is not.
+ */
+export async function loadClub(
+  host: TransactionHost,
+  clubId: string,
+  assertStatus?: (status: ClubStatus) => void,
+): Promise<Club> {
+  const club = await host.tx.club.findUnique({ where: { id: clubId } });
+  if (!club) throw new NotFoundError('No such club.');
+  assertStatus?.(club.status);
+  return club;
+}

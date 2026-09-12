@@ -11,13 +11,17 @@ import type {
 } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
+import { clubOverrideReason } from '../../auth/override';
+import type { PlatformRole } from '../../auth/permissions';
+import { cursorArgs, cursorPage } from '../../common/cursor-page';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
-import { violatedConstraintName } from '../../common/prisma-constraint';
-import { Prisma, type ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
+import { conflictOn } from '../../common/prisma-constraint';
+import type { ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
 import { assertCanReadRoster } from '../roster-access';
 import { assertAcceptsEdits } from '../club-status';
+import { loadClub } from '../load-club';
 
 const INVITATION_TTL_DAYS = 14;
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
@@ -81,14 +85,7 @@ function toAppointment(row: AppointmentWithUser, hasLeftClub: boolean): Appointm
  * ones); this exists for Task 7's accept, which is the first path that can
  * produce the collision.
  */
-function mapWriteError(e: unknown): never {
-  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    if (violatedConstraintName(e.meta).includes('one_active_lead')) {
-      throw new ConflictError('That club already has an active Lead.');
-    }
-  }
-  throw e;
-}
+const mapWriteError = conflictOn({ one_active_lead: 'That club already has an active Lead.' });
 
 @Injectable()
 export class TeamService {
@@ -108,9 +105,7 @@ export class TeamService {
   /** POST /clubs/:clubId/lead. Admin only; the nominee holds no authority until they accept. */
   async appointLead(actor: { id: string }, clubId: string, body: AppointLeadBody): Promise<Appointment> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsEdits(club.status);
+      await loadClub(this.host, clubId, assertAcceptsEdits);
       if (body.userId === actor.id) throw new UnprocessableError('You cannot appoint yourself.');
 
       const row = await this.host.tx.clubTeamAppointment
@@ -141,12 +136,15 @@ export class TeamService {
   }
 
   /** POST /clubs/:clubId/team. Lead only; role is any of the four non-Lead values. */
-  async invite(actor: { id: string }, clubId: string, body: InviteTeamMemberBody): Promise<Appointment> {
+  async invite(
+    actor: { id: string; platformRole: PlatformRole },
+    clubId: string,
+    body: InviteTeamMemberBody,
+  ): Promise<Appointment> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsEdits(club.status);
+      await loadClub(this.host, clubId, assertAcceptsEdits);
       if (body.userId === actor.id) throw new UnprocessableError('You cannot invite yourself.');
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
       const existing = await this.host.tx.clubTeamAppointment.findFirst({
         where: { clubId, userId: body.userId, role: body.role, status: 'ACTIVE' },
@@ -173,6 +171,7 @@ export class TeamService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: { clubId, userId: row.userId, role: row.role },
       });
 
@@ -218,14 +217,11 @@ export class TeamService {
 
     const rows = await this.host.tx.clubTeamAppointment.findMany({
       where: { clubId },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: WITH_USER,
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     // One batched membership lookup for the whole page rather than one query
     // per row, which is what an N+1 read would otherwise cost here.
@@ -237,7 +233,7 @@ export class TeamService {
 
     return {
       items: items.map((r) => toAppointment(r, !activeUserIds.has(r.userId))),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
@@ -260,18 +256,15 @@ export class TeamService {
         status: 'INVITED',
         invitationExpiresAt: { gt: new Date() },
       },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: WITH_CLUB,
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map(toInvitation),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 

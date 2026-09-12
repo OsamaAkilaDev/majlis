@@ -16,9 +16,11 @@ export function landingFor(user: SessionUser): string {
   return first ? `/manage/${first}` : '/home';
 }
 
-/** The tab a path belongs to: the longest tab href that is a prefix of it, so
- *  `/me` owns `/me/registrations` while `/me/qr` keeps its own tab. */
-export function activeTabHref(pathname: string, hrefs: readonly string[]): string | null {
+/** The nav destination a path belongs to: the longest href that is a prefix of
+ *  it, so `/me` owns `/me/registrations` while `/me/qr` keeps its own entry, and
+ *  a console's `.../events` stays lit on `.../events/{id}`. Shared by the tab
+ *  bar and both side navs so a deep route cannot light nothing in one of them. */
+export function activeNavHref(pathname: string, hrefs: readonly string[]): string | null {
   let best: string | null = null;
   for (const href of hrefs) {
     if (!isUnder(pathname, href)) continue;
@@ -63,7 +65,12 @@ export function decideRedirect(input: {
   // session, not an anonymous visitor. Middleware renews it in place.
   const signedIn = hasSession || hasRefresh;
 
-  if (AUTH_ROUTES.includes(pathname)) return signedIn ? { to: '/' } : null;
+  // An auth route is never bounced from here. A cookie's PRESENCE is not a
+  // session: a dead one sent /login to / while the server sent / back to
+  // /login, looping forever. (auth)/layout.tsx already bounces a genuinely
+  // signed-in visitor using a validated session, which is the only copy of
+  // this decision that can tell the difference.
+  if (AUTH_ROUTES.includes(pathname)) return null;
   return signedIn ? null : { to: '/login' };
 }
 

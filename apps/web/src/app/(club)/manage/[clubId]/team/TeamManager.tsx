@@ -1,112 +1,90 @@
 'use client';
 
-import type { Appointment, ClubDetail, ClubRole, UserListItem } from '@majlis/contracts';
+import type { AppointmentPage, ClubDetail, ClubRole } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
+import { UserPickerDialog } from '@/components/UserPickerDialog';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Field } from '@/components/Field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UserPicker } from '@/components/UserPicker';
-import { ProblemError } from '@/lib/api';
-import { endAppointment, getClub, inviteTeamMember, listTeam, roleLabel } from '@/lib/clubs';
+import { endAppointment, getClub, inviteTeamMember, listTeam } from '@/lib/clubs';
+import { enumLabel } from '@/lib/enum-label';
+import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 
+type InvitableRole = 'VICE_LEAD' | 'MARKETING' | 'CTO' | 'OPERATIONS';
 const INVITABLE_ROLES: ClubRole[] = ['VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'];
 
 function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<UserListItem | null>(null);
+  // The role outlives a close, same as before: only the picker and the error
+  // reset, so reopening keeps what the officer had already chosen.
   const [role, setRole] = useState<ClubRole>('VICE_LEAD');
-  const [error, setError] = useState<ProblemError | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function submit() {
-    if (!picked) return;
-    setPending(true);
-    setError(null);
-    try {
-      await inviteTeamMember(clubId, { userId: picked.id, role: role as 'VICE_LEAD' | 'MARKETING' | 'CTO' | 'OPERATIONS' });
-      onInvited();
-      setOpen(false);
-      setPicked(null);
-    } catch (err) {
-      if (err instanceof ProblemError) setError(err);
-    } finally {
-      setPending(false);
-    }
-  }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) {
-          setError(null);
-          setPicked(null);
-        }
+    <UserPickerDialog
+      trigger={<Button>Invite</Button>}
+      title="Invite a team member"
+      confirmLabel="Send invitation"
+      onSubmit={async (user) => {
+        await inviteTeamMember(clubId, { userId: user.id, role: role as InvitableRole });
+        onInvited();
       }}
     >
-      <DialogTrigger asChild>
-        <Button>Invite</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Invite a team member</DialogTitle>
-        </DialogHeader>
-        <UserPicker value={picked} onChange={setPicked} />
-        <Field label="Role">
-          <Select value={role} onValueChange={(v) => setRole(v as ClubRole)}>
-            <SelectTrigger aria-label="Role">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {INVITABLE_ROLES.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {roleLabel(r)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        {error ? <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p> : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !picked}>
-            Send invitation
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <Field label="Role">
+        <Select value={role} onValueChange={(v) => setRole(v as ClubRole)}>
+          <SelectTrigger aria-label="Role">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {INVITABLE_ROLES.map((r) => (
+              <SelectItem key={r} value={r}>
+                {enumLabel(r)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+    </UserPickerDialog>
   );
 }
 
-export function TeamManager({ clubId, viewerUserId }: { clubId: string; viewerUserId: string }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [items, setItems] = useState<Appointment[] | null>(null);
+export function TeamManager({
+  clubId,
+  viewerUserId,
+  initialClub,
+  initialTeam,
+}: {
+  clubId: string;
+  viewerUserId: string;
+  initialClub: ClubDetail | null;
+  initialTeam: AppointmentPage | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const { items, cursor, show, append } = useCursorPage(initialTeam);
+  // See MembersManager: a locale-formatted date cannot be server-rendered.
+  const mounted = useViewerZone() !== undefined;
 
   async function load() {
-    const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: 100 })]);
+    const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: PAGE })]);
     setClub(c);
-    setItems(page.items);
+    show(page);
   }
 
+  async function loadMore() {
+    if (!cursor) return;
+    append(await listTeam(clubId, { limit: PAGE, cursor }));
+  }
+
+  const seeded = initialClub !== null && initialTeam !== null;
   useEffect(() => {
-    load();
-  }, [clubId]);
+    if (!seeded) load();
+  }, [clubId, seeded]);
 
   if (!club || items === null) return <Skeleton className="h-64 w-full" />;
 
@@ -144,13 +122,13 @@ export function TeamManager({ clubId, viewerUserId }: { clubId: string; viewerUs
                     <span className="text-label text-ink-2">{a.userEmail}</span>
                   </div>
                 </TableCell>
-                <TableCell>{roleLabel(a.role)}</TableCell>
+                <TableCell>{enumLabel(a.role)}</TableCell>
                 <TableCell className="flex items-center gap-2">
                   <StatusBadge status={a.status} />
                   {a.hasLeftClub ? <StatusBadge status="LEFT" className="opacity-70" /> : null}
                 </TableCell>
                 <TableCell className="tabular text-ink-2">
-                  {a.invitationExpiresAt ? new Date(a.invitationExpiresAt).toLocaleDateString() : ''}
+                  {mounted && a.invitationExpiresAt ? new Date(a.invitationExpiresAt).toLocaleDateString() : ''}
                 </TableCell>
                 <TableCell>
                   {isLead && a.status === 'ACTIVE' && a.userId !== viewerUserId ? (
@@ -173,6 +151,8 @@ export function TeamManager({ clubId, viewerUserId }: { clubId: string; viewerUs
           </TableBody>
         </Table>
       )}
+
+      <LoadMore cursor={cursor} onClick={loadMore} />
     </div>
   );
 }

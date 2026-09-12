@@ -24,25 +24,11 @@ import type {
   PatchClubBody,
   PatchClubStatusBody,
   PatchDepartmentBody,
+  RemoveMemberBody,
   SignedUpload,
   UserListPage,
 } from '@majlis/contracts';
-import { apiFetch } from './api';
-
-const json = (body: unknown): RequestInit => ({
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify(body),
-});
-
-function qs(params: Record<string, string | undefined>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) search.set(key, value);
-  }
-  const s = search.toString();
-  return s ? `?${s}` : '';
-}
+import { apiFetch, json, qs } from './api';
 
 // -- Uploads and club creation/editing --------------------------------------
 
@@ -127,8 +113,12 @@ export const decideMembership = (
 export const leaveClub = (clubId: string): Promise<void> =>
   apiFetch(`/clubs/${clubId}/membership`, { method: 'DELETE' });
 
-export const removeMember = (clubId: string, userId: string): Promise<void> =>
-  apiFetch(`/clubs/${clubId}/members/${userId}`, { method: 'DELETE' });
+export const removeMember = (
+  clubId: string,
+  userId: string,
+  body: RemoveMemberBody = {},
+): Promise<void> =>
+  apiFetch(`/clubs/${clubId}/members/${userId}`, { ...json(body), method: 'DELETE' });
 
 export const myClubs = (query: CursorPageQuery): Promise<MyClubPage> =>
   apiFetch(`/me/clubs${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
@@ -151,11 +141,3 @@ export const removeDepartment = (id: string): Promise<void> =>
 
 export const listUsers = (query: CursorPageQuery): Promise<UserListPage> =>
   apiFetch(`/users${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
-
-/** "VICE_LEAD" -> "Vice Lead". Shared by every screen that renders a ClubRole. */
-export function roleLabel(role: string): string {
-  return role
-    .split('_')
-    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
-    .join(' ');
-}

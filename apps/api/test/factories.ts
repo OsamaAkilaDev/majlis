@@ -8,7 +8,10 @@ import type {
   Club,
   ClubRole,
   ClubTeamAppointment,
+  Event,
+  EventRegistration,
   Prisma,
+  RegistrationStatus,
   User,
 } from '../src/generated/prisma/client';
 import { createTestPrisma } from './db';
@@ -207,4 +210,81 @@ export async function makeActiveOfficer(
   const { userId, sessionCookie } = await signupForAppointment(app, 'officer', 'Test Officer');
   const appointment = await mkAppointment({ userId, clubId, role, status: 'ACTIVE' });
   return { userId, sessionCookie, appointmentId: appointment.id };
+}
+
+export type EventSeed = Prisma.EventUncheckedCreateInput;
+export type RegistrationSeed = Prisma.EventRegistrationUncheckedCreateInput;
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+/**
+ * A plain seed object — does not touch the database. Every window satisfies
+ * the four CHECK constraints in the events migration, so a test that only
+ * cares about one of them can override that one and still insert.
+ *
+ * `status` defaults to PUBLISHED rather than the schema's DRAFT: almost every
+ * test here is about what a live event does, and a DRAFT default would make
+ * each of them silently exercise the invisible case instead.
+ */
+export function anEvent(clubId: string, createdById: string, overrides: Partial<EventSeed> = {}): EventSeed {
+  const handle = uniq('event');
+  const now = Date.now();
+  return {
+    clubId,
+    createdById,
+    title: `Event ${handle}`,
+    slug: `event-${handle}`,
+    summary: 'An event.',
+    description: 'Something happens.',
+    eventType: 'Workshop',
+    audience: 'All students',
+    venue: 'Hall A',
+    startsAt: new Date(now + 7 * DAY),
+    endsAt: new Date(now + 7 * DAY + 2 * HOUR),
+    registrationOpensAt: new Date(now - DAY),
+    registrationClosesAt: new Date(now + 6 * DAY),
+    checkInOpensAt: new Date(now + 7 * DAY - HOUR),
+    checkInClosesAt: new Date(now + 7 * DAY + 3 * HOUR),
+    capacity: 30,
+    status: 'PUBLISHED',
+    ...overrides,
+  };
+}
+
+/** Inserts and returns an Event row. */
+export function mkEvent(
+  clubId: string,
+  createdById: string,
+  overrides: Partial<EventSeed> = {},
+): Promise<Event> {
+  return testDb().event.create({ data: anEvent(clubId, createdById, overrides) });
+}
+
+/**
+ * A plain seed object — does not touch the database. `status` is required
+ * with no default for the same reason mkAppointment's is: a waitlist test
+ * that forgot to state it would otherwise quietly assert against CONFIRMED.
+ */
+export function aRegistration(
+  eventId: string,
+  userId: string,
+  status: RegistrationStatus,
+  overrides: Partial<RegistrationSeed> = {},
+): RegistrationSeed {
+  return { eventId, userId, status, ...overrides };
+}
+
+/**
+ * Inserts a registration row directly. Does NOT maintain `confirmedCount` —
+ * a test seeding CONFIRMED rows must set the counter itself, because the
+ * counter is exactly what the code under test is responsible for.
+ */
+export function mkRegistration(
+  eventId: string,
+  userId: string,
+  status: RegistrationStatus,
+  overrides: Partial<RegistrationSeed> = {},
+): Promise<EventRegistration> {
+  return testDb().eventRegistration.create({ data: aRegistration(eventId, userId, status, overrides) });
 }

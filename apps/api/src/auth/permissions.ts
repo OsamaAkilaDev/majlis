@@ -93,9 +93,28 @@ export const PERMISSIONS = {
   'club:create': { platform: ['ADMIN'] },
   'club:status': { platform: ['ADMIN'] },
   'club:appoint-lead': { platform: ['ADMIN'] },
-  'club:edit': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
+  'club:edit': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD', 'MARKETING'] },
   'club:team-manage': { platform: ['ADMIN'], club: ['LEAD'] },
   'membership:decide': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD', 'OPERATIONS'] },
+
+  // Creating an event needs the whole object, including startsAt, which no
+  // field bucket gives Marketing, CTO or Operations. Field buckets govern
+  // editing; creation stays with Lead, Vice and Admin.
+  'event:create': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
+  // Every club role reaches the edit route; EVENT_FIELDS decides which keys
+  // of the body each of them may actually set.
+  'event:edit': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'] },
+  'event:publish': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
+  'event:cancel': { platform: ['ADMIN'], club: ['LEAD'] },
+  'event:assign': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
+  // Attendee personal data. Spec 6.1 gives club Operations this only 'for
+  // assigned event', which is an EventAssignment row and so belongs in the
+  // event column, not the club one. Marketing and CTO are excluded outright.
+  'registration:read': {
+    platform: ['ADMIN'],
+    club: ['LEAD', 'VICE_LEAD'],
+    event: ['EVENT_LEAD', 'OPERATIONS'],
+  },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;

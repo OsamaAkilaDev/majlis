@@ -7,17 +7,22 @@ import type {
   MemberListQuery,
   MemberPage,
   MyClubPage,
+  RemoveMemberBody,
 } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
-import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
-import { violatedConstraintName } from '../../common/prisma-constraint';
+import { clubOverrideReason } from '../../auth/override';
+import type { PlatformRole } from '../../auth/permissions';
+import { cursorArgs, cursorPage } from '../../common/cursor-page';
+import { NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
+import { conflictOn } from '../../common/prisma-constraint';
 import type { ClubRole } from '../../generated/prisma/enums';
-import { Prisma, type ClubMembership as MembershipRow } from '../../generated/prisma/client';
+import type { Prisma, ClubMembership as MembershipRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
 import { assertCanReadRoster } from '../roster-access';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../club-status';
+import { loadClub } from '../load-club';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
 type MembershipWithUser = MembershipRow & { user: { fullName: string; email: string } };
@@ -54,14 +59,9 @@ function groupRoles(rows: AppointmentRoleRow[], key: (r: AppointmentRoleRow) => 
  * row (request, addMember): both insert into the same table under the same
  * partial index.
  */
-function mapWriteError(e: unknown): never {
-  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    if (violatedConstraintName(e.meta).includes('one_open_per_user')) {
-      throw new ConflictError('You already have an open membership in that club.');
-    }
-  }
-  throw e;
-}
+const mapWriteError = conflictOn({
+  one_open_per_user: 'You already have an open membership in that club.',
+});
 
 @Injectable()
 export class MembershipService {
@@ -97,9 +97,7 @@ export class MembershipService {
    */
   async request(actor: { id: string }, clubId: string): Promise<Member> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsNewActivity(club.status);
+      const club = await loadClub(this.host, clubId, assertAcceptsNewActivity);
 
       let status: 'ACTIVE' | 'PENDING';
       if (club.membershipPolicy === 'OPEN') status = 'ACTIVE';
@@ -130,12 +128,15 @@ export class MembershipService {
    * behaviourally identical, so CLOSED has to be the one policy nobody
    * joins by any route or it is not a distinct policy at all.
    */
-  async addMember(actor: { id: string }, clubId: string, body: AddMemberBody): Promise<Member> {
+  async addMember(
+    actor: { id: string; platformRole: PlatformRole },
+    clubId: string,
+    body: AddMemberBody,
+  ): Promise<Member> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsNewActivity(club.status);
+      const club = await loadClub(this.host, clubId, assertAcceptsNewActivity);
       if (club.membershipPolicy === 'CLOSED') throw new UnprocessableError('That club is closed to new members.');
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
       const row = await this.host.tx.clubMembership
         .create({
@@ -150,6 +151,7 @@ export class MembershipService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: { clubId, userId: row.userId, status: row.status },
       });
 
@@ -169,9 +171,7 @@ export class MembershipService {
    */
   async decide(actor: { id: string }, clubId: string, requestId: string, body: DecideMembershipBody): Promise<Member> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsEdits(club.status);
+      await loadClub(this.host, clubId, assertAcceptsEdits);
 
       const existing = await this.host.tx.clubMembership.findFirst({ where: { id: requestId, clubId } });
       if (!existing) throw new NotFoundError('No such membership request.');
@@ -203,9 +203,7 @@ export class MembershipService {
   /** DELETE /clubs/:clubId/membership. Self-scoped; the caller leaves their own open membership. */
   async leave(actor: { id: string }, clubId: string): Promise<void> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsEdits(club.status);
+      await loadClub(this.host, clubId, assertAcceptsEdits);
 
       const existing = await this.host.tx.clubMembership.findFirst({
         where: { clubId, userId: actor.id, status: { in: ['PENDING', 'ACTIVE'] } },
@@ -234,16 +232,20 @@ export class MembershipService {
    * from `leave`: the row lands on REMOVED, never LEFT, so the two stay
    * distinguishable in the historical record.
    */
-  async remove(actor: { id: string }, clubId: string, userId: string): Promise<void> {
+  async remove(
+    actor: { id: string; platformRole: PlatformRole },
+    clubId: string,
+    userId: string,
+    body: RemoveMemberBody,
+  ): Promise<void> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsEdits(club.status);
+      await loadClub(this.host, clubId, assertAcceptsEdits);
 
       const existing = await this.host.tx.clubMembership.findFirst({
         where: { clubId, userId, status: { in: ['PENDING', 'ACTIVE'] } },
       });
       if (!existing) throw new NotFoundError('No such member.');
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
       const row = await this.host.tx.clubMembership.update({
         where: { id: existing.id },
@@ -256,6 +258,7 @@ export class MembershipService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         before: { status: existing.status },
         after: { status: row.status },
       });
@@ -273,19 +276,16 @@ export class MembershipService {
 
     const rows = await this.host.tx.clubMembership.findMany({
       where,
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: WITH_USER,
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
     const roles = await this.rolesForMany(clubId, items.map((r) => r.userId));
 
     return {
       items: items.map((r) => toMember(r, roles.get(r.userId) ?? [])),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
@@ -298,14 +298,11 @@ export class MembershipService {
   async myClubs(actor: { id: string }, query: CursorPageQuery): Promise<MyClubPage> {
     const rows = await this.host.tx.clubMembership.findMany({
       where: { userId: actor.id, status: { in: ['PENDING', 'ACTIVE'] } },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: { club: { select: { slug: true, name: true, logoUrl: true } } },
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
     const roles = await this.rolesForUserAcrossClubs(actor.id, items.map((r) => r.clubId));
 
     return {
@@ -317,7 +314,7 @@ export class MembershipService {
         status: r.status,
         clubRoles: roles.get(r.clubId) ?? [],
       })),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 }

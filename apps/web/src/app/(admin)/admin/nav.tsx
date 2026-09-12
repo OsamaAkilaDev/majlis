@@ -1,13 +1,22 @@
-import { Building2, CalendarDays, Download, LayoutGrid, Shield, User, Users } from 'lucide-react';
+import {
+  Buildings,
+  CalendarDots,
+  DownloadSimple,
+  Shield,
+  SquaresFour,
+  User,
+  Users,
+} from '@phosphor-icons/react/ssr';
+import { ICON_WEIGHT } from '@/lib/icons';
 
-const iconClass = 'size-4 shrink-0';
+const icon = { size: 16, weight: ICON_WEIGHT, className: 'shrink-0', 'aria-hidden': true } as const;
 
 export const ADMIN_NAV = [
-  { href: '/admin/metrics', label: 'Metrics', icon: <LayoutGrid className={iconClass} aria-hidden /> },
-  { href: '/admin/users', label: 'Users', icon: <User className={iconClass} aria-hidden /> },
-  { href: '/admin/departments', label: 'Departments', icon: <Building2 className={iconClass} aria-hidden /> },
-  { href: '/admin/clubs', label: 'Clubs', icon: <Users className={iconClass} aria-hidden /> },
-  { href: '/admin/events', label: 'Events', icon: <CalendarDays className={iconClass} aria-hidden /> },
-  { href: '/admin/audit', label: 'Audit', icon: <Shield className={iconClass} aria-hidden /> },
-  { href: '/admin/exports', label: 'Exports', icon: <Download className={iconClass} aria-hidden /> },
+  { href: '/admin/metrics', label: 'Metrics', icon: <SquaresFour {...icon} /> },
+  { href: '/admin/users', label: 'Users', icon: <User {...icon} /> },
+  { href: '/admin/departments', label: 'Departments', icon: <Buildings {...icon} /> },
+  { href: '/admin/clubs', label: 'Clubs', icon: <Users {...icon} /> },
+  { href: '/admin/events', label: 'Events', icon: <CalendarDots {...icon} /> },
+  { href: '/admin/audit', label: 'Audit', icon: <Shield {...icon} /> },
+  { href: '/admin/exports', label: 'Exports', icon: <DownloadSimple {...icon} /> },
 ] as const;

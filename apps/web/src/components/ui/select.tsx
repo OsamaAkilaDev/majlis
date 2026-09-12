@@ -3,7 +3,8 @@
 import * as React from "react"
 import { cn } from "@/lib/cn"
 import { Select as SelectPrimitive } from "radix-ui"
-import { CheckIcon, ChevronDownIcon } from "lucide-react"
+import { CaretDown, Check } from "@phosphor-icons/react/ssr"
+import { ICON_WEIGHT } from "@/lib/icons"
 
 function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
   return <SelectPrimitive.Root data-slot="select" {...props} />
@@ -35,7 +36,7 @@ function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="size-4 text-ink-2" aria-hidden />
+        <CaretDown size={16} weight={ICON_WEIGHT} className="text-ink-2" aria-hidden />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -100,7 +101,7 @@ function SelectItem({
     >
       <span className="pointer-events-none absolute right-2 flex items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" aria-hidden />
+          <Check size={16} weight={ICON_WEIGHT} aria-hidden />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

@@ -4,7 +4,13 @@ import { cn } from "@/lib/cn"
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div className="w-full overflow-x-auto rounded-card border border-border">
-      <table data-slot="table" className={cn("w-full caption-bottom text-sm", className)} {...props} />
+      {/* min-w-max, or the table squeezes into a phone and every date wraps to
+          four lines while the wrapper's overflow-x never engages. */}
+      <table
+        data-slot="table"
+        className={cn("w-full min-w-max caption-bottom text-sm", className)}
+        {...props}
+      />
     </div>
   )
 }

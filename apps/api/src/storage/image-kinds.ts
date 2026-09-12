@@ -6,6 +6,7 @@ export const STORAGE_BUCKET = 'majlis-storage';
 const PATHS = {
   'club-logo': { folder: 'clubs', file: 'logo.webp' },
   'club-banner': { folder: 'clubs', file: 'banner.webp' },
+  'event-poster': { folder: 'events', file: 'poster.webp' },
 } as const satisfies Record<ImageKind, { folder: string; file: string }>;
 
 /** A resource id may only ever be a bare UUID segment. */

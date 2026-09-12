@@ -1,65 +1,77 @@
 'use client';
 
-import type { ClubSummary, Department } from '@majlis/contracts';
+import type { ClubPage, ClubSummary, Department } from '@majlis/contracts';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
-import { Button } from '@/components/ui/button';
+import { LoadMore } from '@/components/LoadMore';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs, listDepartments } from '@/lib/clubs';
+import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 
-const PAGE = 20;
 const ANY_DEPARTMENT = 'any';
 
 function ClubCard({ club }: { club: ClubSummary }) {
   return (
     <Link
       href={`/clubs/${club.slug}`}
-      className="flex items-center gap-3 rounded-card border border-border bg-surface p-3 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-surface-2"
+      className="flex h-full items-center gap-3 rounded-card border border-border bg-surface p-3 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-surface-2"
     >
       <img src={club.logoUrl} alt="" className="size-12 shrink-0 rounded-control object-cover" />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-semibold text-ink">{club.name}</span>
-        <span className="block truncate text-sm text-ink-muted">{club.category}</span>
+        <span className="block truncate text-sm text-ink-2">{club.category}</span>
       </span>
-      <span className="shrink-0 text-sm tabular-nums text-ink-muted">{club.memberCount}</span>
+      <span className="shrink-0 text-sm tabular-nums text-ink-2">{club.memberCount}</span>
     </Link>
   );
 }
 
-export function ClubBrowser() {
-  const [departments, setDepartments] = useState<Department[]>([]);
+export function ClubBrowser({
+  initialClubs,
+  initialDepartments,
+}: {
+  initialClubs: ClubPage | null;
+  initialDepartments: Department[] | null;
+}) {
+  const [departments, setDepartments] = useState<Department[]>(initialDepartments ?? []);
   const [departmentId, setDepartmentId] = useState(ANY_DEPARTMENT);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<ClubSummary[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const { items, cursor, show, append } = useCursorPage(initialClubs);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The server rendered the unfiltered first page, so the mount run of the
+  // filter effect would refetch exactly what is already on screen.
+  const seeded = useRef(initialClubs !== null);
 
   useEffect(() => {
+    if (initialDepartments) return;
     void listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
-  }, []);
+  }, [initialDepartments]);
 
   // Refetches from the first page whenever a filter changes, so a stale
   // cursor from the previous filter can never paginate the new result set.
   useEffect(() => {
+    if (seeded.current) {
+      seeded.current = false;
+      return;
+    }
     let cancelled = false;
-    setItems(null);
+    show(null);
     void listClubs({
       limit: PAGE,
       status: 'ACTIVE',
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
       ...(q.trim() ? { q: q.trim() } : {}),
     }).then((page) => {
-      if (cancelled) return;
-      setItems(page.items);
-      setCursor(page.nextCursor);
+      if (!cancelled) show(page);
     });
     return () => {
       cancelled = true;
     };
-  }, [departmentId, q]);
+  }, [departmentId, q, show]);
 
   async function loadMore() {
     if (!cursor) return;
@@ -71,8 +83,7 @@ export function ClubBrowser() {
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
       ...(q.trim() ? { q: q.trim() } : {}),
     });
-    setItems((prev) => [...(prev ?? []), ...page.items]);
-    setCursor(page.nextCursor);
+    append(page);
     setLoadingMore(false);
   }
 
@@ -102,15 +113,15 @@ export function ClubBrowser() {
       </div>
 
       {items === null ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-[4.5rem]" />
-          <Skeleton className="h-[4.5rem]" />
-          <Skeleton className="h-[4.5rem]" />
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-[4.5rem]" />
+          ))}
         </div>
       ) : items.length === 0 ? (
         <EmptyState title="No clubs found" />
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((club) => (
             <li key={club.id}>
               <ClubCard club={club} />
@@ -119,11 +130,7 @@ export function ClubBrowser() {
         </ul>
       )}
 
-      {cursor ? (
-        <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={loadMore} busy={loadingMore} />
     </div>
   );
 }

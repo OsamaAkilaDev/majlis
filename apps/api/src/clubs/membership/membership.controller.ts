@@ -5,6 +5,7 @@ import {
   cursorPageQuerySchema,
   decideMembershipBodySchema,
   memberListQuerySchema,
+  removeMemberBodySchema,
   type Member,
   type MemberPage,
   type MyClubPage,
@@ -20,6 +21,7 @@ import { MembershipService } from './membership.service';
 class AddMemberDto extends createZodDto(addMemberBodySchema) {}
 class DecideMembershipDto extends createZodDto(decideMembershipBodySchema) {}
 class MemberListQueryDto extends createZodDto(memberListQuerySchema) {}
+class RemoveMemberDto extends createZodDto(removeMemberBodySchema) {}
 class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
 
 @Controller()
@@ -51,8 +53,13 @@ export class MembershipController {
   @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club, or no such member.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived.', type: ProblemDetailsDto })
-  remove(@Actor() actor: User, @Param('clubId') clubId: string, @Param('userId') userId: string): Promise<void> {
-    return this.membership.remove(actor, clubId, userId);
+  remove(
+    @Actor() actor: User,
+    @Param('clubId') clubId: string,
+    @Param('userId') userId: string,
+    @Body() body: RemoveMemberDto,
+  ): Promise<void> {
+    return this.membership.remove(actor, clubId, userId, body);
   }
 
   /**

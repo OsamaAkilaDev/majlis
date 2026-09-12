@@ -155,7 +155,14 @@ describe('PATCH /clubs/:clubId', () => {
     const actor = await prisma.user.findUniqueOrThrow({ where: { id: admin.userId } });
     const clubs = app.get(ClubsService, { strict: false });
 
-    await clubs.update(actor, club.id, { status: 'ARCHIVED', slug: 'stolen', name: 'Renamed' } as never);
+    // overrideReason is required now that this actor is a club-roleless Admin
+    // (spec 6.1). It is not one of the smuggled keys under test.
+    await clubs.update(actor, club.id, {
+      status: 'ARCHIVED',
+      slug: 'stolen',
+      name: 'Renamed',
+      overrideReason: 'Test override.',
+    } as never);
 
     const after = await prisma.club.findUniqueOrThrow({ where: { id: club.id } });
     expect(after.status).toBe('ACTIVE');

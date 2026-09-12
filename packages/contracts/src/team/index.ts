@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { appointmentStatusSchema, clubRoleSchema } from '../common/enums';
+import { overrideReasonSchema } from '../common/override';
 import { cursorPageSchema } from '../common/pagination';
 
 export { appointmentStatusSchema, clubRoleSchema };
@@ -12,6 +13,8 @@ export { appointmentStatusSchema, clubRoleSchema };
 export const inviteTeamMemberBodySchema = z.object({
   userId: z.uuid(),
   role: z.enum(['VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS']),
+  /** Required when an Admin holding no club role invites. Spec 6.1. */
+  overrideReason: overrideReasonSchema.optional(),
 });
 
 export const endAppointmentBodySchema = z.object({

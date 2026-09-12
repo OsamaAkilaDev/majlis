@@ -1,11 +1,12 @@
 'use client';
 
-import type { Department } from '@majlis/contracts';
-import { Plus } from 'lucide-react';
+import type { Department, DepartmentPage } from '@majlis/contracts';
+import { Plus } from '@phosphor-icons/react/ssr';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { Field } from '@/components/Field';
+import { LoadMore } from '@/components/LoadMore';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -20,6 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { createDepartment, listDepartments, removeDepartment, updateDepartment } from '@/lib/clubs';
+import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { ProblemError } from '@/lib/api';
 
 function DepartmentForm({
@@ -98,19 +101,17 @@ function DepartmentForm({
   );
 }
 
-export function DepartmentsManager() {
-  const [items, setItems] = useState<Department[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+export function DepartmentsManager({ initial }: { initial: DepartmentPage | null }) {
+  const { items, cursor, setItems, show, append } = useCursorPage(initial);
 
   async function load(reset: boolean) {
-    const page = await listDepartments({ limit: 20, cursor: reset ? undefined : (cursor ?? undefined) });
-    setItems((prev) => (reset || !prev ? page.items : [...prev, ...page.items]));
-    setCursor(page.nextCursor);
+    const page = await listDepartments({ limit: PAGE, cursor: reset ? undefined : (cursor ?? undefined) });
+    (reset ? show : append)(page);
   }
 
   useEffect(() => {
-    load(true);
-  }, []);
+    if (!initial) load(true);
+  }, [initial]);
 
   function onSaved(saved: Department) {
     setItems((prev) => {
@@ -173,11 +174,7 @@ export function DepartmentsManager() {
           ))}
         </TableBody>
       </Table>
-      {cursor ? (
-        <Button variant="outline" onClick={() => load(false)} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={() => load(false)} />
     </div>
   );
 }

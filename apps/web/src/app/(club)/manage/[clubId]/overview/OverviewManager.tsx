@@ -4,6 +4,7 @@ import type { ClubDetail, MembershipPolicy } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { Field } from '@/components/Field';
 import { ImageUpload } from '@/components/ImageUpload';
+import { OverrideReason } from '@/components/OverrideReason';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,23 +13,40 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { ProblemError } from '@/lib/api';
 import { getClub, listDepartments, updateClub } from '@/lib/clubs';
+import { needsOverrideReason } from '@/lib/override';
 
 const POLICIES: MembershipPolicy[] = ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY', 'CLOSED'];
 
-export function OverviewManager({ clubId, platformRole }: { clubId: string; platformRole: 'STUDENT' | 'ADMIN' }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+export function OverviewManager({
+  clubId,
+  platformRole,
+  initialClub,
+  initialDepartments,
+}: {
+  clubId: string;
+  platformRole: 'STUDENT' | 'ADMIN';
+  initialClub: ClubDetail | null;
+  initialDepartments: { id: string; name: string }[] | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>(
+    initialDepartments ?? [],
+  );
 
-  const [departmentId, setDepartmentId] = useState('');
-  const [category, setCategory] = useState('');
-  const [academicYear, setAcademicYear] = useState('');
-  const [membershipPolicy, setMembershipPolicy] = useState<MembershipPolicy>('OPEN');
-  const [description, setDescription] = useState('');
+  const [departmentId, setDepartmentId] = useState(initialClub?.departmentId ?? '');
+  const [category, setCategory] = useState(initialClub?.category ?? '');
+  const [academicYear, setAcademicYear] = useState(initialClub?.academicYear ?? '');
+  const [membershipPolicy, setMembershipPolicy] = useState<MembershipPolicy>(
+    initialClub?.membershipPolicy ?? 'OPEN',
+  );
+  const [description, setDescription] = useState(initialClub?.description ?? '');
 
+  const [reason, setReason] = useState('');
   const [error, setError] = useState<ProblemError | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
+    if (initialClub) return;
     getClub(clubId).then((c) => {
       setClub(c);
       setDepartmentId(c.departmentId);
@@ -37,10 +55,19 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
       setMembershipPolicy(c.membershipPolicy);
       setDescription(c.description);
     });
+  }, [clubId, initialClub]);
+
+  useEffect(() => {
+    if (initialDepartments) return;
     listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
-  }, [clubId]);
+  }, [initialDepartments]);
 
   if (!club) return <Skeleton className="h-64 w-full" />;
+
+  // Spec 6.1: an Admin holding no role in this club is overriding, so every
+  // save from this screen has to carry why.
+  const override = needsOverrideReason(platformRole, club.viewerClubRoles);
+  const overrideReason = override ? reason.trim() || undefined : undefined;
 
   const canEdit =
     club.status !== 'ARCHIVED' &&
@@ -60,6 +87,7 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
         academicYear,
         membershipPolicy,
         description,
+        overrideReason,
       });
       await refresh(updated);
     } catch (err) {
@@ -72,13 +100,15 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
   async function onImageUploaded(kind: 'club-logo' | 'club-banner') {
     const updated = await updateClub(
       clubId,
-      kind === 'club-logo' ? { logoUploaded: true } : { bannerUploaded: true },
+      kind === 'club-logo'
+        ? { logoUploaded: true, overrideReason }
+        : { bannerUploaded: true, overrideReason },
     );
     await refresh(updated);
   }
 
   return (
-    <div className="flex max-w-lg flex-col gap-6">
+    <div className="flex max-w-3xl flex-col gap-6">
       <div className="flex items-center gap-3">
         <h2 className="font-display text-h1 text-ink">{club.name}</h2>
         <StatusBadge status={club.status} />
@@ -105,6 +135,9 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
 
       {canEdit ? (
         <>
+          {/* Paired once there is room: a single column of six short fields
+              leaves half a console screen empty. */}
+          <div className="grid gap-5 md:grid-cols-2">
           <Field label="Department" error={error?.fieldError('departmentId')}>
             <Select value={departmentId} onValueChange={setDepartmentId}>
               <SelectTrigger aria-label="Department">
@@ -143,9 +176,14 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
             </Select>
           </Field>
 
-          <Field label="Description" error={error?.fieldError('description')}>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
-          </Field>
+          <div className="md:col-span-2">
+            <Field label="Description" error={error?.fieldError('description')}>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
+            </Field>
+          </div>
+          </div>
+
+          {override ? <OverrideReason value={reason} onChange={setReason} /> : null}
 
           {error && error.errors.length === 0 ? (
             <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p>

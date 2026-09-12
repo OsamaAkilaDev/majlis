@@ -1,8 +1,9 @@
 'use client';
 
-import type { Appointment, ClubDetail, ClubStatus, UserListItem } from '@majlis/contracts';
+import type { Appointment, ClubDetail, ClubStatus } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@/components/StatusBadge';
+import { UserPickerDialog } from '@/components/UserPickerDialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,9 +17,9 @@ import { Field } from '@/components/Field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 import { appointLead, getClub, listTeam, updateClubStatus } from '@/lib/clubs';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 
 /** Mirrors club-status.ts's ALLOWED table: ARCHIVED is terminal. */
 const NEXT_STATUSES: Record<ClubStatus, ClubStatus[]> = {
@@ -113,73 +114,51 @@ function LeadAppointment({
   currentLeadUserId?: string;
   onAppointed: (a: Appointment) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<UserListItem | null>(null);
-  const [error, setError] = useState<ProblemError | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function submit() {
-    if (!picked) return;
-    setPending(true);
-    setError(null);
-    try {
-      const appointment = await appointLead(clubId, { userId: picked.id });
-      onAppointed(appointment);
-      setOpen(false);
-      setPicked(null);
-    } catch (err) {
-      if (err instanceof ProblemError) setError(err);
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) {
-          setError(null);
-          setPicked(null);
-        }
+    <UserPickerDialog
+      trigger={<Button variant="outline">Appoint Lead</Button>}
+      title="Appoint Lead"
+      confirmLabel="Send invitation"
+      exclude={currentLeadUserId ? [currentLeadUserId] : []}
+      onSubmit={async (user) => {
+        onAppointed(await appointLead(clubId, { userId: user.id }));
       }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="outline">Appoint Lead</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Appoint Lead</DialogTitle>
-        </DialogHeader>
-        <UserPicker value={picked} onChange={setPicked} exclude={currentLeadUserId ? [currentLeadUserId] : []} />
-        {error ? <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p> : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !picked}>
-            Send invitation
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    />
   );
 }
 
-export function ClubDetailManager({ clubId }: { clubId: string }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [leadAppointments, setLeadAppointments] = useState<Appointment[]>([]);
+/** Only the Lead rows the panel renders, from a full team page. */
+function leadsOf(items: readonly Appointment[]): Appointment[] {
+  return items.filter((a) => a.role === 'LEAD' && (a.status === 'ACTIVE' || a.status === 'INVITED'));
+}
+
+export function ClubDetailManager({
+  clubId,
+  initialClub,
+  initialTeam,
+}: {
+  clubId: string;
+  initialClub: ClubDetail | null;
+  initialTeam: Appointment[] | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const [leadAppointments, setLeadAppointments] = useState<Appointment[]>(
+    initialTeam ? leadsOf(initialTeam) : [],
+  );
 
   async function loadTeam() {
     const page = await listTeam(clubId, { limit: 100 });
-    setLeadAppointments(page.items.filter((a) => a.role === 'LEAD' && (a.status === 'ACTIVE' || a.status === 'INVITED')));
+    setLeadAppointments(leadsOf(page.items));
   }
 
+  // See MembersManager: a locale-formatted date cannot be server-rendered.
+  const mounted = useViewerZone() !== undefined;
+  const seeded = initialClub !== null && initialTeam !== null;
   useEffect(() => {
+    if (seeded) return;
     getClub(clubId).then(setClub);
     loadTeam();
-  }, [clubId]);
+  }, [clubId, seeded]);
 
   if (!club) return <Skeleton className="h-64 w-full" />;
 
@@ -237,7 +216,7 @@ export function ClubDetailManager({ clubId }: { clubId: string }) {
         {invitedLead ? (
           <p className="text-sm text-ink-2">
             Invited: {invitedLead.userFullName}, expires{' '}
-            {invitedLead.invitationExpiresAt ? new Date(invitedLead.invitationExpiresAt).toLocaleString() : ''}
+            {mounted && invitedLead.invitationExpiresAt ? new Date(invitedLead.invitationExpiresAt).toLocaleString() : ''}
           </p>
         ) : null}
         <div>

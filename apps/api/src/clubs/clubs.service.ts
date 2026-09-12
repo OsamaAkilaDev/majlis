@@ -15,18 +15,29 @@ import {
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
-import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
-import { violatedConstraintName } from '../common/prisma-constraint';
-import { Prisma, type Club as ClubRow } from '../generated/prisma/client';
+import { CLUB_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
+import { resolveClubFacts } from '../auth/permissions.guard';
+import type { PlatformRole } from '../auth/permissions';
+import { cursorArgs, cursorPage } from '../common/cursor-page';
+import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
+import { conflictOn } from '../common/prisma-constraint';
+import type { Prisma, Club as ClubRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../prisma/transaction.host';
 import { objectPath } from '../storage/image-kinds';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as AuditService above.
 import { StorageService } from '../storage/storage.service';
 import { assertAcceptsEdits, assertTransition } from './club-status';
+import { loadClub } from './load-club';
 import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
+
+/** Only what the service reads off the signed-in user. */
+interface Actor {
+  id: string;
+  platformRole: PlatformRole;
+}
 
 /** Maps a club row plus its computed fields onto the wire summary shape. */
 function toClubSummary(row: ClubRow, departmentName: string, memberCount: number): ClubSummary {
@@ -69,22 +80,14 @@ function toClubDetail(
  * so the loser must still be told which constraint actually fired rather
  * than being blamed for a name collision that never happened.
  *
- * Both branches require a positive match rather than one defaulting to the
- * other: `club` has exactly two unique columns, so in practice this always
- * picks one of the two real messages, but a defaulted branch can't be
- * proven to have identified anything, since it fires whether or not
- * `violatedConstraintName` actually worked. See `test/clubs-create
- * .integration.test.ts`'s name-collision test, which needs this to
- * discriminate a broken `violatedConstraintName`.
+ * `conflictOn` matches each branch positively, never by default. See
+ * `test/clubs-create.integration.test.ts`'s name-collision test, which needs
+ * that to discriminate a broken `violatedConstraintName`.
  */
-function mapWriteError(e: unknown): never {
-  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    const constraint = violatedConstraintName(e.meta);
-    if (constraint.includes('slug')) throw new ConflictError('A club with that slug already exists.');
-    if (constraint.includes('name')) throw new ConflictError('A club with that name already exists.');
-  }
-  throw e;
-}
+const mapWriteError = conflictOn({
+  slug: 'A club with that slug already exists.',
+  name: 'A club with that name already exists.',
+});
 
 @Injectable()
 export class ClubsService {
@@ -180,21 +183,18 @@ export class ClubsService {
 
     const rows = await this.host.tx.club.findMany({
       where,
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: {
         department: { select: { name: true } },
         _count: { select: { memberships: { where: ACTIVE_ONLY } } },
       },
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map((c) => toClubSummary(c, c.department.name, c._count.memberships)),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
@@ -250,11 +250,21 @@ export class ClubsService {
    * (patchClubBodySchema has no such keys, but a service must not rely on
    * that alone) cannot smuggle either into the update.
    */
-  async update(actor: { id: string }, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
+  async update(actor: Actor, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsEdits(club.status);
+      await loadClub(this.host, clubId, assertAcceptsEdits);
+
+      // Re-derived from the database here rather than carried over from the
+      // guard: the field gate is a second authorization decision and must
+      // not trust anything the first one left on the request.
+      const { clubRoles } = await resolveClubFacts(this.host, actor.id, clubId);
+      const facts = { platformRole: actor.platformRole, clubRoles };
+
+      // overrideReason is a meta field, not a column, so it is held out of the
+      // field gate (CLUB_FIELDS has no entry for it, which fails closed).
+      const { overrideReason, ...fields } = body;
+      assertFieldsAllowed(fields, CLUB_FIELDS, facts);
+      const reason = overrideReasonFor(facts, overrideReason);
 
       const data: Prisma.ClubUncheckedUpdateInput = {};
       if (body.departmentId !== undefined) data.departmentId = body.departmentId;
@@ -273,6 +283,7 @@ export class ClubsService {
         entityId: clubId,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: data as Record<string, unknown>,
       });
 
@@ -286,8 +297,7 @@ export class ClubsService {
    */
   async updateStatus(actor: { id: string }, clubId: string, body: PatchClubStatusBody): Promise<ClubDetail> {
     return this.host.run(async () => {
-      const before = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!before) throw new NotFoundError('No such club.');
+      const before = await loadClub(this.host, clubId);
       assertTransition(before.status, body.status);
 
       const after = await this.host.tx.club.update({ where: { id: clubId }, data: { status: body.status } });

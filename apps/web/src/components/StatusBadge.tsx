@@ -1,29 +1,30 @@
+import type { Icon } from '@phosphor-icons/react';
 import {
   Archive,
-  Award,
-  BadgeCheck,
-  Ban,
+  Certificate,
   Check,
-  CheckCheck,
-  CircleAlert,
-  CircleSlash,
+  Checks,
   Clock,
+  Envelope,
   Eye,
   FileText,
   Hourglass,
   Lock,
-  LogOut,
-  Mail,
   Play,
+  Prohibit,
+  ProhibitInset,
+  SealCheck,
+  SignOut,
+  UserCircleDashed,
   UserMinus,
-  UserX,
+  WarningCircle,
   X,
-} from 'lucide-react';
-import type { ComponentType } from 'react';
+} from '@phosphor-icons/react/ssr';
 import { cn } from '@/lib/cn';
+import { ICON_WEIGHT } from '@/lib/icons';
 
 type Tone = 'ok' | 'warn' | 'bad' | 'info' | 'brand' | 'mute';
-type Entry = { label: string; tone: Tone; icon: ComponentType<{ className?: string }> };
+type Entry = { label: string; tone: Tone; icon: Icon };
 
 /**
  * Every value of every status enum in `apps/api/prisma/schema.prisma` that a
@@ -35,9 +36,9 @@ export const STATUS = {
   CONFIRMED: { label: 'Confirmed', tone: 'ok', icon: Check },
   WAITLISTED: { label: 'Waitlisted', tone: 'warn', icon: Clock },
   CANCELLED: { label: 'Cancelled', tone: 'bad', icon: X },
-  CHECKED_IN: { label: 'Checked in', tone: 'ok', icon: CheckCheck },
-  ATTENDED: { label: 'Attended', tone: 'ok', icon: BadgeCheck },
-  NO_SHOW: { label: 'No show', tone: 'bad', icon: UserX },
+  CHECKED_IN: { label: 'Checked in', tone: 'ok', icon: Checks },
+  ATTENDED: { label: 'Attended', tone: 'ok', icon: SealCheck },
+  NO_SHOW: { label: 'No show', tone: 'bad', icon: UserCircleDashed },
   REMOVED: { label: 'Removed', tone: 'bad', icon: UserMinus },
 
   // EventStatus
@@ -46,20 +47,20 @@ export const STATUS = {
   REGISTRATION_CLOSED: { label: 'Registration closed', tone: 'warn', icon: Lock },
   ONGOING: { label: 'Ongoing', tone: 'info', icon: Play },
   COMPLETED: { label: 'Completed', tone: 'mute', icon: Check },
-  CERTIFIED: { label: 'Certified', tone: 'ok', icon: Award },
+  CERTIFIED: { label: 'Certified', tone: 'ok', icon: Certificate },
 
   // ClubStatus, MembershipStatus, CertificateStatus, AppointmentStatus
   ACTIVE: { label: 'Active', tone: 'ok', icon: Check },
-  SUSPENDED: { label: 'Suspended', tone: 'bad', icon: CircleAlert },
+  SUSPENDED: { label: 'Suspended', tone: 'bad', icon: WarningCircle },
   ARCHIVED: { label: 'Archived', tone: 'mute', icon: Archive },
   PENDING: { label: 'Pending', tone: 'warn', icon: Clock },
   REJECTED: { label: 'Rejected', tone: 'bad', icon: X },
-  LEFT: { label: 'Left', tone: 'mute', icon: LogOut },
-  REVOKED: { label: 'Revoked', tone: 'bad', icon: Ban },
-  INVITED: { label: 'Invited', tone: 'info', icon: Mail },
+  LEFT: { label: 'Left', tone: 'mute', icon: SignOut },
+  REVOKED: { label: 'Revoked', tone: 'bad', icon: Prohibit },
+  INVITED: { label: 'Invited', tone: 'info', icon: Envelope },
   DECLINED: { label: 'Declined', tone: 'mute', icon: X },
   EXPIRED: { label: 'Expired', tone: 'mute', icon: Hourglass },
-  ENDED: { label: 'Ended', tone: 'mute', icon: CircleSlash },
+  ENDED: { label: 'Ended', tone: 'mute', icon: ProhibitInset },
 } as const satisfies Record<string, Entry>;
 
 export type StatusKey = keyof typeof STATUS;
@@ -83,7 +84,7 @@ export function StatusBadge({ status, className }: { status: StatusKey; classNam
         className,
       )}
     >
-      <Icon className="size-3.5 shrink-0" aria-hidden />
+      <Icon size={14} weight={ICON_WEIGHT} className="shrink-0" aria-hidden />
       {label}
     </span>
   );

@@ -1,8 +1,9 @@
 'use client';
 
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from '@phosphor-icons/react/ssr';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
+import { ICON_WEIGHT } from '@/lib/icons';
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -18,7 +19,7 @@ export function ThemeToggle() {
       onClick={() => setTheme(dark ? 'light' : 'dark')}
       className="grid size-11 place-items-center rounded-control text-ink-2 hover:bg-surface-2 hover:text-ink"
     >
-      {dark ? <Sun className="size-5" aria-hidden /> : <Moon className="size-5" aria-hidden />}
+      {dark ? <Sun size={20} weight={ICON_WEIGHT} aria-hidden /> : <Moon size={20} weight={ICON_WEIGHT} aria-hidden />}
     </button>
   );
 }

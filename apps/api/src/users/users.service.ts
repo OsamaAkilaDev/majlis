@@ -8,6 +8,7 @@ import type {
 } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { AuditService } from '../audit/audit.service';
+import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import type { User } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as AuditService above.
@@ -78,13 +79,10 @@ export class UsersService {
    */
   async list(query: CursorPageQuery): Promise<UserListPage> {
     const rows = await this.host.tx.user.findMany({
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map((u) => ({
@@ -95,7 +93,7 @@ export class UsersService {
         status: u.status,
         createdAt: u.createdAt.toISOString(),
       })),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 

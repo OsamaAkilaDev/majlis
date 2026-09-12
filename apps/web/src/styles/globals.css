@@ -31,7 +31,11 @@
   --shadow-sm: 0 1px 2px rgba(28, 23, 19, .06), 0 1px 1px rgba(28, 23, 19, .04);
   --shadow-md: 0 4px 12px -2px rgba(28, 23, 19, .10), 0 2px 4px -2px rgba(28, 23, 19, .06);
   --shadow-sheet: 0 -8px 32px -8px rgba(28, 23, 19, .18);
-  --lattice: 14, 95, 85;
+  --shadow-float: 0 10px 30px -12px rgba(28, 23, 19, .22);
+  --lattice: 14 95 85;
+  /* The deep ground the auth card floats on. Dark in both themes, so it keeps
+     its own value rather than following --bg. */
+  --auth-ground: #0B4C44;
 
   color-scheme: light;
 }
@@ -65,7 +69,9 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, .55), 0 2px 4px -2px rgba(0, 0, 0, .4);
   --shadow-sheet: 0 -8px 32px -8px rgba(0, 0, 0, .6);
-  --lattice: 92, 195, 174;
+  --shadow-float: 0 12px 36px -12px rgba(0, 0, 0, .65);
+  --lattice: 92 195 174;
+  --auth-ground: #072F2A;
 
   color-scheme: dark;
 }
@@ -131,6 +137,9 @@
   --dur: 220ms;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+  /* Overridden per-surface: the crosshatch is a whisper on paper and a real
+     texture on the deep auth ground. */
+  --lattice-alpha: .05;
 }
 
 /* Collapsed once, at the token level, so no component has to remember it. */
@@ -171,8 +180,24 @@
 
 @utility lattice {
   background-image:
-    repeating-linear-gradient(45deg, rgb(var(--lattice) / .05) 0 1px, transparent 1px 22px),
-    repeating-linear-gradient(-45deg, rgb(var(--lattice) / .05) 0 1px, transparent 1px 22px);
+    repeating-linear-gradient(45deg, rgb(var(--lattice) / var(--lattice-alpha)) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(-45deg, rgb(var(--lattice) / var(--lattice-alpha)) 0 1px, transparent 1px 22px);
+}
+
+/* The auth ground. Dark in both themes, so it pins the teal lattice rgb rather
+   than following the theme's, and turns the crosshatch up until it reads. */
+.auth-field {
+  --lattice: 92 195 174;
+  --lattice-alpha: .16;
+  background-color: var(--auth-ground);
+}
+
+.auth-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(115% 85% at 50% 8%, rgb(var(--lattice) / .34), transparent 62%);
 }
 
 /* Motion for Sheet and DropdownMenu, replacing the tailwindcss-animate classes

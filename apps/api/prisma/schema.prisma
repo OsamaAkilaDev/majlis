@@ -207,6 +207,10 @@ model ClubMembership {
 
   @@index([clubId, status])
   @@index([userId, status])
+  // Cursor pagination orders by id, which (clubId, status) cannot serve: a
+  // large club's member page otherwise walks the primary key filtering out
+  // every other club's rows.
+  @@index([clubId, id])
   @@map("club_membership")
 }
 
@@ -345,6 +349,9 @@ model EventRegistration {
   @@index([eventId, status])
   @@index([userId, status])
   @@index([eventId, waitlistPosition])
+  // Same reason as club_membership: the attendee roster pages by id, and
+  // without this a busy event's first page scans the whole table.
+  @@index([eventId, id])
   @@map("event_registration")
 }
 

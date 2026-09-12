@@ -41,6 +41,12 @@ const jwtDuration = z
 export const EXAMPLE_SESSION_SECRET = 'dev-only-session-secret-change-me!!';
 
 /**
+ * Same bargain as EXAMPLE_SESSION_SECRET: a default so the repo clones and
+ * runs, and a production refusal so nobody ships the published one.
+ */
+export const EXAMPLE_LIFECYCLE_SWEEP_SECRET = 'dev-only-lifecycle-sweep-secret';
+
+/**
  * The process refuses to start if any of this is wrong. A server that boots
  * with a broken configuration and fails on the first request is worse than
  * one that never boots.
@@ -58,10 +64,18 @@ export const envSchema = z
       .string()
       .refine((v) => v.startsWith('https://'), { message: 'must be an https URL' }),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(20, 'must be a real service role key'),
+    LIFECYCLE_SWEEP_SECRET: z
+      .string()
+      .min(16, 'must be at least 16 characters')
+      .default(EXAMPLE_LIFECYCLE_SWEEP_SECRET),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],
     message: 'must not be the example secret in production',
-  });
+  })
+  .refine(
+    (env) => env.NODE_ENV !== 'production' || env.LIFECYCLE_SWEEP_SECRET !== EXAMPLE_LIFECYCLE_SWEEP_SECRET,
+    { path: ['LIFECYCLE_SWEEP_SECRET'], message: 'must not be the example secret in production' },
+  );
 
 export type Env = z.infer<typeof envSchema>;

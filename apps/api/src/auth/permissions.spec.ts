@@ -72,6 +72,10 @@ describe('matches', () => {
 
 describe('Stage 4 permission rows', () => {
   const asClub = (roles: ActorFacts['clubRoles']): ActorFacts => ({ ...student, clubRoles: roles });
+  const asEvent = (roles: ActorFacts['eventResponsibilities']): ActorFacts => ({
+    ...student,
+    eventResponsibilities: roles,
+  });
 
   it('reserves club creation, status and Lead appointment to Admin', () => {
     for (const p of ['club:create', 'club:status', 'club:appoint-lead', 'department:manage'] as const) {
@@ -102,10 +106,32 @@ describe('Stage 4 permission rows', () => {
     expect(evaluate('membership:decide', asClub(['CTO']))).toBe(false);
   });
 
-  it('does not give Marketing or CTO club editing in this stage', () => {
-    // Stage 4 deviation D4: field-level permissions land in Stage 5.
-    expect(evaluate('club:edit', asClub(['MARKETING']))).toBe(false);
+  it('admits Marketing to club editing but never CTO', () => {
+    // Stage 5 lifted Stage 4's deviation D4: Marketing reaches the route and
+    // CLUB_FIELDS decides which keys of the body it may set. CTO stays out
+    // entirely, because no column on Club is technical, so a CTO admitted
+    // here would be refused by every field in the body.
+    expect(evaluate('club:edit', asClub(['MARKETING']))).toBe(true);
     expect(evaluate('club:edit', asClub(['CTO']))).toBe(false);
     expect(evaluate('club:edit', asClub(['VICE_LEAD']))).toBe(true);
+  });
+
+  it('keeps event creation and cancellation narrower than event editing', () => {
+    // Catches the easiest copy-paste slip in a matrix of five nearly
+    // identical rows: giving every club role every event permission.
+    expect(evaluate('event:edit', asClub(['OPERATIONS']))).toBe(true);
+    expect(evaluate('event:create', asClub(['OPERATIONS']))).toBe(false);
+    expect(evaluate('event:cancel', asClub(['VICE_LEAD']))).toBe(false);
+    expect(evaluate('event:cancel', asClub(['LEAD']))).toBe(true);
+    expect(evaluate('event:assign', asClub(['MARKETING']))).toBe(false);
+  });
+
+  it('grants attendee personal data to an assigned Operations officer and never to Marketing', () => {
+    // Spec 6.1's "View attendee personal data" row: Operations gets it "for
+    // assigned event", which is an EventAssignment, not a club appointment.
+    expect(evaluate('registration:read', asClub(['OPERATIONS']))).toBe(false);
+    expect(evaluate('registration:read', asEvent(['OPERATIONS']))).toBe(true);
+    expect(evaluate('registration:read', asClub(['MARKETING']))).toBe(false);
+    expect(evaluate('registration:read', asEvent(['MARKETING']))).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut } from 'lucide-react';
+import { SignOut } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { apiFetch } from '@/lib/api';
+import { ICON_WEIGHT } from '@/lib/icons';
 import { shellDestinations } from '@/lib/routing';
 import type { SessionUser } from '@majlis/contracts';
 
@@ -70,7 +71,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
 
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={signOut}>
-          <LogOut aria-hidden />
+          <SignOut size={16} weight={ICON_WEIGHT} aria-hidden />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>

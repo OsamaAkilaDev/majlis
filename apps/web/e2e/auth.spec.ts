@@ -35,13 +35,74 @@ test('a student is refused the admin console', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /do not have access/i })).toBeVisible();
 });
 
-test('a wrong password reports on the field, and the page never renders a shell', async ({ page }) => {
+test('a wrong password reports on the field in the API words, and no shell renders', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('University email').fill('student@uni.ac.ae');
   await page.getByLabel('Password').fill('wrong-password-here');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByText(/do not match/i)).toBeVisible();
+
+  // The exact server string, not a client paraphrase: a rewritten message
+  // drifts silently the moment either side is reworded.
+  const password = page.getByLabel('Password');
+  await expect(page.getByText('Email or password is incorrect.')).toBeVisible();
+  await expect(password).toHaveAttribute('aria-invalid', 'true');
+  const describedBy = await password.getAttribute('aria-describedby');
+  expect(describedBy).toBeTruthy();
+  await expect(page.locator(`#${describedBy}`)).toHaveText(/Email or password is incorrect\./);
   await expect(page).toHaveURL(/\/login$/);
+});
+
+test('a short password reports the rule the contract enforces, on the password field', async ({ page }) => {
+  // The signup defect: the 12-character minimum was invisible until submit.
+  await page.goto('/signup');
+  await expect(page.getByText('12+ characters')).toBeVisible();
+
+  await page.getByLabel('Full name').fill('Too Short');
+  await page.getByLabel('University email').fill(`short-${Date.now()}@uni.ac.ae`);
+  await page.getByLabel('Password').fill('Passw0rd!');
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page.getByLabel('Password')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
+  await expect(page).toHaveURL(/\/signup$/);
+});
+
+test('an existing account reports on the email field, not the password field', async ({ page }) => {
+  await page.goto('/signup');
+  await page.getByLabel('Full name').fill('Duplicate Student');
+  await page.getByLabel('University email').fill('student@uni.ac.ae');
+  await page.getByLabel('Password').fill('a-long-enough-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  // Catches a status map that sends every auth failure to the password field:
+  // the email is the value the user actually has to change.
+  await expect(page.getByLabel('University email')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel('Password')).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('An account with this email already exists.')).toBeVisible();
+});
+
+test('a request that never reaches the server is reported on the form', async ({ page }) => {
+  // A toast is missable and a silent failure reads as a broken button.
+  await page.route('**/api/v1/auth/login', (route) => route.abort('failed'));
+  await page.goto('/login');
+  await page.getByLabel('University email').fill('student@uni.ac.ae');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  // Scoped to the form: Next's route announcer is also role="alert".
+  await expect(page.locator('form').getByRole('alert')).toHaveText(/Could not reach the server/);
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+});
+
+test('a new account can be created and lands in the student shell', async ({ page }) => {
+  // Proves the 201 path end to end, which the invisible minimum made look broken.
+  const email = `new-${Date.now()}@uni.ac.ae`;
+  await page.goto('/signup');
+  await page.getByLabel('Full name').fill('New Student');
+  await page.getByLabel('University email').fill(email);
+  await page.getByLabel('Password').fill('a-long-enough-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 test('an expired session is refreshed on navigation rather than bounced', async ({ page, context }) => {
@@ -59,6 +120,9 @@ test('an expired session is refreshed on navigation rather than bounced', async 
 });
 
 test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
+  // Pinned: the desktop project is above the breakpoint where the tab bar is
+  // replaced by the side nav, and would otherwise measure a sidebar row here.
+  await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, 'student@uni.ac.ae');
   const nav = page.getByRole('navigation', { name: 'Sections' });
   await expect(nav).toBeVisible();

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { clubRoleSchema, membershipStatusSchema } from '../common/enums';
+import { overrideBodySchema, overrideReasonSchema } from '../common/override';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 
 export { membershipStatusSchema };
@@ -15,7 +16,14 @@ export const decideMembershipBodySchema = z.object({
   reason: z.string().trim().min(1).max(500).optional(),
 });
 
-export const addMemberBodySchema = z.object({ userId: z.uuid() });
+export const addMemberBodySchema = z.object({
+  userId: z.uuid(),
+  /** Required when an Admin holding no club role adds. Spec 6.1. */
+  overrideReason: overrideReasonSchema.optional(),
+});
+
+/** DELETE /clubs/:clubId/members/:userId, the same body-on-DELETE shape as ending an appointment. */
+export const removeMemberBodySchema = overrideBodySchema;
 
 export const memberSchema = z.object({
   id: z.uuid(),
@@ -49,6 +57,7 @@ export const myClubPageSchema = cursorPageSchema(myClubSchema);
 // redeclaring it here would collide as an ambiguous `export *` name.
 export type DecideMembershipBody = z.infer<typeof decideMembershipBodySchema>;
 export type AddMemberBody = z.infer<typeof addMemberBodySchema>;
+export type RemoveMemberBody = z.infer<typeof removeMemberBodySchema>;
 export type Member = z.infer<typeof memberSchema>;
 export type MemberPage = z.infer<typeof memberPageSchema>;
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;

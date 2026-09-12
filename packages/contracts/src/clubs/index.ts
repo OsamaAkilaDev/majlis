@@ -61,6 +61,8 @@ export const patchClubBodySchema = z
     membershipPolicy: membershipPolicySchema,
     logoUploaded: z.boolean(),
     bannerUploaded: z.boolean(),
+    /** Required when an Admin holding no club role edits. Spec 6.1. */
+    overrideReason: z.string().trim().min(1).max(500),
   })
   .partial();
 
@@ -72,7 +74,7 @@ export const patchClubStatusBodySchema = z.object({
 export const appointLeadBodySchema = z.object({ userId: z.uuid() });
 
 /** The kinds an upload URL may be requested for. Mirrors IMAGE_KINDS below. */
-export const imageKindSchema = z.enum(['club-logo', 'club-banner']);
+export const imageKindSchema = z.enum(['club-logo', 'club-banner', 'event-poster']);
 
 export type ImageKind = z.infer<typeof imageKindSchema>;
 
@@ -85,6 +87,7 @@ export type ImageKind = z.infer<typeof imageKindSchema>;
 export const IMAGE_KINDS = {
   'club-logo': { maxBytes: 256 * 1024, box: { w: 512, h: 512 }, square: true },
   'club-banner': { maxBytes: 512 * 1024, box: { w: 1600, h: 600 }, square: false },
+  'event-poster': { maxBytes: 512 * 1024, box: { w: 1600, h: 900 }, square: false },
 } as const satisfies Record<ImageKind, { maxBytes: number; box: { w: number; h: number }; square: boolean }>;
 
 export const signedUploadSchema = z.object({
