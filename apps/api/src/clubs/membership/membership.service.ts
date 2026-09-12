@@ -23,6 +23,8 @@ import { TransactionHost } from '../../prisma/transaction.host';
 import { assertCanReadRoster } from '../roster-access';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../club-status';
 import { loadClub } from '../load-club';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { NotificationService } from '../../notifications/notification.service';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
 type MembershipWithUser = MembershipRow & { user: { fullName: string; email: string } };
@@ -68,6 +70,7 @@ export class MembershipService {
   constructor(
     private readonly host: TransactionHost,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationService,
   ) {}
 
   private async activeAppointments(where: Prisma.ClubTeamAppointmentWhereInput): Promise<AppointmentRoleRow[]> {
@@ -171,7 +174,7 @@ export class MembershipService {
    */
   async decide(actor: { id: string }, clubId: string, requestId: string, body: DecideMembershipBody): Promise<Member> {
     return this.host.run(async () => {
-      await loadClub(this.host, clubId, assertAcceptsEdits);
+      const club = await loadClub(this.host, clubId, assertAcceptsEdits);
 
       const existing = await this.host.tx.clubMembership.findFirst({ where: { id: requestId, clubId } });
       if (!existing) throw new NotFoundError('No such membership request.');
@@ -194,6 +197,15 @@ export class MembershipService {
         actorUserId: actor.id,
         before: { status: existing.status },
         after: { status: row.status },
+      });
+
+      // Spec 7.7, membership decision. Approval and rejection both notify:
+      // a student waiting on an answer needs to hear either one.
+      await this.notifications.record({
+        userId: row.userId,
+        type: 'membership.decided',
+        subject: row.id,
+        payload: { membershipId: row.id, clubId, clubName: club.name, status: row.status },
       });
 
       return toMember(row, await this.rolesFor(clubId, row.userId));

@@ -14,6 +14,7 @@ import { LOG_REDACT_PATHS, redactedReqSerializer } from './config/log-redaction'
 import { DepartmentsModule } from './departments/departments.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
@@ -55,6 +56,7 @@ import { UsersModule } from './users/users.module';
     RequestContextModule,
     PrismaModule,
     AuditModule,
+    NotificationsModule,
     AuthModule,
     UsersModule,
     DepartmentsModule,

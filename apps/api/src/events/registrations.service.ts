@@ -26,6 +26,8 @@ import { Prisma, type EventRegistration as RegistrationRow } from '../generated/
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { NotificationService } from '../notifications/notification.service';
 import { EVENT_SUMMARY_SELECT, toEventSummary } from './events.service';
 import { promoteFromWaitlist } from './waitlist';
 
@@ -55,6 +57,7 @@ interface Person {
 interface LockedEvent {
   id: string;
   clubId: string;
+  title: string;
   clubStatus: ClubStatus;
   status: EventStatus;
   capacity: number;
@@ -86,6 +89,7 @@ export class RegistrationsService {
     private readonly host: TransactionHost,
     private readonly audit: AuditService,
     private readonly lifecycle: EventLifecycleService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -169,6 +173,22 @@ export class RegistrationsService {
           after: { eventId, userId, status: row.status, waitlistPosition: row.waitlistPosition },
         });
 
+        // Spec 7.7, registration confirmed or waitlisted. Same transaction
+        // as the seat itself: a rolled-back registration must not leave
+        // somebody holding a notification for a place they do not have.
+        await this.notifications.record({
+          userId,
+          type: seatFree ? 'registration.confirmed' : 'registration.waitlisted',
+          subject: row.id,
+          payload: {
+            registrationId: row.id,
+            eventId,
+            eventTitle: event.title,
+            status: row.status,
+            waitlistPosition: row.waitlistPosition,
+          },
+        });
+
         return row;
       });
 
@@ -248,7 +268,7 @@ export class RegistrationsService {
         // A cancelled event has no seats to promote anyone into. The counter
         // still comes down: it is the record of who held a place.
         if (event.status !== 'CANCELLED') {
-          await promoteFromWaitlist(this.host, this.audit, eventId, 1);
+          await promoteFromWaitlist(this.host, this.audit, this.notifications, eventId, 1);
         }
       }
     });
@@ -305,6 +325,7 @@ export class RegistrationsService {
     const rows = await this.host.tx.$queryRaw<LockedEvent[]>`
       SELECT e."id",
              e."club_id" AS "clubId",
+             e."title",
              e."status"::text AS "status",
              e."capacity",
              e."confirmed_count" AS "confirmedCount",

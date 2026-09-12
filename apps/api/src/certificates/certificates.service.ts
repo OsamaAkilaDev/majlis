@@ -21,6 +21,8 @@ import type { Env } from '../config/env.schema';
 import { assertTransition } from '../events/event-status';
 import { Prisma, type Certificate as CertificateRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { NotificationService } from '../notifications/notification.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { StorageService } from '../storage/storage.service';
@@ -116,6 +118,7 @@ export class CertificatesService {
     private readonly host: TransactionHost,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationService,
     config: ConfigService<Env, true>,
   ) {
     this.correctionWindowMs = config.get('ATTENDANCE_CORRECTION_WINDOW_HOURS', { infer: true }) * HOUR_MS;
@@ -238,9 +241,30 @@ export class CertificatesService {
         if (count === pending.length) break;
       }
 
-      const total = await this.host.tx.certificate.count({
+      // Read back rather than derived from `issued`: createMany returns a
+      // count, not ids, and a concurrent run's rows are part of this event's
+      // total too. Spec 7.7's certificate-issued notification needs the ids
+      // anyway, and the dedupe key absorbs the re-notification a second,
+      // idempotent press of the button would otherwise produce.
+      const active = await this.host.tx.certificate.findMany({
         where: { eventId: event.id, status: 'ACTIVE' },
+        select: { id: true, userId: true, serialNumber: true },
       });
+      const total = active.length;
+
+      await this.notifications.recordMany(
+        active.map((c) => ({
+          userId: c.userId,
+          type: 'certificate.issued' as const,
+          subject: c.id,
+          payload: {
+            certificateId: c.id,
+            eventId: event.id,
+            eventTitle: event.title,
+            serialNumber: c.serialNumber,
+          },
+        })),
+      );
 
       if (event.status === 'COMPLETED') {
         assertTransition(event.status, 'CERTIFIED');
@@ -523,8 +547,14 @@ export class CertificatesService {
     return row;
   }
 
-  private revokeRow(actor: Actor, row: CertificateRow, reason: string): Promise<CertificateRow> {
-    return this.host.tx.certificate.update({
+  /**
+   * Every revocation goes through here — the Admin route, the attendance
+   * correction, and the reissue — so spec 7.7's certificate-revoked
+   * notification is written once, in the caller's transaction, rather than
+   * at three call sites one of which would eventually be forgotten.
+   */
+  private async revokeRow(actor: Actor, row: CertificateRow, reason: string): Promise<CertificateRow> {
+    const revoked = await this.host.tx.certificate.update({
       where: { id: row.id },
       data: {
         status: 'REVOKED',
@@ -533,6 +563,21 @@ export class CertificatesService {
         revokedReason: reason,
       },
     });
+
+    await this.notifications.record({
+      userId: row.userId,
+      type: 'certificate.revoked',
+      subject: row.id,
+      payload: {
+        certificateId: row.id,
+        eventId: row.eventId,
+        eventTitle: row.eventTitleSnapshot,
+        serialNumber: row.serialNumber,
+        reason,
+      },
+    });
+
+    return revoked;
   }
 
   private verifyUrl(code: string): string {
