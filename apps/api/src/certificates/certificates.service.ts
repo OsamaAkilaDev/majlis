@@ -24,7 +24,7 @@ import { Prisma, type Certificate as CertificateRow } from '../generated/prisma/
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { StorageService } from '../storage/storage.service';
-import { certificatePdfPath } from '../storage/image-kinds';
+import { CERTIFICATE_BUCKET, certificatePdfPath } from '../storage/image-kinds';
 import { serialNumber, verificationCode } from './certificate-codes';
 import { renderCertificate } from './certificate-pdf';
 
@@ -323,37 +323,54 @@ export class CertificatesService {
     }
 
     const path = certificatePdfPath(row.id);
-
-    if (!row.pdfUrl) {
-      const event = await this.host.tx.event.findUniqueOrThrow({
-        where: { id: row.eventId },
-        select: { certificateTitle: true, certificateSignatory: true },
-      });
-
-      const bytes = await renderCertificate({
-        serialNumber: row.serialNumber,
-        verificationCode: row.verificationCode,
-        holderName: row.holderNameSnapshot,
-        eventTitle: row.eventTitleSnapshot,
-        clubName: row.clubNameSnapshot,
-        clubLogoUrl: row.clubLogoSnapshotUrl,
-        issuedAt: row.issuedAt,
-        certificateTitle: event.certificateTitle ?? 'Certificate of Attendance',
-        signatory: event.certificateSignatory,
-        verifyUrl: this.verifyUrl(row.verificationCode),
-      });
-
-      await this.storage.putObject(path, bytes, 'application/pdf');
-      // The column stores the object path, not a URL, and is only a marker
-      // that the render has happened: every URL this route hands out is
-      // signed and expires, so there is none worth persisting.
-      await this.host.tx.certificate.update({ where: { id: row.id }, data: { pdfUrl: path } });
-    }
+    if (!row.pdfUrl) await this.render(row, path);
 
     // Signed, never public. The object path is a pure function of the
     // certificate id and every holder of `registration:read` can list those
     // ids, so a public URL would make the ownership check above decorative.
-    return { pdfUrl: await this.storage.createSignedDownloadUrl(path, PDF_URL_TTL_SECONDS) };
+    try {
+      return { pdfUrl: await this.sign(path) };
+    } catch {
+      // `pdfUrl` marks that a render happened, which is not the same as the
+      // object still being there: a certificate rendered before certificates
+      // moved to their own bucket, or an object deleted out from under us,
+      // leaves the marker set and the bytes gone, and signing a path with
+      // nothing behind it answers 400. Re-render once rather than let a
+      // credential download 500 forever with no way back.
+      await this.render(row, path);
+      return { pdfUrl: await this.sign(path) };
+    }
+  }
+
+  private sign(path: string): Promise<string> {
+    return this.storage.createSignedDownloadUrl(path, PDF_URL_TTL_SECONDS, CERTIFICATE_BUCKET);
+  }
+
+  /** Renders the document, stores it, and marks the row as rendered. */
+  private async render(row: CertificateRow, path: string): Promise<void> {
+    const event = await this.host.tx.event.findUniqueOrThrow({
+      where: { id: row.eventId },
+      select: { certificateTitle: true, certificateSignatory: true },
+    });
+
+    const bytes = await renderCertificate({
+      serialNumber: row.serialNumber,
+      verificationCode: row.verificationCode,
+      holderName: row.holderNameSnapshot,
+      eventTitle: row.eventTitleSnapshot,
+      clubName: row.clubNameSnapshot,
+      clubLogoUrl: row.clubLogoSnapshotUrl,
+      issuedAt: row.issuedAt,
+      certificateTitle: event.certificateTitle ?? 'Certificate of Attendance',
+      signatory: event.certificateSignatory,
+      verifyUrl: this.verifyUrl(row.verificationCode),
+    });
+
+    await this.storage.putObject(path, bytes, 'application/pdf', CERTIFICATE_BUCKET);
+    // The column stores the object path, not a URL, and is only a marker
+    // that the render has happened: every URL this route hands out is
+    // signed and expires, so there is none worth persisting.
+    await this.host.tx.certificate.update({ where: { id: row.id }, data: { pdfUrl: path } });
   }
 
   /**

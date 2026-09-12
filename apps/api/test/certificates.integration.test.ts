@@ -5,6 +5,7 @@ import { API_PREFIX } from '../src/config/api-prefix';
 import { SWEEP_SECRET_HEADER } from '../src/config/sweep-header';
 import { EXAMPLE_LIFECYCLE_SWEEP_SECRET } from '../src/config/env.schema';
 import { StorageService } from '../src/storage/storage.service';
+import { CERTIFICATE_BUCKET, STORAGE_BUCKET } from '../src/storage/image-kinds';
 import { createTestApp } from './app';
 import { loginAsAdmin, loginAsStudent } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
@@ -18,23 +19,30 @@ const DAY = 24 * HOUR;
 /** Matches ATTENDANCE_CORRECTION_WINDOW_HOURS' default. */
 const WINDOW_HOURS = 48;
 
-/** Bytes the API produced, keyed by object path. No test touches Supabase. */
-const uploaded = new Map<string, { size: number; contentType: string }>();
+/**
+ * Bytes the API produced, keyed by object path, with the bucket they were
+ * sent to. The bucket is recorded because it is a security property and not
+ * a detail: a certificate written to the public bucket is readable at
+ * /object/public/<path> with no cookie, and signing its URL does not change
+ * that. An earlier version of this fake dropped the argument, which made the
+ * wiring untestable and let a mutation that reverted it stay green.
+ */
+const uploaded = new Map<string, { size: number; contentType: string; bucket: string }>();
 
-/** Every path createSignedDownloadUrl was asked to sign, in order. */
-const signed: string[] = [];
+/** Every (path, bucket) createSignedDownloadUrl was asked to sign, in order. */
+const signed: { path: string; bucket: string }[] = [];
 
 const fakeStorage = {
   createSignedUploadUrl: async (path: string) => ({ signedUrl: `https://example.test/${path}`, token: 't' }),
   statObject: async (path: string) => uploaded.get(path) ?? null,
-  putObject: async (path: string, body: Buffer, contentType: string) => {
-    uploaded.set(path, { size: body.length, contentType });
+  putObject: async (path: string, body: Buffer, contentType: string, bucket = STORAGE_BUCKET) => {
+    uploaded.set(path, { size: body.length, contentType, bucket });
   },
   publicUrlFor: (path: string, version: number) =>
     `https://example.supabase.co/storage/v1/object/public/majlis-storage/${path}?v=${version}`,
-  createSignedDownloadUrl: async (path: string, expiresIn: number) => {
-    signed.push(path);
-    return `https://example.supabase.co/storage/v1/object/sign/majlis-storage/${path}?token=tok-${expiresIn}-${signed.length}`;
+  createSignedDownloadUrl: async (path: string, expiresIn: number, bucket = STORAGE_BUCKET) => {
+    signed.push({ path, bucket });
+    return `https://example.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=tok-${expiresIn}-${signed.length}`;
   },
 };
 
@@ -231,13 +239,23 @@ describe('GET /certificates/:id/pdf', () => {
     expect(first.body.pdfUrl).not.toContain('/object/public/');
     expect(first.body.pdfUrl).toContain('/object/sign/');
     expect(first.body.pdfUrl).toContain('token=');
-    expect(signed).toEqual([`certificates/${certificate.id}/certificate.pdf`]);
+    expect(signed).toEqual([
+      { path: `certificates/${certificate.id}/certificate.pdf`, bucket: CERTIFICATE_BUCKET },
+    ]);
+    // Signing alone closes nothing. majlis-storage is a PUBLIC bucket, so a
+    // certificate written there stays readable at /object/public/<path> with
+    // no cookie no matter how the API hands the URL out. Only a bucket that
+    // refuses the unsigned path fixes it, so both the bytes and the
+    // signature have to be against the private one. Verified live
+    // 2026-09-13: anonymous /object/public/ on majlis-certificates answers
+    // 400, a signed URL answers 200, a tampered token answers 400.
+    const object = uploaded.get(`certificates/${certificate.id}/certificate.pdf`);
+    expect(object?.bucket).toBe(CERTIFICATE_BUCKET);
+    expect(object?.bucket).not.toBe(STORAGE_BUCKET);
     // A real PDF, not an empty buffer: the render is the thing that can fail
     // silently once the fake storage accepts anything.
-    expect(uploaded.get(`certificates/${certificate.id}/certificate.pdf`)?.contentType).toBe(
-      'application/pdf',
-    );
-    expect(uploaded.get(`certificates/${certificate.id}/certificate.pdf`)?.size).toBeGreaterThan(1000);
+    expect(object?.contentType).toBe('application/pdf');
+    expect(object?.size).toBeGreaterThan(1000);
 
     uploaded.clear();
     const second = await request(app.getHttpServer())

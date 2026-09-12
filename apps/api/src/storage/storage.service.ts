@@ -65,8 +65,12 @@ export class StorageService {
    * `registration:read` can list those ids, so a public URL is a credential
    * document readable with no cookie at all.
    */
-  async createSignedDownloadUrl(path: string, expiresInSeconds: number): Promise<string> {
-    const res = await fetch(`${this.baseUrl}/storage/v1/object/sign/${STORAGE_BUCKET}/${path}`, {
+  async createSignedDownloadUrl(
+    path: string,
+    expiresInSeconds: number,
+    bucket: string = STORAGE_BUCKET,
+  ): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/storage/v1/object/sign/${bucket}/${path}`, {
       method: 'POST',
       headers: { ...this.headers(), 'content-type': 'application/json' },
       body: JSON.stringify({ expiresIn: expiresInSeconds }),
@@ -121,8 +125,13 @@ export class StorageService {
    * `x-upsert` so a reissued certificate's render replaces the previous
    * object at the same deterministic path instead of failing on it.
    */
-  async putObject(path: string, body: Buffer, contentType: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+  async putObject(
+    path: string,
+    body: Buffer,
+    contentType: string,
+    bucket: string = STORAGE_BUCKET,
+  ): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/storage/v1/object/${bucket}/${path}`, {
       method: 'POST',
       headers: { ...this.headers(), 'content-type': contentType, 'x-upsert': 'true' },
       body: new Uint8Array(body),

@@ -1,6 +1,26 @@
 import type { ImageKind } from '@majlis/contracts';
 
+/**
+ * Club logos, banners and event posters. Public, because every one of them
+ * is branding that the product renders inline on ordinary pages, and signing
+ * each would mean a round trip per image on every list read.
+ */
 export const STORAGE_BUCKET = 'majlis-storage';
+
+/**
+ * Certificates, and nothing else. A separate bucket because it is **private**
+ * and the other one cannot be: a certificate is a credential document
+ * carrying a person's name, its object path is a pure function of the
+ * certificate id, and every holder of `registration:read` can list those ids.
+ * In a public bucket that makes `/object/public/...` readable with no cookie
+ * at all, which is exactly what the ownership check in `pdf()` exists to
+ * prevent. Signing the URL alone does not fix that; the bucket has to refuse
+ * the unsigned path, and a public bucket never will.
+ *
+ * Verified live 2026-09-13: anonymous `/object/public/` answers 400 here, a
+ * signed URL answers 200, and a tampered token answers 400.
+ */
+export const CERTIFICATE_BUCKET = 'majlis-certificates';
 
 /** Folder and deterministic file name per kind. Caps live in @majlis/contracts. */
 const PATHS = {

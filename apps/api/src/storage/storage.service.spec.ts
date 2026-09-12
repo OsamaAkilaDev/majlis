@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CERTIFICATE_BUCKET, STORAGE_BUCKET } from './image-kinds';
 import { StorageService } from './storage.service';
 
 const KEY = 'service-role-key-value';
@@ -92,6 +93,39 @@ describe('createSignedDownloadUrl', () => {
     expect(headers.Authorization).toBe(`Bearer ${KEY}`);
     expect(headers.apikey).toBe(KEY);
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ expiresIn: 300 });
+  });
+
+  it('signs and uploads a certificate into the private bucket, not the public one', async () => {
+    // The whole point of the second bucket. Signing a URL in the PUBLIC
+    // bucket closes nothing: the object path is a pure function of the
+    // certificate id, every holder of registration:read can list those ids,
+    // and /object/public/<path> answers 200 with no cookie. Only a bucket
+    // that refuses the unsigned path fixes it, so this pins which bucket the
+    // bytes actually land in and which one the URL is signed against.
+    const calls: string[] = [];
+    const { svc } = serviceWith((async (url: string) => {
+      calls.push(url);
+      return new Response(
+        JSON.stringify({
+          signedURL: '/object/sign/majlis-certificates/certificates/c1/certificate.pdf?token=tok',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch);
+
+    await svc.putObject(
+      'certificates/c1/certificate.pdf',
+      Buffer.from('%PDF-1.4'),
+      'application/pdf',
+      CERTIFICATE_BUCKET,
+    );
+    await svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300, CERTIFICATE_BUCKET);
+
+    expect(CERTIFICATE_BUCKET).not.toBe(STORAGE_BUCKET);
+    for (const url of calls) {
+      expect(url).toContain(`/${CERTIFICATE_BUCKET}/`);
+      expect(url).not.toContain(`/${STORAGE_BUCKET}/`);
+    }
   });
 
   it('throws rather than returning a broken URL when Supabase refuses', async () => {
