@@ -69,3 +69,43 @@ describe('matches', () => {
     );
   });
 });
+
+describe('Stage 4 permission rows', () => {
+  const asClub = (roles: ActorFacts['clubRoles']): ActorFacts => ({ ...student, clubRoles: roles });
+
+  it('reserves club creation, status and Lead appointment to Admin', () => {
+    for (const p of ['club:create', 'club:status', 'club:appoint-lead', 'department:manage'] as const) {
+      expect(evaluate(p, admin)).toBe(true);
+      // Catches a rule that listed `club: ['LEAD']` by copy and paste. A
+      // Lead who can archive their own club or appoint their successor has
+      // escaped the governance model entirely.
+      expect(evaluate(p, asClub(['LEAD']))).toBe(false);
+      expect(evaluate(p, student)).toBe(false);
+    }
+  });
+
+  it('gives team management to Lead but not to Vice Lead', () => {
+    // Catches `club: ['LEAD', 'VICE_LEAD']`, which spec 6.1 gives to
+    // "Invite / end team appointments" for Lead only.
+    expect(evaluate('club:team-manage', asClub(['LEAD']))).toBe(true);
+    expect(evaluate('club:team-manage', asClub(['VICE_LEAD']))).toBe(false);
+    expect(evaluate('club:team-manage', admin)).toBe(true);
+  });
+
+  it('gives membership decisions to Lead, Vice Lead and Operations only', () => {
+    for (const role of ['LEAD', 'VICE_LEAD', 'OPERATIONS'] as const) {
+      expect(evaluate('membership:decide', asClub([role]))).toBe(true);
+    }
+    // Catches a rule that admitted every club role. Marketing and CTO
+    // deciding who joins is not in spec 6.1.
+    expect(evaluate('membership:decide', asClub(['MARKETING']))).toBe(false);
+    expect(evaluate('membership:decide', asClub(['CTO']))).toBe(false);
+  });
+
+  it('does not give Marketing or CTO club editing in this stage', () => {
+    // Stage 4 deviation D4: field-level permissions land in Stage 5.
+    expect(evaluate('club:edit', asClub(['MARKETING']))).toBe(false);
+    expect(evaluate('club:edit', asClub(['CTO']))).toBe(false);
+    expect(evaluate('club:edit', asClub(['VICE_LEAD']))).toBe(true);
+  });
+});
