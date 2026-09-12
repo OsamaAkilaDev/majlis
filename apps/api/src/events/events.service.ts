@@ -19,12 +19,14 @@ import { clubOverrideReason } from '../auth/override';
 import type { PlatformRole } from '../auth/permissions';
 import { resolveClubFacts, resolveEventFacts } from '../auth/permissions.guard';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../clubs/club-status';
+import { loadClub } from '../clubs/load-club';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { ClubsService } from '../clubs/clubs.service';
 import { deriveSlug, uniqueSlug } from '../clubs/slug';
-import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
-import { violatedConstraintName } from '../common/prisma-constraint';
-import { Prisma, type Event as EventRow } from '../generated/prisma/client';
+import { cursorArgs, cursorPage } from '../common/cursor-page';
+import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
+import { conflictOn } from '../common/prisma-constraint';
+import type { Prisma, Event as EventRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
@@ -164,14 +166,7 @@ export {
  * Lead on patch. Either way the caller needs to be told which it was, not the
  * filter's generic conflict text.
  */
-function mapWriteError(e: unknown): never {
-  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    if (violatedConstraintName(e.meta).includes('slug')) {
-      throw new ConflictError('That club already has an event with that slug.');
-    }
-  }
-  throw e;
-}
+const mapWriteError = conflictOn({ slug: 'That club already has an event with that slug.' });
 
 @Injectable()
 export class EventsService {
@@ -222,9 +217,7 @@ export class EventsService {
 
   async create(actor: Actor, clubId: string, body: CreateEventBody): Promise<EventDetail> {
     return this.host.run(async () => {
-      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
-      if (!club) throw new NotFoundError('No such club.');
-      assertAcceptsNewActivity(club.status);
+      await loadClub(this.host, clubId, assertAcceptsNewActivity);
 
       const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
@@ -320,19 +313,16 @@ export class EventsService {
 
     const rows = await this.host.tx.event.findMany({
       where: visible ? { AND: [filters, visible] } : filters,
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       select: SUMMARY_SELECT,
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
     const now = new Date();
 
     return {
       items: items.map((row) => toSummary(row, now)),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
@@ -343,8 +333,7 @@ export class EventsService {
   }
 
   private async readDetail(actor: Actor, eventId: string): Promise<EventDetail> {
-    const row = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
-    if (!row) throw new NotFoundError('No such event.');
+    const row = await this.loadEvent(eventId);
 
     // toDetail resolves the viewer's roles in this club and assignments on
     // this event anyway, and those are exactly what visibilityFilter asks
@@ -363,6 +352,13 @@ export class EventsService {
       throw new NotFoundError('No such event.');
     }
     return detail;
+  }
+
+  /** The event with the club fields every read and gate needs, or a 404. */
+  private async loadEvent(eventId: string): Promise<EventWithClub> {
+    const row = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
+    if (!row) throw new NotFoundError('No such event.');
+    return row;
   }
 
   /**
@@ -422,8 +418,7 @@ export class EventsService {
       // about to change.
       await this.host.tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${eventId}::uuid FOR UPDATE`;
 
-      const event = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
-      if (!event) throw new NotFoundError('No such event.');
+      const event = await this.loadEvent(eventId);
       assertAcceptsEdits(event.club.status);
       if (event.status === 'CANCELLED' || event.status === 'COMPLETED' || event.status === 'CERTIFIED') {
         throw new UnprocessableError(`A ${event.status.toLowerCase()} event can no longer be edited.`);
@@ -506,8 +501,7 @@ export class EventsService {
   /** POST /events/:eventId/publish. One of the two operator-driven transitions. */
   async publish(actor: Actor, eventId: string, body: PublishEventBody): Promise<EventDetail> {
     await this.host.run(async () => {
-      const event = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
-      if (!event) throw new NotFoundError('No such event.');
+      const event = await this.loadEvent(eventId);
       // Spec 7.3: only an ACTIVE club may publish an event.
       assertAcceptsNewActivity(event.club.status);
       assertTransition(event.status, 'PUBLISHED');

@@ -11,9 +11,10 @@ import { AuditService } from '../audit/audit.service';
 import { clubOverrideReason } from '../auth/override';
 import type { PlatformRole } from '../auth/permissions';
 import { assertAcceptsEdits } from '../clubs/club-status';
-import { ConflictError, NotFoundError } from '../common/problem/domain-error';
-import { violatedConstraintName } from '../common/prisma-constraint';
-import { Prisma, type EventAssignment as AssignmentRow } from '../generated/prisma/client';
+import { cursorArgs, cursorPage } from '../common/cursor-page';
+import { NotFoundError } from '../common/problem/domain-error';
+import { conflictOn } from '../common/prisma-constraint';
+import type { EventAssignment as AssignmentRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
 
@@ -54,18 +55,15 @@ export class AssignmentsService {
     await this.loadEvent(eventId);
     const rows = await this.host.tx.eventAssignment.findMany({
       where: { eventId },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: WITH_USER,
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map(toAssignment),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
@@ -89,16 +87,11 @@ export class AssignmentsService {
           },
           include: WITH_USER,
         })
-        .catch((e: unknown) => {
-          if (
-            e instanceof Prisma.PrismaClientKnownRequestError &&
-            e.code === 'P2002' &&
-            violatedConstraintName(e.meta).includes('event_assignment')
-          ) {
-            throw new ConflictError('That person already holds that responsibility on this event.');
-          }
-          throw e;
-        });
+        .catch(
+          conflictOn({
+            event_assignment: 'That person already holds that responsibility on this event.',
+          }),
+        );
 
       await this.audit.record({
         action: 'event.responsibility_assigned',

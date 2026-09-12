@@ -13,6 +13,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import type { PlatformRole } from '../auth/permissions';
 import { assertAcceptsNewActivity } from '../clubs/club-status';
+import { cursorArgs, cursorPage } from '../common/cursor-page';
 import {
   ConflictError,
   ForbiddenError,
@@ -257,18 +258,15 @@ export class RegistrationsService {
   async roster(eventId: string, query: RegistrationListQuery): Promise<RegistrationPage> {
     const rows = await this.host.tx.eventRegistration.findMany({
       where: { eventId, ...(query.status ? { status: query.status } : {}) },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: WITH_USER,
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map((row) => toRegistration(row, row.user)),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
@@ -280,14 +278,11 @@ export class RegistrationsService {
   async mine(actor: Actor, query: CursorPageQuery): Promise<MyRegistrationPage> {
     const rows = await this.host.tx.eventRegistration.findMany({
       where: { userId: actor.id, ...OPEN },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: { event: { select: EVENT_SUMMARY_SELECT } },
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map((r) => ({
@@ -297,7 +292,7 @@ export class RegistrationsService {
         registeredAt: r.registeredAt.toISOString(),
         event: toEventSummary(r.event),
       })),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 

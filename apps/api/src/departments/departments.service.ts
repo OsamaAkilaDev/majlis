@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { CreateDepartmentBody, CursorPageQuery, Department, DepartmentPage, PatchDepartmentBody } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { AuditService } from '../audit/audit.service';
+import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { ConflictError, NotFoundError } from '../common/problem/domain-error';
 import { Prisma, type Department as DepartmentRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as AuditService above.
@@ -37,18 +38,15 @@ export class DepartmentsService {
   /** GET /departments. Same cursor pattern as UsersService.list. */
   async list(query: CursorPageQuery): Promise<DepartmentPage> {
     const rows = await this.host.tx.department.findMany({
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { id: 'asc' },
+      ...cursorArgs(query),
       include: { _count: { select: { clubs: true } } },
     });
 
-    const hasMore = rows.length > query.limit;
-    const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
       items: items.map((d) => toDepartment(d, d._count.clubs)),
-      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      nextCursor,
     };
   }
 
