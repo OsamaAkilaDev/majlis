@@ -10,6 +10,7 @@ import { ConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
 import { LOG_REDACT_PATHS, redactedReqSerializer } from './config/log-redaction';
 import { DepartmentsModule } from './departments/departments.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
@@ -56,6 +57,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     DepartmentsModule,
     ClubsModule,
+    EventsModule,
     HealthModule,
     StorageModule,
   ],

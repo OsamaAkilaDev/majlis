@@ -11,5 +11,6 @@ import { TeamService } from './team/team.service';
   imports: [StorageModule],
   controllers: [ClubsController, TeamController, MembershipController],
   providers: [ClubsService, TeamService, MembershipService],
+  exports: [ClubsService],
 })
 export class ClubsModule {}
