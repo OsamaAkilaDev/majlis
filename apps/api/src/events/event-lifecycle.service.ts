@@ -82,7 +82,17 @@ export class EventLifecycleService {
     while (chainIndex(due) > chainIndex(current)) {
       const next = CHAIN[chainIndex(current) + 1]!;
       assertTransition(current, next);
-      await this.host.tx.event.update({ where: { id: event.id }, data: { status: next } });
+
+      // Conditional on the status this walk believes the row is in. A plain
+      // update would let a transaction holding a stale read replay the whole
+      // walk after a concurrent advance committed, writing the status
+      // backwards and then forwards and an audit row per replayed hop.
+      const { count } = await this.host.tx.event.updateMany({
+        where: { id: event.id, status: current },
+        data: { status: next },
+      });
+      if (count === 0) break;
+
       await this.audit.record({
         action: 'event.status_advanced',
         entityType: 'Event',
@@ -124,9 +134,14 @@ export class EventLifecycleService {
 
     let advanced = 0;
     for (const row of rows) {
-      if (dueStatus(row, now) === row.status) continue;
-      await this.advance(row.id);
-      advanced += 1;
+      // A row whose due status is BEHIND its current one (a boundary moved
+      // into the future) is not a candidate at all: advanceRow walks forward
+      // only, so calling it opens a transaction that does nothing, forever.
+      if (chainIndex(dueStatus(row, now)) <= chainIndex(row.status)) continue;
+      // Count what actually moved. Reporting the call rather than its result
+      // makes the sweep's own number useless as a signal that anything
+      // happened.
+      if ((await this.advance(row.id)) !== row.status) advanced += 1;
     }
 
     return { scanned: rows.length, advanced };

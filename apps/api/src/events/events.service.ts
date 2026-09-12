@@ -8,12 +8,14 @@ import type {
   EventSummary,
   NewEventUpload,
   PatchEventBody,
+  PublishEventBody,
   SignedUpload,
 } from '@majlis/contracts';
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
 import { EVENT_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
+import { clubOverrideReason } from '../auth/override';
 import type { PlatformRole } from '../auth/permissions';
 import { resolveClubFacts, resolveEventFacts } from '../auth/permissions.guard';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../clubs/club-status';
@@ -27,7 +29,7 @@ import { Prisma, type Event as EventRow } from '../generated/prisma/client';
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
-import { assertTransition } from './event-status';
+import { assertTransition, dueStatus } from './event-status';
 import { promoteFromWaitlist } from './waitlist';
 
 const WITH_CLUB = { club: { select: { name: true, logoUrl: true, status: true } } } as const;
@@ -55,6 +57,8 @@ const SUMMARY_SELECT = {
   endsAt: true,
   registrationOpensAt: true,
   registrationClosesAt: true,
+  checkInOpensAt: true,
+  checkInClosesAt: true,
   capacity: true,
   confirmedCount: true,
   waitlistEnabled: true,
@@ -114,7 +118,13 @@ function assertWindows(w: Windows): void {
   }
 }
 
-function toSummary(row: EventSummaryRow): EventSummary {
+/**
+ * `status` is rendered as `dueStatus`, not as stored: a list read must not
+ * write, and a row nobody has opened since its registration window closed is
+ * still stored PUBLISHED. Without this the badge and the register button on a
+ * list disagree with the detail page and with what the API will accept.
+ */
+function toSummary(row: EventSummaryRow, now = new Date()): EventSummary {
   return {
     id: row.id,
     clubId: row.clubId,
@@ -137,7 +147,7 @@ function toSummary(row: EventSummaryRow): EventSummary {
     confirmedCount: row.confirmedCount,
     waitlistEnabled: row.waitlistEnabled,
     requiresClubMembership: row.requiresClubMembership,
-    status: row.status,
+    status: dueStatus(row, now),
   };
 }
 
@@ -216,6 +226,8 @@ export class EventsService {
       if (!club) throw new NotFoundError('No such club.');
       assertAcceptsNewActivity(club.status);
 
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
+
       const startsAt = new Date(body.startsAt);
       const endsAt = new Date(body.endsAt);
       const windows: Windows = {
@@ -280,6 +292,7 @@ export class EventsService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: { clubId, title: row.title, slug: row.slug, capacity: row.capacity },
       });
 
@@ -288,9 +301,13 @@ export class EventsService {
   }
 
   /**
-   * GET /events. Renders each row's status as stored rather than advancing
-   * it: advancing a whole page would be one transaction per row on a read.
-   * The sweep and every single-event read keep the stored value honest.
+   * GET /events. Renders each row's DUE status as a pure function rather than
+   * advancing it: advancing a whole page would be one transaction per row on a
+   * read. The sweep and every single-event read persist it.
+   *
+   * `?status=` still filters on the stored value, so a row whose due status has
+   * moved on but which nobody has read is matched by its old status. Recorded
+   * as a deviation in spec 13.
    */
   async list(actor: Actor, query: EventListQuery): Promise<EventPage> {
     const filters: Prisma.EventWhereInput = {
@@ -311,9 +328,10 @@ export class EventsService {
 
     const hasMore = rows.length > query.limit;
     const items = hasMore ? rows.slice(0, query.limit) : rows;
+    const now = new Date();
 
     return {
-      items: items.map(toSummary),
+      items: items.map((row) => toSummary(row, now)),
       nextCursor: hasMore ? items[items.length - 1]!.id : null,
     };
   }
@@ -397,6 +415,13 @@ export class EventsService {
     await this.lifecycle.advance(eventId);
 
     return this.host.run(async () => {
+      // The same row lock RegistrationsService.lockEvent takes, and taken
+      // FIRST: capacity and confirmedCount are read below and both the
+      // reduction guard and the waitlist headroom decide on them, so a read
+      // outside the lock decides on a count a concurrent registration is
+      // about to change.
+      await this.host.tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${eventId}::uuid FOR UPDATE`;
+
       const event = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
       if (!event) throw new NotFoundError('No such event.');
       assertAcceptsEdits(event.club.status);
@@ -434,6 +459,17 @@ export class EventsService {
         checkInClosesAt: at('checkInClosesAt'),
       });
 
+      // The lifecycle walks forward only, so a close time moved back into the
+      // future never returns the event to PUBLISHED. Accepting it silently
+      // showed the officer a saved date and a shut door.
+      if (
+        body.registrationClosesAt !== undefined &&
+        new Date(body.registrationClosesAt) > new Date() &&
+        (event.status === 'REGISTRATION_CLOSED' || event.status === 'ONGOING')
+      ) {
+        throw new UnprocessableError('Registration cannot be reopened once it has closed.');
+      }
+
       // Spec 7.4: capacity may not be reduced below the confirmed count.
       // Refused here with its own message rather than left to the
       // event_capacity_bounds CHECK, which would surface as a bare 409.
@@ -446,8 +482,9 @@ export class EventsService {
       await this.host.tx.event.update({ where: { id: eventId }, data }).catch(mapWriteError);
 
       // Raising capacity frees seats, which is the same event as a
-      // cancellation freeing one, and takes the same path. The update above
-      // holds the event row lock, so a concurrent registration waits.
+      // cancellation freeing one, and takes the same path. The headroom is
+      // the NEW capacity minus what is already confirmed, read under the lock
+      // taken at the top of this transaction.
       if (body.capacity !== undefined && body.capacity > event.capacity) {
         await promoteFromWaitlist(this.host, this.audit, eventId, body.capacity - event.confirmedCount);
       }
@@ -467,13 +504,15 @@ export class EventsService {
   }
 
   /** POST /events/:eventId/publish. One of the two operator-driven transitions. */
-  async publish(actor: Actor, eventId: string): Promise<EventDetail> {
+  async publish(actor: Actor, eventId: string, body: PublishEventBody): Promise<EventDetail> {
     await this.host.run(async () => {
       const event = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
       if (!event) throw new NotFoundError('No such event.');
       // Spec 7.3: only an ACTIVE club may publish an event.
       assertAcceptsNewActivity(event.club.status);
       assertTransition(event.status, 'PUBLISHED');
+
+      const reason = await clubOverrideReason(this.host, actor, event.clubId, body.overrideReason);
 
       await this.host.tx.event.update({ where: { id: eventId }, data: { status: 'PUBLISHED' } });
       await this.audit.record({
@@ -482,6 +521,7 @@ export class EventsService {
         entityId: eventId,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         before: { status: event.status },
         after: { status: 'PUBLISHED' },
       });

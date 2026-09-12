@@ -318,3 +318,36 @@ describe('DELETE /clubs/:clubId/team/:appointmentId', () => {
     expect(afterSecond.endedReason).toBe('Term over.');
   });
 });
+
+describe('admin override on a team invitation', () => {
+  it('refuses a club-roleless admin with no reason and records one when given', async () => {
+    // Spec 6.1's "invite / end team appointments" row reads override for an
+    // Admin. Ending one already recorded its reason; inviting recorded null.
+    const club = await makeClub();
+    const admin = await loginAsAdmin(app);
+    const nominee = await loginAsStudent(app);
+
+    const invite = (body: object) =>
+      request(app.getHttpServer())
+        .post(`${API_PREFIX}/clubs/${club.id}/team`)
+        .set('Cookie', admin.sessionCookie)
+        .send(body);
+
+    const bare = await invite({ userId: nominee.userId, role: 'MARKETING' });
+    expect(bare.status).toBe(422);
+    expect(bare.body.detail).toBe('An admin override requires a reason.');
+    expect(await prisma.clubTeamAppointment.count({ where: { clubId: club.id } })).toBe(0);
+
+    const withReason = await invite({
+      userId: nominee.userId,
+      role: 'MARKETING',
+      overrideReason: 'The club has no Lead to do it.',
+    });
+    expect(withReason.status).toBe(201);
+
+    const row = await prisma.auditLog.findFirstOrThrow({
+      where: { action: 'club.officer_invited', entityId: withReason.body.id },
+    });
+    expect(row.reason).toBe('The club has no Lead to do it.');
+  });
+});

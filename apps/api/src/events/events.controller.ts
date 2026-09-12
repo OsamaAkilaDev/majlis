@@ -4,8 +4,11 @@ import {
   assignResponsibilityBodySchema,
   cancelEventBodySchema,
   createEventBodySchema,
+  cursorPageQuerySchema,
   eventListQuerySchema,
   patchEventBodySchema,
+  publishEventBodySchema,
+  removeAssignmentBodySchema,
   type Assignment,
   type AssignmentList,
   type EventDetail,
@@ -28,6 +31,9 @@ class PatchEventDto extends createZodDto(patchEventBodySchema) {}
 class CancelEventDto extends createZodDto(cancelEventBodySchema) {}
 class AssignResponsibilityDto extends createZodDto(assignResponsibilityBodySchema) {}
 class EventListQueryDto extends createZodDto(eventListQuerySchema) {}
+class PublishEventDto extends createZodDto(publishEventBodySchema) {}
+class RemoveAssignmentDto extends createZodDto(removeAssignmentBodySchema) {}
+class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
 
 const FORBIDDEN = { status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto };
 const NO_EVENT = { status: 404, description: 'No such event.', type: ProblemDetailsDto };
@@ -108,8 +114,12 @@ export class EventsController {
   @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
   @ApiResponse({ status: 422, description: 'That club is not active, or the event cannot be published from its current state.', type: ProblemDetailsDto })
-  publish(@Actor() actor: User, @Param('eventId') eventId: string): Promise<EventDetail> {
-    return this.events.publish(actor, eventId);
+  publish(
+    @Actor() actor: User,
+    @Param('eventId') eventId: string,
+    @Body() body: PublishEventDto,
+  ): Promise<EventDetail> {
+    return this.events.publish(actor, eventId, body);
   }
 
   @Post('events/:eventId/cancel')
@@ -129,8 +139,11 @@ export class EventsController {
   @RequirePermission('event:assign', { scope: 'event', from: 'params.eventId' })
   @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
-  listAssignments(@Param('eventId') eventId: string): Promise<AssignmentList> {
-    return this.assignments.list(eventId);
+  listAssignments(
+    @Param('eventId') eventId: string,
+    @Query() query: CursorPageQueryDto,
+  ): Promise<AssignmentList> {
+    return this.assignments.list(eventId, query);
   }
 
   @Post('events/:eventId/assignments')
@@ -157,7 +170,8 @@ export class EventsController {
     @Actor() actor: User,
     @Param('eventId') eventId: string,
     @Param('assignmentId') assignmentId: string,
+    @Body() body: RemoveAssignmentDto,
   ): Promise<void> {
-    return this.assignments.remove(actor, eventId, assignmentId);
+    return this.assignments.remove(actor, eventId, assignmentId, body);
   }
 }

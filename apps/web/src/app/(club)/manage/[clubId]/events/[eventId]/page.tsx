@@ -1,4 +1,5 @@
 import type { AssignmentList, EventDetail, RegistrationPage } from '@majlis/contracts';
+import { PAGE } from '@/lib/page-size';
 import type { Metadata } from 'next';
 import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { serverFetch } from '@/lib/server-api';
@@ -19,8 +20,8 @@ export default async function EventEditorPage({
   const [user, event, assignments, roster] = await Promise.all([
     requireUser(),
     serverFetch<EventDetail>(`/events/${eventId}`),
-    serverFetch<AssignmentList>(`/events/${eventId}/assignments`),
-    serverFetch<RegistrationPage>(`/events/${eventId}/registrations?limit=100`),
+    serverFetch<AssignmentList>(`/events/${eventId}/assignments?limit=${PAGE}`),
+    serverFetch<RegistrationPage>(`/events/${eventId}/registrations?limit=${PAGE}`),
   ]);
 
   return (
@@ -29,8 +30,8 @@ export default async function EventEditorPage({
         eventId={eventId}
         platformRole={user.platformRole}
         initialEvent={event}
-        initialAssignments={assignments?.items ?? null}
-        initialRoster={roster?.items ?? null}
+        initialAssignments={assignments}
+        initialRoster={roster}
       />
     </ConsoleShell>
   );

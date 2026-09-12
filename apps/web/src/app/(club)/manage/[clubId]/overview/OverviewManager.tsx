@@ -4,6 +4,7 @@ import type { ClubDetail, MembershipPolicy } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { Field } from '@/components/Field';
 import { ImageUpload } from '@/components/ImageUpload';
+import { OverrideReason } from '@/components/OverrideReason';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { ProblemError } from '@/lib/api';
 import { getClub, listDepartments, updateClub } from '@/lib/clubs';
+import { needsOverrideReason } from '@/lib/override';
 
 const POLICIES: MembershipPolicy[] = ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY', 'CLOSED'];
 
@@ -39,6 +41,7 @@ export function OverviewManager({
   );
   const [description, setDescription] = useState(initialClub?.description ?? '');
 
+  const [reason, setReason] = useState('');
   const [error, setError] = useState<ProblemError | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -61,6 +64,11 @@ export function OverviewManager({
 
   if (!club) return <Skeleton className="h-64 w-full" />;
 
+  // Spec 6.1: an Admin holding no role in this club is overriding, so every
+  // save from this screen has to carry why.
+  const override = needsOverrideReason(platformRole, club.viewerClubRoles);
+  const overrideReason = override ? reason.trim() || undefined : undefined;
+
   const canEdit =
     club.status !== 'ARCHIVED' &&
     (platformRole === 'ADMIN' || club.viewerClubRoles.includes('LEAD') || club.viewerClubRoles.includes('VICE_LEAD'));
@@ -79,6 +87,7 @@ export function OverviewManager({
         academicYear,
         membershipPolicy,
         description,
+        overrideReason,
       });
       await refresh(updated);
     } catch (err) {
@@ -91,7 +100,9 @@ export function OverviewManager({
   async function onImageUploaded(kind: 'club-logo' | 'club-banner') {
     const updated = await updateClub(
       clubId,
-      kind === 'club-logo' ? { logoUploaded: true } : { bannerUploaded: true },
+      kind === 'club-logo'
+        ? { logoUploaded: true, overrideReason }
+        : { bannerUploaded: true, overrideReason },
     );
     await refresh(updated);
   }
@@ -171,6 +182,8 @@ export function OverviewManager({
             </Field>
           </div>
           </div>
+
+          {override ? <OverrideReason value={reason} onChange={setReason} /> : null}
 
           {error && error.errors.length === 0 ? (
             <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p>

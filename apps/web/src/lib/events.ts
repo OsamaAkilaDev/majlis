@@ -3,18 +3,20 @@ import type {
   Assignment,
   AssignmentList,
   CancelEventBody,
-  CreateEventBody,
   CursorPageQuery,
+  CreateEventBody,
   EventDetail,
   EventListQuery,
   EventPage,
   MyRegistrationPage,
   NewEventUpload,
   PatchEventBody,
+  PublishEventBody,
   RegisterBody,
   Registration,
   RegistrationListQuery,
   RegistrationPage,
+  RemoveAssignmentBody,
   SignedUpload,
 } from '@majlis/contracts';
 import { apiFetch, json, qs } from './api';
@@ -53,16 +55,18 @@ export const getEvent = (eventId: string): Promise<EventDetail> => apiFetch(`/ev
 export const updateEvent = (eventId: string, body: PatchEventBody): Promise<EventDetail> =>
   apiFetch(`/events/${eventId}`, { ...json(body), method: 'PATCH' });
 
-export const publishEvent = (eventId: string): Promise<EventDetail> =>
-  apiFetch(`/events/${eventId}/publish`, { method: 'POST' });
+export const publishEvent = (eventId: string, body: PublishEventBody = {}): Promise<EventDetail> =>
+  apiFetch(`/events/${eventId}/publish`, json(body));
 
 export const cancelEvent = (eventId: string, body: CancelEventBody): Promise<EventDetail> =>
   apiFetch(`/events/${eventId}/cancel`, json(body));
 
 // -- Assignments ------------------------------------------------------------
 
-export const listAssignments = (eventId: string): Promise<AssignmentList> =>
-  apiFetch(`/events/${eventId}/assignments`);
+export const listAssignments = (eventId: string, query: CursorPageQuery): Promise<AssignmentList> =>
+  apiFetch(
+    `/events/${eventId}/assignments${qs({ cursor: query.cursor, limit: String(query.limit) })}`,
+  );
 
 export const assignResponsibility = (
   eventId: string,
@@ -70,8 +74,12 @@ export const assignResponsibility = (
 ): Promise<Assignment> => apiFetch(`/events/${eventId}/assignments`, json(body));
 
 /** Nested under the event: a permission scoped to one event cannot authorize a bare row id. */
-export const removeAssignment = (eventId: string, assignmentId: string): Promise<void> =>
-  apiFetch(`/events/${eventId}/assignments/${assignmentId}`, { method: 'DELETE' });
+export const removeAssignment = (
+  eventId: string,
+  assignmentId: string,
+  body: RemoveAssignmentBody = {},
+): Promise<void> =>
+  apiFetch(`/events/${eventId}/assignments/${assignmentId}`, { ...json(body), method: 'DELETE' });
 
 // -- Registrations ----------------------------------------------------------
 

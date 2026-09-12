@@ -2,9 +2,11 @@
 
 import type {
   Assignment,
+  AssignmentList,
   EventDetail,
   EventResponsibility,
   Registration,
+  RegistrationPage,
   SessionUser,
   UserListItem,
 } from '@majlis/contracts';
@@ -13,6 +15,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { Field } from '@/components/Field';
 import { ImageUpload } from '@/components/ImageUpload';
+import { OverrideReason } from '@/components/OverrideReason';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UserPicker } from '@/components/UserPicker';
 import { Button } from '@/components/ui/button';
@@ -22,6 +25,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ProblemError } from '@/lib/api';
 import { canEditEventField, type EventField } from '@/lib/event-fields';
 import { eventTimes } from '@/lib/event-time';
+import { needsOverrideReason } from '@/lib/override';
+import { PAGE } from '@/lib/page-size';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import {
   assignResponsibility,
@@ -65,7 +70,17 @@ function Section({ title, action, children }: { title: string; action?: React.Re
   );
 }
 
-function AssignPanel({ eventId, held, onChanged }: { eventId: string; held: string[]; onChanged: () => Promise<void> }) {
+function AssignPanel({
+  eventId,
+  held,
+  overrideReason,
+  onChanged,
+}: {
+  eventId: string;
+  held: string[];
+  overrideReason: string | undefined;
+  onChanged: () => Promise<void>;
+}) {
   const [picked, setPicked] = useState<UserListItem | null>(null);
   const [responsibility, setResponsibility] = useState<EventResponsibility>('EVENT_LEAD');
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +91,7 @@ function AssignPanel({ eventId, held, onChanged }: { eventId: string; held: stri
     setPending(true);
     setError(null);
     try {
-      await assignResponsibility(eventId, { userId: picked.id, responsibility });
+      await assignResponsibility(eventId, { userId: picked.id, responsibility, overrideReason });
       setPicked(null);
       await onChanged();
     } catch (err) {
@@ -126,8 +141,8 @@ export function EventEditor({
   eventId: string;
   platformRole: SessionUser['platformRole'];
   initialEvent: EventDetail | null;
-  initialAssignments: Assignment[] | null;
-  initialRoster: Registration[] | null;
+  initialAssignments: AssignmentList | null;
+  initialRoster: RegistrationPage | null;
 }) {
   const [event, setEvent] = useState<EventDetail | null>(initialEvent);
   const [values, setValues] = useState<EventFormValues | null>(
@@ -136,8 +151,13 @@ export function EventEditor({
   const [base, setBase] = useState<EventFormValues | null>(
     initialEvent ? fromEvent(initialEvent) : null,
   );
-  const [assignments, setAssignments] = useState<Assignment[] | null>(initialAssignments);
-  const [roster, setRoster] = useState<Registration[] | null>(initialRoster);
+  const [assignments, setAssignments] = useState<Assignment[] | null>(initialAssignments?.items ?? null);
+  const [assignmentCursor, setAssignmentCursor] = useState<string | null>(
+    initialAssignments?.nextCursor ?? null,
+  );
+  const [roster, setRoster] = useState<Registration[] | null>(initialRoster?.items ?? null);
+  const [rosterCursor, setRosterCursor] = useState<string | null>(initialRoster?.nextCursor ?? null);
+  const [reason, setReason] = useState('');
   const [error, setError] = useState<ProblemError | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
@@ -149,15 +169,31 @@ export function EventEditor({
   const load = useCallback(async () => {
     const [detail, assigned, registered] = await Promise.all([
       getEvent(eventId),
-      optional(listAssignments(eventId)),
-      optional(listRoster(eventId, { limit: 100 })),
+      optional(listAssignments(eventId, { limit: PAGE })),
+      optional(listRoster(eventId, { limit: PAGE })),
     ]);
     setEvent(detail);
     setValues(fromEvent(detail));
     setBase(fromEvent(detail));
     setAssignments(assigned?.items ?? null);
+    setAssignmentCursor(assigned?.nextCursor ?? null);
     setRoster(registered?.items ?? null);
+    setRosterCursor(registered?.nextCursor ?? null);
   }, [eventId]);
+
+  const loadMoreAssignments = useCallback(async () => {
+    if (!assignmentCursor) return;
+    const page = await listAssignments(eventId, { limit: PAGE, cursor: assignmentCursor });
+    setAssignments((prev) => [...(prev ?? []), ...page.items]);
+    setAssignmentCursor(page.nextCursor);
+  }, [eventId, assignmentCursor]);
+
+  const loadMoreRoster = useCallback(async () => {
+    if (!rosterCursor) return;
+    const page = await listRoster(eventId, { limit: PAGE, cursor: rosterCursor });
+    setRoster((prev) => [...(prev ?? []), ...page.items]);
+    setRosterCursor(page.nextCursor);
+  }, [eventId, rosterCursor]);
 
   useEffect(() => {
     if (!initialEvent) void load();
@@ -178,6 +214,10 @@ export function EventEditor({
   // Mirrors PERMISSIONS in apps/api/src/auth/permissions.ts. Presentation
   // only: the guard re-derives every one of these per request.
   const isAdmin = platformRole === 'ADMIN';
+  // Spec 6.1: an Admin holding no role in this club is overriding, and every
+  // action on this screen has to carry why.
+  const override = needsOverrideReason(platformRole, roles);
+  const overrideReason = override ? reason.trim() || undefined : undefined;
   const canPublish = isAdmin || roles.includes('LEAD') || roles.includes('VICE_LEAD');
   const canCancel = isAdmin || roles.includes('LEAD');
   const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
@@ -208,7 +248,7 @@ export function EventEditor({
         <div className="flex items-center gap-2">
           <StatusBadge status={event.status} />
           {canPublish && event.status === 'DRAFT' ? (
-            <Button onClick={() => act(() => publishEvent(event.id))} disabled={pending}>
+            <Button onClick={() => act(() => publishEvent(event.id, { overrideReason }))} disabled={pending}>
               Publish
             </Button>
           ) : null}
@@ -223,7 +263,7 @@ export function EventEditor({
                   Cancel event
                 </Button>
               }
-              onConfirm={(reason) => act(() => cancelEvent(event.id, { reason: reason ?? '' }))}
+              onConfirm={(why) => act(() => cancelEvent(event.id, { reason: why ?? '' }))}
             />
           ) : null}
         </div>
@@ -239,7 +279,7 @@ export function EventEditor({
         onSubmit={(e) => {
           e.preventDefault();
           void act(async () => {
-            await updateEvent(event.id, toPatchBody(values, base, can));
+            await updateEvent(event.id, { ...toPatchBody(values, base, can), overrideReason });
           });
         }}
         className="flex max-w-3xl flex-col gap-8"
@@ -249,13 +289,15 @@ export function EventEditor({
             kind="event-poster"
             currentUrl={event.bannerUrl}
             mint={async () => ({ ...(await mintEventPosterEditUpload(event.id)), id: event.id })}
-            onUploaded={() => void act(() => updateEvent(event.id, { posterUploaded: true }))}
+            onUploaded={() => void act(() => updateEvent(event.id, { posterUploaded: true, overrideReason }))}
           />
         ) : null}
 
         {/* Inputs the viewer's club role may not change are disabled, so an
             officer is not invited to type a change the server will refuse. */}
         <EventFields values={values} set={set} disabled={(field) => !can(field)} error={error} />
+
+        {override ? <OverrideReason value={reason} onChange={setReason} /> : null}
 
         {error && error.errors.length === 0 ? (
           <p role="alert" className="text-sm text-bad-fg">
@@ -278,6 +320,7 @@ export function EventEditor({
           <AssignPanel
             eventId={event.id}
             held={assignments.map((a) => a.userId)}
+            overrideReason={overrideReason}
             onChanged={load}
           />
           {assignments.length === 0 ? (
@@ -314,7 +357,7 @@ export function EventEditor({
                               Remove
                             </Button>
                           }
-                          onConfirm={() => act(() => removeAssignment(event.id, a.id))}
+                          onConfirm={() => act(() => removeAssignment(event.id, a.id, { overrideReason }))}
                         />
                       </div>
                     </TableCell>
@@ -323,6 +366,11 @@ export function EventEditor({
               </TableBody>
             </Table>
           )}
+          {assignmentCursor ? (
+            <Button variant="outline" onClick={loadMoreAssignments} className="self-center">
+              Load more
+            </Button>
+          ) : null}
         </Section>
       )}
 
@@ -361,6 +409,11 @@ export function EventEditor({
               </TableBody>
             </Table>
           )}
+          {rosterCursor ? (
+            <Button variant="outline" onClick={loadMoreRoster} className="self-center">
+              Load more
+            </Button>
+          ) : null}
         </Section>
       )}
     </div>

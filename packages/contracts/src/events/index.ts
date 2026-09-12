@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { clubRoleSchema } from '../common/enums';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
+import { overrideBodySchema, overrideReasonSchema } from '../common/override';
 import { httpsUrlSchema, signedUploadSchema } from '../clubs';
 
 export const eventStatusSchema = z.enum([
@@ -81,7 +82,15 @@ export const createEventBodySchema = z.object({
   certificateSignatory: z.string().trim().min(1).max(160).nullish(),
   attendancePolicy: attendancePolicySchema.default('CHECK_IN_ONLY'),
   posterUploaded: z.boolean().default(false),
+  /** Required when an Admin holding no club role creates. Spec 6.1. */
+  overrideReason: overrideReasonSchema.optional(),
 });
+
+/**
+ * POST /events/:eventId/publish carries nothing but the override reason, and
+ * only when an Admin holding no club role is the one publishing.
+ */
+export const publishEventBodySchema = overrideBodySchema;
 
 /**
  * Every key is optional, and which of them a given officer may actually send
@@ -118,7 +127,7 @@ export const patchEventBodySchema = z
     attendancePolicy: attendancePolicySchema,
     posterUploaded: z.boolean(),
     /** Required when an Admin holding no club role edits. Spec 6.1. */
-    overrideReason: z.string().trim().min(1).max(500),
+    overrideReason: overrideReasonSchema,
   })
   .partial();
 
@@ -129,7 +138,15 @@ export const cancelEventBodySchema = z.object({
 export const assignResponsibilityBodySchema = z.object({
   userId: z.uuid(),
   responsibility: eventResponsibilitySchema,
+  /** Required when an Admin holding no club role assigns. Spec 6.1. */
+  overrideReason: overrideReasonSchema.optional(),
 });
+
+/**
+ * DELETE /events/:eventId/assignments/:assignmentId carries a body, the same
+ * shape DELETE /clubs/:clubId/team/:appointmentId already uses for its reason.
+ */
+export const removeAssignmentBodySchema = overrideBodySchema;
 
 /**
  * An ordinary student sends `{}`. `userId` is the Admin override from spec
@@ -139,7 +156,7 @@ export const assignResponsibilityBodySchema = z.object({
 export const registerBodySchema = z
   .object({
     userId: z.uuid().optional(),
-    overrideReason: z.string().trim().min(1).max(500).optional(),
+    overrideReason: overrideReasonSchema.optional(),
   })
   .refine((v) => v.userId === undefined || v.overrideReason !== undefined, {
     path: ['overrideReason'],
@@ -210,7 +227,13 @@ export const assignmentSchema = z.object({
   createdAt: z.string(),
 });
 
-export const assignmentListSchema = z.object({ items: z.array(assignmentSchema) });
+/**
+ * Cursor-paginated like every other list (spec 8, "no unbounded list,
+ * anywhere"). An event's assignments are a handful of rows in practice, but
+ * nothing in the schema bounds them and a silently truncated roster of who may
+ * scan is not a thing an officer can notice.
+ */
+export const assignmentListSchema = cursorPageSchema(assignmentSchema);
 
 /**
  * The attendee roster. Carries full names and email addresses, so every read
@@ -259,7 +282,9 @@ export type AttendancePolicy = z.infer<typeof attendancePolicySchema>;
 export type CreateEventBody = z.infer<typeof createEventBodySchema>;
 export type PatchEventBody = z.infer<typeof patchEventBodySchema>;
 export type CancelEventBody = z.infer<typeof cancelEventBodySchema>;
+export type PublishEventBody = z.infer<typeof publishEventBodySchema>;
 export type AssignResponsibilityBody = z.infer<typeof assignResponsibilityBodySchema>;
+export type RemoveAssignmentBody = z.infer<typeof removeAssignmentBodySchema>;
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type NewEventUpload = z.infer<typeof newEventUploadSchema>;
 export type EventSummary = z.infer<typeof eventSummarySchema>;

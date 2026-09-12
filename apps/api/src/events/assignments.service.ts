@@ -1,7 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import type { AssignResponsibilityBody, Assignment, AssignmentList } from '@majlis/contracts';
+import type {
+  AssignResponsibilityBody,
+  Assignment,
+  AssignmentList,
+  CursorPageQuery,
+  RemoveAssignmentBody,
+} from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
+import { clubOverrideReason } from '../auth/override';
+import type { PlatformRole } from '../auth/permissions';
 import { assertAcceptsEdits } from '../clubs/club-status';
 import { ConflictError, NotFoundError } from '../common/problem/domain-error';
 import { violatedConstraintName } from '../common/prisma-constraint';
@@ -10,6 +18,12 @@ import { Prisma, type EventAssignment as AssignmentRow } from '../generated/pris
 import { TransactionHost } from '../prisma/transaction.host';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
+
+/** Only what this service reads off the signed-in user. */
+interface Actor {
+  id: string;
+  platformRole: PlatformRole;
+}
 type AssignmentWithUser = AssignmentRow & { user: { fullName: string; email: string } };
 
 function toAssignment(row: AssignmentWithUser): Assignment {
@@ -35,25 +49,35 @@ export class AssignmentsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Not paginated: an event's assignment list is a handful of rows by design. */
-  async list(eventId: string): Promise<AssignmentList> {
+  /** Cursor-paginated like every other list: spec 8, "no unbounded list, anywhere". */
+  async list(eventId: string, query: CursorPageQuery): Promise<AssignmentList> {
     await this.loadEvent(eventId);
     const rows = await this.host.tx.eventAssignment.findMany({
       where: { eventId },
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       orderBy: { id: 'asc' },
       include: WITH_USER,
     });
-    return { items: rows.map(toAssignment) };
+
+    const hasMore = rows.length > query.limit;
+    const items = hasMore ? rows.slice(0, query.limit) : rows;
+
+    return {
+      items: items.map(toAssignment),
+      nextCursor: hasMore ? items[items.length - 1]!.id : null,
+    };
   }
 
   async assign(
-    actor: { id: string },
+    actor: Actor,
     eventId: string,
     body: AssignResponsibilityBody,
   ): Promise<Assignment> {
     return this.host.run(async () => {
       const event = await this.loadEvent(eventId);
       assertAcceptsEdits(event.club.status);
+      const reason = await clubOverrideReason(this.host, actor, event.clubId, body.overrideReason);
 
       const row = await this.host.tx.eventAssignment
         .create({
@@ -82,6 +106,7 @@ export class AssignmentsService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: { eventId, userId: row.userId, responsibility: row.responsibility },
       });
 
@@ -95,12 +120,19 @@ export class AssignmentsService {
    * event on the path, so an id from another event must be a 404 rather than
    * a deletion the guard never authorised.
    */
-  async remove(actor: { id: string }, eventId: string, assignmentId: string): Promise<void> {
+  async remove(
+    actor: Actor,
+    eventId: string,
+    assignmentId: string,
+    body: RemoveAssignmentBody,
+  ): Promise<void> {
     return this.host.run(async () => {
+      const event = await this.loadEvent(eventId);
       const existing = await this.host.tx.eventAssignment.findFirst({
         where: { id: assignmentId, eventId },
       });
       if (!existing) throw new NotFoundError('No such assignment.');
+      const reason = await clubOverrideReason(this.host, actor, event.clubId, body.overrideReason);
 
       await this.host.tx.eventAssignment.delete({ where: { id: existing.id } });
       await this.audit.record({
@@ -109,6 +141,7 @@ export class AssignmentsService {
         entityId: existing.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         before: {
           eventId,
           userId: existing.userId,

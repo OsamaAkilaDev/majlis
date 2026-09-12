@@ -305,3 +305,36 @@ describe('GET /clubs/by-slug/:slug', () => {
     ).toBe(404);
   });
 });
+
+describe('PATCH /clubs/:clubId, admin override', () => {
+  // Nothing covered an Admin PATCH of a club, which is why the suite stayed
+  // green when overrideReasonFor made every one of them a 422 that no screen
+  // could satisfy.
+  it('refuses a club-roleless admin with no reason and records one when given', async () => {
+    const club = await makeClub();
+    const admin = await loginAsAdmin(app);
+
+    const patch = (body: object) =>
+      request(app.getHttpServer())
+        .patch(`${CLUBS_PATH}/${club.id}`)
+        .set('Cookie', admin.sessionCookie)
+        .send(body);
+
+    const bare = await patch({ category: 'Robotics' });
+    expect(bare.status).toBe(422);
+    expect(bare.body.detail).toBe('An admin override requires a reason.');
+    expect((await prisma.club.findUniqueOrThrow({ where: { id: club.id } })).category).toBe(
+      club.category,
+    );
+
+    const withReason = await patch({ category: 'Robotics', overrideReason: 'Miscategorised.' });
+    expect(withReason.status).toBe(200);
+    expect((await prisma.club.findUniqueOrThrow({ where: { id: club.id } })).category).toBe('Robotics');
+
+    const row = await prisma.auditLog.findFirst({
+      where: { action: 'club.updated', entityId: club.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(row?.reason).toBe('Miscategorised.');
+  });
+});

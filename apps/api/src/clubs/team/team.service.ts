@@ -11,6 +11,8 @@ import type {
 } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
+import { clubOverrideReason } from '../../auth/override';
+import type { PlatformRole } from '../../auth/permissions';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
 import { violatedConstraintName } from '../../common/prisma-constraint';
 import { Prisma, type ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
@@ -141,12 +143,17 @@ export class TeamService {
   }
 
   /** POST /clubs/:clubId/team. Lead only; role is any of the four non-Lead values. */
-  async invite(actor: { id: string }, clubId: string, body: InviteTeamMemberBody): Promise<Appointment> {
+  async invite(
+    actor: { id: string; platformRole: PlatformRole },
+    clubId: string,
+    body: InviteTeamMemberBody,
+  ): Promise<Appointment> {
     return this.host.run(async () => {
       const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
       if (!club) throw new NotFoundError('No such club.');
       assertAcceptsEdits(club.status);
       if (body.userId === actor.id) throw new UnprocessableError('You cannot invite yourself.');
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
       const existing = await this.host.tx.clubTeamAppointment.findFirst({
         where: { clubId, userId: body.userId, role: body.role, status: 'ACTIVE' },
@@ -173,6 +180,7 @@ export class TeamService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: { clubId, userId: row.userId, role: row.role },
       });
 

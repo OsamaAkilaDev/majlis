@@ -1,6 +1,7 @@
 export * from './common/problem';
 export * from './common/pagination';
 export * from './common/enums';
+export * from './common/override';
 export * from './auth';
 export * from './users';
 export * from './departments';

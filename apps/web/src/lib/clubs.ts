@@ -24,6 +24,7 @@ import type {
   PatchClubBody,
   PatchClubStatusBody,
   PatchDepartmentBody,
+  RemoveMemberBody,
   SignedUpload,
   UserListPage,
 } from '@majlis/contracts';
@@ -112,8 +113,12 @@ export const decideMembership = (
 export const leaveClub = (clubId: string): Promise<void> =>
   apiFetch(`/clubs/${clubId}/membership`, { method: 'DELETE' });
 
-export const removeMember = (clubId: string, userId: string): Promise<void> =>
-  apiFetch(`/clubs/${clubId}/members/${userId}`, { method: 'DELETE' });
+export const removeMember = (
+  clubId: string,
+  userId: string,
+  body: RemoveMemberBody = {},
+): Promise<void> =>
+  apiFetch(`/clubs/${clubId}/members/${userId}`, { ...json(body), method: 'DELETE' });
 
 export const myClubs = (query: CursorPageQuery): Promise<MyClubPage> =>
   apiFetch(`/me/clubs${qs({ cursor: query.cursor, limit: String(query.limit) })}`);

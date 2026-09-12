@@ -1,11 +1,12 @@
 'use client';
 
-import type { ClubRole, EventSummary, SessionUser } from '@majlis/contracts';
+import type { ClubRole, EventPage, EventSummary, SessionUser } from '@majlis/contracts';
 import { Plus } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
+import { OverrideReason } from '@/components/OverrideReason';
 import { ImageUpload } from '@/components/ImageUpload';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ProblemError } from '@/lib/api';
 import { getClub } from '@/lib/clubs';
 import { formatMoment } from '@/lib/event-time';
+import { needsOverrideReason } from '@/lib/override';
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { createEvent, listEvents, mintEventPosterUpload } from '@/lib/events';
 import {
@@ -30,12 +32,15 @@ function canCreate(roles: readonly ClubRole[], platformRole: SessionUser['platfo
 
 function CreatePanel({
   clubId,
+  override,
   onCreated,
 }: {
   clubId: string;
+  override: boolean;
   onCreated: (eventId: string) => void;
 }) {
   const [values, setValues] = useState<EventFormValues>(EMPTY_EVENT);
+  const [reason, setReason] = useState('');
   const [eventId, setEventId] = useState<string | null>(null);
   const [error, setError] = useState<ProblemError | null>(null);
   const [pending, setPending] = useState(false);
@@ -55,7 +60,10 @@ function CreatePanel({
       // path exists before the event does. With no poster it is still minted,
       // because the create body carries the id either way.
       const id = eventId ?? (await mintEventPosterUpload(clubId)).eventId;
-      const event = await createEvent(clubId, toCreateBody(id, values, eventId !== null));
+      const event = await createEvent(clubId, {
+        ...toCreateBody(id, values, eventId !== null),
+        ...(override ? { overrideReason: reason.trim() } : {}),
+      });
       onCreated(event.id);
     } catch (err) {
       if (err instanceof ProblemError) setError(err);
@@ -79,6 +87,8 @@ function CreatePanel({
 
       <EventFields values={values} set={set} disabled={() => false} error={error} />
 
+      {override ? <OverrideReason value={reason} onChange={setReason} /> : null}
+
       {error && error.errors.length === 0 ? (
         <p role="alert" className="text-sm text-bad-fg">
           {error.detail ?? error.title}
@@ -101,11 +111,12 @@ export function EventsManager({
   clubId: string;
   platformRole: SessionUser['platformRole'];
   initialRoles: ClubRole[] | null;
-  initialEvents: EventSummary[] | null;
+  initialEvents: EventPage | null;
 }) {
   const router = useRouter();
   const [roles, setRoles] = useState<ClubRole[] | null>(initialRoles);
-  const [items, setItems] = useState<EventSummary[] | null>(initialEvents);
+  const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
   const [creating, setCreating] = useState(false);
   const seeded = initialRoles !== null && initialEvents !== null;
 
@@ -113,7 +124,15 @@ export function EventsManager({
     const [club, page] = await Promise.all([getClub(clubId), listEvents({ clubId, limit: PAGE })]);
     setRoles(club.viewerClubRoles);
     setItems(page.items);
+    setCursor(page.nextCursor);
   }, [clubId]);
+
+  async function loadMore() {
+    if (!cursor) return;
+    const page = await listEvents({ clubId, limit: PAGE, cursor });
+    setItems((prev) => [...(prev ?? []), ...page.items]);
+    setCursor(page.nextCursor);
+  }
 
   useEffect(() => {
     if (!seeded) void load();
@@ -133,7 +152,11 @@ export function EventsManager({
       ) : null}
 
       {creating ? (
-        <CreatePanel clubId={clubId} onCreated={(id) => router.push(`/manage/${clubId}/events/${id}`)} />
+        <CreatePanel
+          clubId={clubId}
+          override={needsOverrideReason(platformRole, roles)}
+          onCreated={(id) => router.push(`/manage/${clubId}/events/${id}`)}
+        />
       ) : null}
 
       {items.length === 0 ? (
@@ -173,6 +196,12 @@ export function EventsManager({
           </TableBody>
         </Table>
       )}
+
+      {cursor ? (
+        <Button variant="outline" onClick={loadMore} className="self-center">
+          Load more
+        </Button>
+      ) : null}
     </div>
   );
 }

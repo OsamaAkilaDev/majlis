@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
 import type { SweepResult } from '@majlis/contracts';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { SWEEP_SECRET_HEADER } from '../config/sweep-header';
 import { Public } from '../auth/public.decorator';
 import { UnauthorizedError } from '../common/problem/domain-error';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
@@ -11,7 +12,7 @@ import type { Env } from '../config/env.schema';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
 
-export const SWEEP_SECRET_HEADER = 'x-lifecycle-sweep-secret';
+export { SWEEP_SECRET_HEADER } from '../config/sweep-header';
 
 /**
  * Compares digests rather than the secrets themselves, so the comparison is

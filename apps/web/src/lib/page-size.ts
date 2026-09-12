@@ -7,5 +7,5 @@
  */
 export const PAGE = 20;
 
-/** A console table lists a club's whole season at once, with no Load more. */
+/** A console table shows more rows per page than the student lists do. */
 export const CONSOLE_PAGE = 50;

@@ -23,7 +23,7 @@ export default async function EventsPage({ params }: { params: Promise<{ clubId:
         clubId={clubId}
         platformRole={user.platformRole}
         initialRoles={club?.viewerClubRoles ?? null}
-        initialEvents={events?.items ?? null}
+        initialEvents={events}
       />
     </ConsoleShell>
   );

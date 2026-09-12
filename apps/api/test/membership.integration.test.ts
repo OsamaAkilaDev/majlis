@@ -534,3 +534,58 @@ describe('roster visibility by club status', () => {
     ).toBe(403);
   });
 });
+
+describe('admin override on adding and removing a member', () => {
+  it('refuses a club-roleless admin with no reason and records one when given', async () => {
+    // Spec 6.1's "decide membership requests" row reads override for an
+    // Admin; both writes recorded null.
+    const club = await makeClub({ membershipPolicy: 'INVITE_ONLY' });
+    const admin = await loginAsAdmin(app);
+    const student = await loginAsStudent(app);
+
+    const add = (body: object) =>
+      request(app.getHttpServer())
+        .post(`${API_PREFIX}/clubs/${club.id}/members`)
+        .set('Cookie', admin.sessionCookie)
+        .send(body);
+
+    const bareAdd = await add({ userId: student.userId });
+    expect(bareAdd.status).toBe(422);
+    expect(bareAdd.body.detail).toBe('An admin override requires a reason.');
+    expect(await prisma.clubMembership.count({ where: { clubId: club.id } })).toBe(0);
+
+    const added = await add({ userId: student.userId, overrideReason: 'Transferred from another club.' });
+    expect(added.status).toBe(201);
+    expect(
+      (
+        await prisma.auditLog.findFirstOrThrow({
+          where: { action: 'club.member_added', entityId: added.body.id },
+        })
+      ).reason,
+    ).toBe('Transferred from another club.');
+
+    const remove = (body: object) =>
+      request(app.getHttpServer())
+        .delete(`${API_PREFIX}/clubs/${club.id}/members/${student.userId}`)
+        .set('Cookie', admin.sessionCookie)
+        .send(body);
+
+    const bareRemove = await remove({});
+    expect(bareRemove.status).toBe(422);
+    expect(bareRemove.body.detail).toBe('An admin override requires a reason.');
+    expect(
+      (await prisma.clubMembership.findFirstOrThrow({ where: { clubId: club.id, userId: student.userId } }))
+        .status,
+    ).toBe('ACTIVE');
+
+    const removed = await remove({ overrideReason: 'Enrolment ended.' });
+    expect(removed.status).toBe(204);
+    expect(
+      (
+        await prisma.auditLog.findFirstOrThrow({
+          where: { action: 'club.membership_removed', entityId: added.body.id },
+        })
+      ).reason,
+    ).toBe('Enrolment ended.');
+  });
+});

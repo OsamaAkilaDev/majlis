@@ -7,9 +7,12 @@ import type {
   MemberListQuery,
   MemberPage,
   MyClubPage,
+  RemoveMemberBody,
 } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
+import { clubOverrideReason } from '../../auth/override';
+import type { PlatformRole } from '../../auth/permissions';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
 import { violatedConstraintName } from '../../common/prisma-constraint';
 import type { ClubRole } from '../../generated/prisma/enums';
@@ -130,12 +133,17 @@ export class MembershipService {
    * behaviourally identical, so CLOSED has to be the one policy nobody
    * joins by any route or it is not a distinct policy at all.
    */
-  async addMember(actor: { id: string }, clubId: string, body: AddMemberBody): Promise<Member> {
+  async addMember(
+    actor: { id: string; platformRole: PlatformRole },
+    clubId: string,
+    body: AddMemberBody,
+  ): Promise<Member> {
     return this.host.run(async () => {
       const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
       if (!club) throw new NotFoundError('No such club.');
       assertAcceptsNewActivity(club.status);
       if (club.membershipPolicy === 'CLOSED') throw new UnprocessableError('That club is closed to new members.');
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
       const row = await this.host.tx.clubMembership
         .create({
@@ -150,6 +158,7 @@ export class MembershipService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: { clubId, userId: row.userId, status: row.status },
       });
 
@@ -234,7 +243,12 @@ export class MembershipService {
    * from `leave`: the row lands on REMOVED, never LEFT, so the two stay
    * distinguishable in the historical record.
    */
-  async remove(actor: { id: string }, clubId: string, userId: string): Promise<void> {
+  async remove(
+    actor: { id: string; platformRole: PlatformRole },
+    clubId: string,
+    userId: string,
+    body: RemoveMemberBody,
+  ): Promise<void> {
     return this.host.run(async () => {
       const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
       if (!club) throw new NotFoundError('No such club.');
@@ -244,6 +258,7 @@ export class MembershipService {
         where: { clubId, userId, status: { in: ['PENDING', 'ACTIVE'] } },
       });
       if (!existing) throw new NotFoundError('No such member.');
+      const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
       const row = await this.host.tx.clubMembership.update({
         where: { id: existing.id },
@@ -256,6 +271,7 @@ export class MembershipService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         before: { status: existing.status },
         after: { status: row.status },
       });
