@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 import { appointLead, getClub, listTeam, updateClubStatus } from '@/lib/clubs';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 
 /** Mirrors club-status.ts's ALLOWED table: ARCHIVED is terminal. */
 const NEXT_STATUSES: Record<ClubStatus, ClubStatus[]> = {
@@ -191,6 +192,8 @@ export function ClubDetailManager({
     setLeadAppointments(leadsOf(page.items));
   }
 
+  // See MembersManager: a locale-formatted date cannot be server-rendered.
+  const mounted = useViewerZone() !== undefined;
   const seeded = initialClub !== null && initialTeam !== null;
   useEffect(() => {
     if (seeded) return;
@@ -254,7 +257,7 @@ export function ClubDetailManager({
         {invitedLead ? (
           <p className="text-sm text-ink-2">
             Invited: {invitedLead.userFullName}, expires{' '}
-            {invitedLead.invitationExpiresAt ? new Date(invitedLead.invitationExpiresAt).toLocaleString() : ''}
+            {mounted && invitedLead.invitationExpiresAt ? new Date(invitedLead.invitationExpiresAt).toLocaleString() : ''}
           </p>
         ) : null}
         <div>

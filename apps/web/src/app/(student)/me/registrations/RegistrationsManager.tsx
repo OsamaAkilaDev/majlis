@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { eventTimes } from '@/lib/event-time';
 import { cancelRegistration, myRegistrations } from '@/lib/events';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 import { PAGE } from '@/lib/page-size';
 
 /** The API accepts a registration change only while the event is in one of these. */
@@ -19,6 +20,7 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
   const [items, setItems] = useState<MyRegistration[] | null>(initial?.items ?? null);
   const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
   const [busy, setBusy] = useState<string | null>(null);
+  const viewerZone = useViewerZone();
 
   const load = useCallback(async () => {
     const page = await myRegistrations({ limit: PAGE });
@@ -74,7 +76,7 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
       <ul className="grid gap-2 lg:grid-cols-2">
         {items.map((registration) => {
           const event = registration.event;
-          const times = eventTimes(event.startsAt, event.endsAt, event.timezone);
+          const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
 
           return (
             <li

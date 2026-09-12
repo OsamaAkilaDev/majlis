@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
 import { eventTimes, formatMoment } from '@/lib/event-time';
 import { getEvent } from '@/lib/events';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 import { RegisterControl } from './RegisterControl';
 
 /** A <dl> may only hold dt/dd groups, so a Fact is one flat div child of it,
@@ -24,6 +25,7 @@ function Fact({ term, span, children }: { term: string; span?: boolean; children
 export function EventDetail({ eventId, initialEvent }: { eventId: string; initialEvent: Event | null }) {
   const [event, setEvent] = useState<Event | null>(initialEvent);
   const [missing, setMissing] = useState(false);
+  const viewerZone = useViewerZone();
 
   const load = useCallback(async () => {
     try {
@@ -43,7 +45,7 @@ export function EventDetail({ eventId, initialEvent }: { eventId: string; initia
   if (missing) return <EmptyState title="No such event" />;
   if (!event) return <Skeleton className="h-64" />;
 
-  const times = eventTimes(event.startsAt, event.endsAt, event.timezone);
+  const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
 
   return (
     <div className="flex flex-col gap-5">

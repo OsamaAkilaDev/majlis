@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 import { endAppointment, getClub, inviteTeamMember, listTeam, roleLabel } from '@/lib/clubs';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 
 const INVITABLE_ROLES: ClubRole[] = ['VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'];
 
@@ -107,6 +108,8 @@ export function TeamManager({
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const [items, setItems] = useState<Appointment[] | null>(initialTeam);
+  // See MembersManager: a locale-formatted date cannot be server-rendered.
+  const mounted = useViewerZone() !== undefined;
 
   async function load() {
     const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: 100 })]);
@@ -161,7 +164,7 @@ export function TeamManager({
                   {a.hasLeftClub ? <StatusBadge status="LEFT" className="opacity-70" /> : null}
                 </TableCell>
                 <TableCell className="tabular text-ink-2">
-                  {a.invitationExpiresAt ? new Date(a.invitationExpiresAt).toLocaleDateString() : ''}
+                  {mounted && a.invitationExpiresAt ? new Date(a.invitationExpiresAt).toLocaleDateString() : ''}
                 </TableCell>
                 <TableCell>
                   {isLead && a.status === 'ACTIVE' && a.userId !== viewerUserId ? (

@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ProblemError } from '@/lib/api';
 import { canEditEventField, type EventField } from '@/lib/event-fields';
 import { eventTimes } from '@/lib/event-time';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 import {
   assignResponsibility,
   cancelEvent,
@@ -140,6 +141,7 @@ export function EventEditor({
   const [error, setError] = useState<ProblemError | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
+  const viewerZone = useViewerZone();
 
   // Three independent reads, not a chain: the roster does not depend on the
   // assignments and waiting for one before starting the other cost a whole
@@ -178,7 +180,7 @@ export function EventEditor({
   const isAdmin = platformRole === 'ADMIN';
   const canPublish = isAdmin || roles.includes('LEAD') || roles.includes('VICE_LEAD');
   const canCancel = isAdmin || roles.includes('LEAD');
-  const times = eventTimes(event.startsAt, event.endsAt, event.timezone);
+  const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
 
   async function act(fn: () => Promise<EventDetail | void>) {
     setPending(true);

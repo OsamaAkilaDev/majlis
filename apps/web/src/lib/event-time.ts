@@ -39,14 +39,20 @@ export function viewerTimeZone(): string {
  * The venue's rendering, plus the viewer's when it actually differs. Compared
  * on the rendered strings rather than the zone names, so a viewer in
  * Asia/Muscat reading an Asia/Dubai event is not shown the same line twice.
+ *
+ * `viewerZone` has no default: a Server Component renders in the server's zone,
+ * which for any viewer elsewhere is a hydration mismatch, and React answers one
+ * by throwing the whole tree away. Callers pass `useViewerZone()`, which is
+ * undefined until mounted, so the secondary line appears only in the browser.
  */
 export function eventTimes(
   startsAt: string,
   endsAt: string,
   timeZone: string,
-  viewerZone: string = viewerTimeZone(),
+  viewerZone?: string,
 ): { venue: string; viewer: string | null } {
   const venue = formatRange(startsAt, endsAt, timeZone);
+  if (!viewerZone) return { venue, viewer: null };
   const viewer = formatRange(startsAt, endsAt, viewerZone);
   return { venue, viewer: viewer === venue ? null : viewer };
 }

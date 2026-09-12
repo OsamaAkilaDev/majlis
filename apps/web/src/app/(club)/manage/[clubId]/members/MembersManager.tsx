@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 import { addMember, decideMembership, getClub, listMembers, removeMember } from '@/lib/clubs';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 
 function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
@@ -88,6 +89,10 @@ export function MembersManager({
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const [pending, setPending] = useState<Member[] | null>(initialPending);
   const [active, setActive] = useState<Member[] | null>(initialActive);
+  // toLocaleDateString reads the runtime locale and zone, which differ between
+  // the server and the browser. Undefined until mounted, so the server renders
+  // no date rather than one that regenerates the tree on hydration.
+  const mounted = useViewerZone() !== undefined;
 
   async function load() {
     const [c, pendingPage, activePage] = await Promise.all([
@@ -149,7 +154,7 @@ export function MembersManager({
                         <span className="text-label text-ink-2">{m.userEmail}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="tabular text-ink-2">{new Date(m.requestedAt).toLocaleDateString()}</TableCell>
+                    <TableCell className="tabular text-ink-2">{mounted ? new Date(m.requestedAt).toLocaleDateString() : ''}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
                         <Button size="sm" onClick={() => decide(m.id, 'ACTIVE')}>

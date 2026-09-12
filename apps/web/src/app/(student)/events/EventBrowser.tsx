@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs } from '@/lib/clubs';
 import { eventTimes } from '@/lib/event-time';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 import { listEvents } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
 
@@ -20,8 +21,8 @@ function seatsLeft(event: EventSummary): number {
   return Math.max(event.capacity - event.confirmedCount, 0);
 }
 
-function EventCard({ event }: { event: EventSummary }) {
-  const times = eventTimes(event.startsAt, event.endsAt, event.timezone);
+function EventCard({ event, viewerZone }: { event: EventSummary; viewerZone: string | undefined }) {
+  const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
   const left = seatsLeft(event);
 
   return (
@@ -66,6 +67,7 @@ export function EventBrowser({
   const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
   const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const viewerZone = useViewerZone();
   // The server rendered the unfiltered first page, so the mount run of the
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialEvents !== null);
@@ -152,7 +154,7 @@ export function EventBrowser({
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((event) => (
             <li key={event.id}>
-              <EventCard event={event} />
+              <EventCard event={event} viewerZone={viewerZone} />
             </li>
           ))}
         </ul>
