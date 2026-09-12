@@ -94,6 +94,13 @@ export async function mkClub(overrides: Partial<ClubSeed> = {}): Promise<Club> {
   return testDb().club.create({ data: aClub(departmentId, overrides) });
 }
 
+/**
+ * Stage 4's naming convention for the same fixture `mkClub` already
+ * provides, kept as one function rather than two implementations, so the
+ * two naming styles cannot drift apart.
+ */
+export const makeClub = mkClub;
+
 export interface AppointmentSeed {
   userId: string;
   clubId: string;

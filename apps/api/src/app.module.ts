@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { ClubsModule } from './clubs/clubs.module';
 import { RequestContextModule } from './common/request-context.module';
 import { resolveRequestId } from './common/request-id';
 import { ConfigModule } from './config/config.module';
@@ -54,6 +55,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     DepartmentsModule,
+    ClubsModule,
     HealthModule,
     StorageModule,
   ],

@@ -38,21 +38,9 @@ describe('patchClubStatusBodySchema', () => {
 });
 
 describe('createClubBodySchema', () => {
-  it('rejects a logoUrl on a javascript: scheme', () => {
-    // Zod 4's .url() validates shape only, not scheme. A stored
-    // javascript: URL is echoed into every viewer's browser.
-    const body = {
-      clubId: '01936c7e-0000-7000-8000-000000000000',
-      departmentId: '01936c7e-0000-7000-8000-000000000001',
-      name: 'Robotics',
-      description: 'We build robots.',
-      category: 'Technology',
-      academicYear: '2026/2027',
-      membershipPolicy: 'OPEN',
-      logoUrl: 'javascript:alert(1)',
-    };
-    expect(createClubBodySchema.safeParse(body).success).toBe(false);
-  });
+  // No logoUrl field to test a scheme against: the client never sends one,
+  // see the comment on createClubBodySchema. httpsUrlSchema itself (still
+  // used elsewhere, e.g. patchClubBodySchema) keeps its own coverage.
 
   it('rejects a clubId that is not a UUID', () => {
     // The server minted this id and the client echoes it back. A
@@ -65,7 +53,6 @@ describe('createClubBodySchema', () => {
       category: 'Technology',
       academicYear: '2026/2027',
       membershipPolicy: 'OPEN',
-      logoUrl: 'https://example.supabase.co/storage/v1/object/public/majlis-storage/clubs/x/logo.webp',
     };
     expect(createClubBodySchema.safeParse(body).success).toBe(false);
   });

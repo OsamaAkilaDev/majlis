@@ -30,6 +30,11 @@ export const academicYearSchema = z
     return to === from + 1;
   }, 'must be two consecutive years');
 
+/**
+ * No `logoUrl` here: the server never stores a client-supplied image URL.
+ * `ClubsService.verifyUpload` builds it server-side from `clubId` once the
+ * upload at that id is confirmed.
+ */
 export const createClubBodySchema = z.object({
   clubId: z.uuid(),
   departmentId: z.uuid(),
@@ -38,7 +43,6 @@ export const createClubBodySchema = z.object({
   category: z.string().trim().min(2).max(60),
   academicYear: academicYearSchema,
   membershipPolicy: membershipPolicySchema,
-  logoUrl: httpsUrlSchema,
 });
 
 export const patchClubBodySchema = z
