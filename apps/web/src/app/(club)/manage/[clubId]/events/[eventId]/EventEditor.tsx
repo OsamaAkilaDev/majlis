@@ -118,31 +118,48 @@ function AssignPanel({ eventId, held, onChanged }: { eventId: string; held: stri
 export function EventEditor({
   eventId,
   platformRole,
+  initialEvent,
+  initialAssignments,
+  initialRoster,
 }: {
   eventId: string;
   platformRole: SessionUser['platformRole'];
+  initialEvent: EventDetail | null;
+  initialAssignments: Assignment[] | null;
+  initialRoster: Registration[] | null;
 }) {
-  const [event, setEvent] = useState<EventDetail | null>(null);
-  const [values, setValues] = useState<EventFormValues | null>(null);
-  const [base, setBase] = useState<EventFormValues | null>(null);
-  const [assignments, setAssignments] = useState<Assignment[] | null>(null);
-  const [roster, setRoster] = useState<Registration[] | null>(null);
+  const [event, setEvent] = useState<EventDetail | null>(initialEvent);
+  const [values, setValues] = useState<EventFormValues | null>(
+    initialEvent ? fromEvent(initialEvent) : null,
+  );
+  const [base, setBase] = useState<EventFormValues | null>(
+    initialEvent ? fromEvent(initialEvent) : null,
+  );
+  const [assignments, setAssignments] = useState<Assignment[] | null>(initialAssignments);
+  const [roster, setRoster] = useState<Registration[] | null>(initialRoster);
   const [error, setError] = useState<ProblemError | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
 
+  // Three independent reads, not a chain: the roster does not depend on the
+  // assignments and waiting for one before starting the other cost a whole
+  // round trip on every save.
   const load = useCallback(async () => {
-    const detail = await getEvent(eventId);
+    const [detail, assigned, registered] = await Promise.all([
+      getEvent(eventId),
+      optional(listAssignments(eventId)),
+      optional(listRoster(eventId, { limit: 100 })),
+    ]);
     setEvent(detail);
     setValues(fromEvent(detail));
     setBase(fromEvent(detail));
-    setAssignments((await optional(listAssignments(eventId)))?.items ?? null);
-    setRoster((await optional(listRoster(eventId, { limit: 100 })))?.items ?? null);
+    setAssignments(assigned?.items ?? null);
+    setRoster(registered?.items ?? null);
   }, [eventId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!initialEvent) void load();
+  }, [initialEvent, load]);
 
   const set = useCallback(
     <K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) => {

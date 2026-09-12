@@ -1,16 +1,16 @@
 'use client';
 
-import type { ClubSummary, Department } from '@majlis/contracts';
+import type { ClubPage, ClubSummary, Department } from '@majlis/contracts';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs, listDepartments } from '@/lib/clubs';
+import { PAGE } from '@/lib/page-size';
 
-const PAGE = 20;
 const ANY_DEPARTMENT = 'any';
 
 function ClubCard({ club }: { club: ClubSummary }) {
@@ -29,21 +29,35 @@ function ClubCard({ club }: { club: ClubSummary }) {
   );
 }
 
-export function ClubBrowser() {
-  const [departments, setDepartments] = useState<Department[]>([]);
+export function ClubBrowser({
+  initialClubs,
+  initialDepartments,
+}: {
+  initialClubs: ClubPage | null;
+  initialDepartments: Department[] | null;
+}) {
+  const [departments, setDepartments] = useState<Department[]>(initialDepartments ?? []);
   const [departmentId, setDepartmentId] = useState(ANY_DEPARTMENT);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<ClubSummary[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [items, setItems] = useState<ClubSummary[] | null>(initialClubs?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(initialClubs?.nextCursor ?? null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The server rendered the unfiltered first page, so the mount run of the
+  // filter effect would refetch exactly what is already on screen.
+  const seeded = useRef(initialClubs !== null);
 
   useEffect(() => {
+    if (initialDepartments) return;
     void listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
-  }, []);
+  }, [initialDepartments]);
 
   // Refetches from the first page whenever a filter changes, so a stale
   // cursor from the previous filter can never paginate the new result set.
   useEffect(() => {
+    if (seeded.current) {
+      seeded.current = false;
+      return;
+    }
     let cancelled = false;
     setItems(null);
     void listClubs({

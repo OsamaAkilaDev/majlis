@@ -1,8 +1,8 @@
 'use client';
 
-import type { ClubSummary, EventSummary } from '@majlis/contracts';
+import type { ClubSummary, EventPage, EventSummary } from '@majlis/contracts';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs } from '@/lib/clubs';
 import { eventTimes } from '@/lib/event-time';
 import { listEvents } from '@/lib/events';
+import { PAGE } from '@/lib/page-size';
 
-const PAGE = 20;
 const ANY_CLUB = 'any';
 
 function seatsLeft(event: EventSummary): number {
@@ -53,21 +53,35 @@ function EventCard({ event }: { event: EventSummary }) {
   );
 }
 
-export function EventBrowser() {
-  const [clubs, setClubs] = useState<ClubSummary[]>([]);
+export function EventBrowser({
+  initialEvents,
+  initialClubs,
+}: {
+  initialEvents: EventPage | null;
+  initialClubs: ClubSummary[] | null;
+}) {
+  const [clubs, setClubs] = useState<ClubSummary[]>(initialClubs ?? []);
   const [clubId, setClubId] = useState(ANY_CLUB);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<EventSummary[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The server rendered the unfiltered first page, so the mount run of the
+  // filter effect would refetch exactly what is already on screen.
+  const seeded = useRef(initialEvents !== null);
 
   useEffect(() => {
+    if (initialClubs) return;
     void listClubs({ limit: 100, status: 'ACTIVE' }).then((page) => setClubs(page.items));
-  }, []);
+  }, [initialClubs]);
 
   // Refetches from the first page whenever a filter changes, so a stale cursor
   // from the previous filter can never paginate the new result set.
   useEffect(() => {
+    if (seeded.current) {
+      seeded.current = false;
+      return;
+    }
     let cancelled = false;
     setItems(null);
     void listEvents({

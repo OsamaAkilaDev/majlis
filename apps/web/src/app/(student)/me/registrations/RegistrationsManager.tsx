@@ -1,6 +1,6 @@
 'use client';
 
-import type { MyRegistration } from '@majlis/contracts';
+import type { MyRegistration, MyRegistrationPage } from '@majlis/contracts';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -10,15 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { eventTimes } from '@/lib/event-time';
 import { cancelRegistration, myRegistrations } from '@/lib/events';
-
-const PAGE = 20;
+import { PAGE } from '@/lib/page-size';
 
 /** The API accepts a registration change only while the event is in one of these. */
 const CHANGEABLE = ['PUBLISHED', 'REGISTRATION_CLOSED', 'CANCELLED'];
 
-export function RegistrationsManager() {
-  const [items, setItems] = useState<MyRegistration[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+export function RegistrationsManager({ initial }: { initial: MyRegistrationPage | null }) {
+  const [items, setItems] = useState<MyRegistration[] | null>(initial?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -28,8 +27,8 @@ export function RegistrationsManager() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!initial) void load();
+  }, [initial, load]);
 
   async function loadMore() {
     if (!cursor) return;

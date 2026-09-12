@@ -14,9 +14,9 @@ import { createClub, listDepartments } from '@/lib/clubs';
 
 const POLICIES: MembershipPolicy[] = ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY', 'CLOSED'];
 
-export function ClubCreateForm() {
+export function ClubCreateForm({ initialDepartments }: { initialDepartments: Department[] | null }) {
   const router = useRouter();
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departments, setDepartments] = useState<Department[]>(initialDepartments ?? []);
   const [clubId, setClubId] = useState<string | null>(null);
 
   const [name, setName] = useState('');
@@ -30,8 +30,9 @@ export function ClubCreateForm() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
+    if (initialDepartments) return;
     listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
-  }, []);
+  }, [initialDepartments]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

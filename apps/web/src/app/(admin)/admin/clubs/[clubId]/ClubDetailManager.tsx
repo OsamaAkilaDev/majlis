@@ -167,19 +167,36 @@ function LeadAppointment({
   );
 }
 
-export function ClubDetailManager({ clubId }: { clubId: string }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [leadAppointments, setLeadAppointments] = useState<Appointment[]>([]);
+/** Only the Lead rows the panel renders, from a full team page. */
+function leadsOf(items: readonly Appointment[]): Appointment[] {
+  return items.filter((a) => a.role === 'LEAD' && (a.status === 'ACTIVE' || a.status === 'INVITED'));
+}
+
+export function ClubDetailManager({
+  clubId,
+  initialClub,
+  initialTeam,
+}: {
+  clubId: string;
+  initialClub: ClubDetail | null;
+  initialTeam: Appointment[] | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const [leadAppointments, setLeadAppointments] = useState<Appointment[]>(
+    initialTeam ? leadsOf(initialTeam) : [],
+  );
 
   async function loadTeam() {
     const page = await listTeam(clubId, { limit: 100 });
-    setLeadAppointments(page.items.filter((a) => a.role === 'LEAD' && (a.status === 'ACTIVE' || a.status === 'INVITED')));
+    setLeadAppointments(leadsOf(page.items));
   }
 
+  const seeded = initialClub !== null && initialTeam !== null;
   useEffect(() => {
+    if (seeded) return;
     getClub(clubId).then(setClub);
     loadTeam();
-  }, [clubId]);
+  }, [clubId, seeded]);
 
   if (!club) return <Skeleton className="h-64 w-full" />;
 

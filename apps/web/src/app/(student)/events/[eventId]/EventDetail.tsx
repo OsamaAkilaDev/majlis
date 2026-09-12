@@ -21,12 +21,10 @@ function Fact({ term, span, children }: { term: string; span?: boolean; children
   );
 }
 
-export function EventDetail({ eventId }: { eventId: string }) {
-  const [event, setEvent] = useState<Event | null>(null);
+export function EventDetail({ eventId, initialEvent }: { eventId: string; initialEvent: Event | null }) {
+  const [event, setEvent] = useState<Event | null>(initialEvent);
   const [missing, setMissing] = useState(false);
 
-  // lib/api.ts fetches a relative path, which only resolves in the browser, so
-  // this is a Client Component rather than an async Server Component.
   const load = useCallback(async () => {
     try {
       setEvent(await getEvent(eventId));
@@ -36,9 +34,11 @@ export function EventDetail({ eventId }: { eventId: string }) {
     }
   }, [eventId]);
 
+  // Only when the server could not render it: a 404 or a dead API leaves the
+  // client to fetch, which is also the path that reports "no such event".
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!initialEvent) void load();
+  }, [initialEvent, load]);
 
   if (missing) return <EmptyState title="No such event" />;
   if (!event) return <Skeleton className="h-64" />;

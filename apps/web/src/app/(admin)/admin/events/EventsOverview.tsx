@@ -1,8 +1,8 @@
 'use client';
 
-import type { ClubSummary, EventStatus, EventSummary, UserListItem } from '@majlis/contracts';
+import type { ClubSummary, EventPage, EventStatus, EventSummary, UserListItem } from '@majlis/contracts';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { Field } from '@/components/Field';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -24,8 +24,8 @@ import { ProblemError } from '@/lib/api';
 import { listClubs } from '@/lib/clubs';
 import { formatMoment } from '@/lib/event-time';
 import { listEvents, register } from '@/lib/events';
+import { PAGE } from '@/lib/page-size';
 
-const PAGE = 20;
 const ALL = 'all';
 
 const STATUSES: EventStatus[] = [
@@ -107,18 +107,28 @@ function OverrideDialog({
   );
 }
 
-export function EventsOverview() {
-  const [clubs, setClubs] = useState<ClubSummary[]>([]);
+export function EventsOverview({
+  initialEvents,
+  initialClubs,
+}: {
+  initialEvents: EventPage | null;
+  initialClubs: ClubSummary[] | null;
+}) {
+  const [clubs, setClubs] = useState<ClubSummary[]>(initialClubs ?? []);
   const [clubId, setClubId] = useState(ALL);
   const [status, setStatus] = useState(ALL);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<EventSummary[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
   const [overriding, setOverriding] = useState<EventSummary | null>(null);
+  // The server rendered the unfiltered first page, so the mount run of the
+  // filter effect would refetch exactly what is already on screen.
+  const seeded = useRef(initialEvents !== null);
 
   useEffect(() => {
+    if (initialClubs) return;
     void listClubs({ limit: 100 }).then((page) => setClubs(page.items));
-  }, []);
+  }, [initialClubs]);
 
   async function load(reset: boolean, from?: string | null) {
     const page = await listEvents({
@@ -135,6 +145,10 @@ export function EventsOverview() {
   // Refetches from the first page whenever a filter changes, so a stale cursor
   // from the previous filter can never paginate the new result set.
   useEffect(() => {
+    if (seeded.current) {
+      seeded.current = false;
+      return;
+    }
     setItems(null);
     void load(true);
   }, [clubId, status, q]);

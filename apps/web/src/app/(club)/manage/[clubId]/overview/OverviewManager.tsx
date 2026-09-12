@@ -15,20 +15,35 @@ import { getClub, listDepartments, updateClub } from '@/lib/clubs';
 
 const POLICIES: MembershipPolicy[] = ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY', 'CLOSED'];
 
-export function OverviewManager({ clubId, platformRole }: { clubId: string; platformRole: 'STUDENT' | 'ADMIN' }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+export function OverviewManager({
+  clubId,
+  platformRole,
+  initialClub,
+  initialDepartments,
+}: {
+  clubId: string;
+  platformRole: 'STUDENT' | 'ADMIN';
+  initialClub: ClubDetail | null;
+  initialDepartments: { id: string; name: string }[] | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>(
+    initialDepartments ?? [],
+  );
 
-  const [departmentId, setDepartmentId] = useState('');
-  const [category, setCategory] = useState('');
-  const [academicYear, setAcademicYear] = useState('');
-  const [membershipPolicy, setMembershipPolicy] = useState<MembershipPolicy>('OPEN');
-  const [description, setDescription] = useState('');
+  const [departmentId, setDepartmentId] = useState(initialClub?.departmentId ?? '');
+  const [category, setCategory] = useState(initialClub?.category ?? '');
+  const [academicYear, setAcademicYear] = useState(initialClub?.academicYear ?? '');
+  const [membershipPolicy, setMembershipPolicy] = useState<MembershipPolicy>(
+    initialClub?.membershipPolicy ?? 'OPEN',
+  );
+  const [description, setDescription] = useState(initialClub?.description ?? '');
 
   const [error, setError] = useState<ProblemError | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
+    if (initialClub) return;
     getClub(clubId).then((c) => {
       setClub(c);
       setDepartmentId(c.departmentId);
@@ -37,8 +52,12 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
       setMembershipPolicy(c.membershipPolicy);
       setDescription(c.description);
     });
+  }, [clubId, initialClub]);
+
+  useEffect(() => {
+    if (initialDepartments) return;
     listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
-  }, [clubId]);
+  }, [initialDepartments]);
 
   if (!club) return <Skeleton className="h-64 w-full" />;
 

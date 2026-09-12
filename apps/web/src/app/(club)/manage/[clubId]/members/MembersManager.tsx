@@ -74,10 +74,20 @@ function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => v
   );
 }
 
-export function MembersManager({ clubId }: { clubId: string }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [pending, setPending] = useState<Member[] | null>(null);
-  const [active, setActive] = useState<Member[] | null>(null);
+export function MembersManager({
+  clubId,
+  initialClub,
+  initialPending,
+  initialActive,
+}: {
+  clubId: string;
+  initialClub: ClubDetail | null;
+  initialPending: Member[] | null;
+  initialActive: Member[] | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const [pending, setPending] = useState<Member[] | null>(initialPending);
+  const [active, setActive] = useState<Member[] | null>(initialActive);
 
   async function load() {
     const [c, pendingPage, activePage] = await Promise.all([
@@ -90,9 +100,10 @@ export function MembersManager({ clubId }: { clubId: string }) {
     setActive(activePage.items);
   }
 
+  const seeded = initialClub !== null && initialPending !== null && initialActive !== null;
   useEffect(() => {
-    load();
-  }, [clubId]);
+    if (!seeded) load();
+  }, [clubId, seeded]);
 
   if (!club || pending === null || active === null) return <Skeleton className="h-64 w-full" />;
 

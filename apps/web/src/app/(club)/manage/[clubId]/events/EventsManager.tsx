@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ProblemError } from '@/lib/api';
 import { getClub } from '@/lib/clubs';
 import { formatMoment } from '@/lib/event-time';
+import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { createEvent, listEvents, mintEventPosterUpload } from '@/lib/events';
 import {
   EMPTY_EVENT,
@@ -21,8 +22,6 @@ import {
   toCreateBody,
   type EventFormValues,
 } from './EventFields';
-
-const PAGE = 50;
 
 /** Creation needs the whole object, so it is Lead, Vice and Admin only (plan, Task 1). */
 function canCreate(roles: readonly ClubRole[], platformRole: SessionUser['platformRole']): boolean {
@@ -96,14 +95,19 @@ function CreatePanel({
 export function EventsManager({
   clubId,
   platformRole,
+  initialRoles,
+  initialEvents,
 }: {
   clubId: string;
   platformRole: SessionUser['platformRole'];
+  initialRoles: ClubRole[] | null;
+  initialEvents: EventSummary[] | null;
 }) {
   const router = useRouter();
-  const [roles, setRoles] = useState<ClubRole[] | null>(null);
-  const [items, setItems] = useState<EventSummary[] | null>(null);
+  const [roles, setRoles] = useState<ClubRole[] | null>(initialRoles);
+  const [items, setItems] = useState<EventSummary[] | null>(initialEvents);
   const [creating, setCreating] = useState(false);
+  const seeded = initialRoles !== null && initialEvents !== null;
 
   const load = useCallback(async () => {
     const [club, page] = await Promise.all([getClub(clubId), listEvents({ clubId, limit: PAGE })]);
@@ -112,8 +116,8 @@ export function EventsManager({
   }, [clubId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!seeded) void load();
+  }, [seeded, load]);
 
   if (roles === null || items === null) return <Skeleton className="h-64 w-full" />;
 

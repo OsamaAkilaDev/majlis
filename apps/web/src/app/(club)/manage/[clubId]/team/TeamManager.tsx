@@ -94,9 +94,19 @@ function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => 
   );
 }
 
-export function TeamManager({ clubId, viewerUserId }: { clubId: string; viewerUserId: string }) {
-  const [club, setClub] = useState<ClubDetail | null>(null);
-  const [items, setItems] = useState<Appointment[] | null>(null);
+export function TeamManager({
+  clubId,
+  viewerUserId,
+  initialClub,
+  initialTeam,
+}: {
+  clubId: string;
+  viewerUserId: string;
+  initialClub: ClubDetail | null;
+  initialTeam: Appointment[] | null;
+}) {
+  const [club, setClub] = useState<ClubDetail | null>(initialClub);
+  const [items, setItems] = useState<Appointment[] | null>(initialTeam);
 
   async function load() {
     const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: 100 })]);
@@ -104,9 +114,10 @@ export function TeamManager({ clubId, viewerUserId }: { clubId: string; viewerUs
     setItems(page.items);
   }
 
+  const seeded = initialClub !== null && initialTeam !== null;
   useEffect(() => {
-    load();
-  }, [clubId]);
+    if (!seeded) load();
+  }, [clubId, seeded]);
 
   if (!club || items === null) return <Skeleton className="h-64 w-full" />;
 

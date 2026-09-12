@@ -1,6 +1,6 @@
 'use client';
 
-import type { Department } from '@majlis/contracts';
+import type { Department, DepartmentPage } from '@majlis/contracts';
 import { Plus } from '@phosphor-icons/react/ssr';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { createDepartment, listDepartments, removeDepartment, updateDepartment } from '@/lib/clubs';
+import { PAGE } from '@/lib/page-size';
 import { ProblemError } from '@/lib/api';
 
 function DepartmentForm({
@@ -98,19 +99,19 @@ function DepartmentForm({
   );
 }
 
-export function DepartmentsManager() {
-  const [items, setItems] = useState<Department[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+export function DepartmentsManager({ initial }: { initial: DepartmentPage | null }) {
+  const [items, setItems] = useState<Department[] | null>(initial?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
 
   async function load(reset: boolean) {
-    const page = await listDepartments({ limit: 20, cursor: reset ? undefined : (cursor ?? undefined) });
+    const page = await listDepartments({ limit: PAGE, cursor: reset ? undefined : (cursor ?? undefined) });
     setItems((prev) => (reset || !prev ? page.items : [...prev, ...page.items]));
     setCursor(page.nextCursor);
   }
 
   useEffect(() => {
-    load(true);
-  }, []);
+    if (!initial) load(true);
+  }, [initial]);
 
   function onSaved(saved: Department) {
     setItems((prev) => {

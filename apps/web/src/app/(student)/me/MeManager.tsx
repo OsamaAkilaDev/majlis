@@ -9,8 +9,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations, roleLabel } from '@/lib/clubs';
-
-const PAGE = 20;
+import { PAGE } from '@/lib/page-size';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -21,10 +20,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function MeManager() {
-  const [clubs, setClubs] = useState<MyClub[] | null>(null);
-  const [invitations, setInvitations] = useState<Invitation[] | null>(null);
+export function MeManager({
+  initialClubs,
+  initialInvitations,
+}: {
+  initialClubs: MyClub[] | null;
+  initialInvitations: Invitation[] | null;
+}) {
+  const [clubs, setClubs] = useState<MyClub[] | null>(initialClubs);
+  const [invitations, setInvitations] = useState<Invitation[] | null>(initialInvitations);
   const [busy, setBusy] = useState<string | null>(null);
+  const seeded = initialClubs !== null && initialInvitations !== null;
 
   const load = useCallback(async () => {
     const [c, i] = await Promise.all([myClubs({ limit: PAGE }), myInvitations({ limit: PAGE })]);
@@ -33,8 +39,8 @@ export function MeManager() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!seeded) void load();
+  }, [seeded, load]);
 
   async function act(id: string, fn: () => Promise<unknown>) {
     setBusy(id);
