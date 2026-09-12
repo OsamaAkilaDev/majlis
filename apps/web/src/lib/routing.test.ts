@@ -73,8 +73,14 @@ describe('decideRedirect', () => {
     expect(decideRedirect({ pathname: '/home', ...stale })).toBeNull();
   });
 
-  it('sends a signed-in visitor away from /login', () => {
-    expect(decideRedirect({ pathname: '/login', ...live })).toEqual({ to: '/' });
+  it('never bounces a visitor off /login, however signed-in their cookies look', () => {
+    // Catches ERR_TOO_MANY_REDIRECTS. A cookie the server rejects still makes
+    // hasSession true here, so bouncing /login to / meant / redirected back to
+    // /login forever. (auth)/layout.tsx does this bounce against a validated
+    // session instead. Restore `signedIn ? { to: '/' }` and this goes red.
+    expect(decideRedirect({ pathname: '/login', ...live })).toBeNull();
+    expect(decideRedirect({ pathname: '/signup', ...live })).toBeNull();
+    expect(decideRedirect({ pathname: '/login', ...stale })).toBeNull();
   });
 
   it('leaves an anonymous visitor on /login', () => {

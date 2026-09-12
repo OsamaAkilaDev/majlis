@@ -65,7 +65,12 @@ export function decideRedirect(input: {
   // session, not an anonymous visitor. Middleware renews it in place.
   const signedIn = hasSession || hasRefresh;
 
-  if (AUTH_ROUTES.includes(pathname)) return signedIn ? { to: '/' } : null;
+  // An auth route is never bounced from here. A cookie's PRESENCE is not a
+  // session: a dead one sent /login to / while the server sent / back to
+  // /login, looping forever. (auth)/layout.tsx already bounces a genuinely
+  // signed-in visitor using a validated session, which is the only copy of
+  // this decision that can tell the difference.
+  if (AUTH_ROUTES.includes(pathname)) return null;
   return signedIn ? null : { to: '/login' };
 }
 
