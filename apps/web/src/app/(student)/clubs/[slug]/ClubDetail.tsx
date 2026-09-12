@@ -41,7 +41,7 @@ export function ClubDetail({ slug }: { slug: string }) {
         <img src={club.logoUrl} alt="" className="size-16 shrink-0 rounded-card object-cover" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h2 className="font-display text-display text-ink">{club.name}</h2>
-          <p className="text-sm text-ink-muted">
+          <p className="text-sm text-ink-2">
             {club.departmentName} · {club.category}
           </p>
           {club.status === 'ACTIVE' ? null : <StatusBadge status={club.status} />}
@@ -54,11 +54,11 @@ export function ClubDetail({ slug }: { slug: string }) {
 
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <dt className="text-ink-muted">Members</dt>
+          <dt className="text-ink-2">Members</dt>
           <dd className="tabular-nums text-ink">{club.memberCount}</dd>
         </div>
         <div>
-          <dt className="text-ink-muted">Academic year</dt>
+          <dt className="text-ink-2">Academic year</dt>
           <dd className="tabular-nums text-ink">{club.academicYear}</dd>
         </div>
       </dl>

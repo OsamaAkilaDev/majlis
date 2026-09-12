@@ -73,3 +73,20 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
+
+/** A JSON body, for the POST/PATCH/DELETE bodies every client module sends. */
+export const json = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+/** Query string from a sparse record; an undefined value is omitted entirely. */
+export function qs(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, value);
+  }
+  const s = search.toString();
+  return s ? `?${s}` : '';
+}

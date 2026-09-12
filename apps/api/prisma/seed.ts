@@ -149,6 +149,46 @@ export async function seed(prisma: PrismaClient): Promise<void> {
       createdById: users['lead@uni.ac.ae']!,
     },
   });
+
+  // An event nobody can register for, so the accessibility suite always has a
+  // disabled register control to scan. Capacity one, taken, and no waitlist:
+  // the same reasoning as chess-club's CLOSED membership policy above.
+  const full = {
+    ...event,
+    title: 'Robotics Showcase',
+    summary: 'The term-end demonstration of every team project.',
+    description: 'Seats are limited to the demonstration floor.',
+    eventType: 'SHOWCASE',
+    venue: 'Engineering Building, Atrium',
+    capacity: 1,
+    confirmedCount: 1,
+    waitlistEnabled: false,
+    certificateEnabled: false,
+    certificateTitle: null,
+  };
+
+  const showcase = await prisma.event.upsert({
+    where: { clubId_slug: { clubId: club.id, slug: 'robotics-showcase' } },
+    update: full,
+    create: {
+      ...full,
+      clubId: club.id,
+      slug: 'robotics-showcase',
+      createdById: users['lead@uni.ac.ae']!,
+    },
+  });
+
+  // The one seat, held. A guarded create rather than an upsert: registrations
+  // have no natural unique key, and event_registration_one_open_per_user would
+  // reject the second run.
+  const taken = await prisma.eventRegistration.findFirst({
+    where: { eventId: showcase.id, userId: users['lead@uni.ac.ae']!, status: { not: 'CANCELLED' } },
+  });
+  if (!taken) {
+    await prisma.eventRegistration.create({
+      data: { eventId: showcase.id, userId: users['lead@uni.ac.ae']!, status: 'CONFIRMED' },
+    });
+  }
 }
 
 /**

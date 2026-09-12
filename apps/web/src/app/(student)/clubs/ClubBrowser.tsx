@@ -22,9 +22,9 @@ function ClubCard({ club }: { club: ClubSummary }) {
       <img src={club.logoUrl} alt="" className="size-12 shrink-0 rounded-control object-cover" />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-semibold text-ink">{club.name}</span>
-        <span className="block truncate text-sm text-ink-muted">{club.category}</span>
+        <span className="block truncate text-sm text-ink-2">{club.category}</span>
       </span>
-      <span className="shrink-0 text-sm tabular-nums text-ink-muted">{club.memberCount}</span>
+      <span className="shrink-0 text-sm tabular-nums text-ink-2">{club.memberCount}</span>
     </Link>
   );
 }

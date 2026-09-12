@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
-import { EmptyState } from '@/components/EmptyState';
 import { StudentShell } from '@/components/shell/StudentShell';
+import { EventBrowser } from './EventBrowser';
 
 export const metadata: Metadata = { title: 'Events' };
 
 export default function EventsPage() {
   return (
     <StudentShell title="Events">
-      <EmptyState title="No events yet" />
+      <EventBrowser />
     </StudentShell>
   );
 }

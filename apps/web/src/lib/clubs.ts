@@ -27,22 +27,7 @@ import type {
   SignedUpload,
   UserListPage,
 } from '@majlis/contracts';
-import { apiFetch } from './api';
-
-const json = (body: unknown): RequestInit => ({
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify(body),
-});
-
-function qs(params: Record<string, string | undefined>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) search.set(key, value);
-  }
-  const s = search.toString();
-  return s ? `?${s}` : '';
-}
+import { apiFetch, json, qs } from './api';
 
 // -- Uploads and club creation/editing --------------------------------------
 
