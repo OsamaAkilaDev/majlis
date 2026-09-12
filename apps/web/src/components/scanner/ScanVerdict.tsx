@@ -52,7 +52,7 @@ export function ScanVerdict({ verdict, onClear }: { verdict: Verdict; onClear: (
         </div>
       ) : null}
 
-      <Button variant="outline" onClick={onClear} className="mt-auto h-12 w-full text-body">
+      <Button variant="outline" onClick={onClear} className="mt-auto h-12 w-full text-base">
         Next
       </Button>
     </div>

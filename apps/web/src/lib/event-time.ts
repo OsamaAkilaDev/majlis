@@ -31,6 +31,22 @@ export function formatMoment(at: string, timeZone: string): string {
   return `${part(value, timeZone, DATE)}, ${part(value, timeZone, { ...TIME, timeZoneName: 'short' })}`;
 }
 
+/**
+ * A certificate's date, to the day, in UTC. A certificate carries no venue, so
+ * there is no zone of its own to render it in, and the viewer's would differ
+ * between the server and the browser: that is a hydration mismatch, and React
+ * answers one by throwing the whole tree away. UTC to the day is the same
+ * string on both sides, which is what a credential check needs.
+ */
+export function formatDay(at: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(at));
+}
+
 export function viewerTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }

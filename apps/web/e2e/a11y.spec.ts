@@ -145,9 +145,12 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('the student registrations page has no violations', async ({ page }) => {
+      // Rows, not the empty state: Stage 6's seed registers this student for
+      // two events so the scanner and the certificates have something to work
+      // on, and a list with rows in it is the harder scan anyway.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/me/registrations');
-      await expect(page.getByRole('link', { name: 'Browse events' })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Drone Build Night/ })).toBeVisible();
       await scan(page);
     });
 

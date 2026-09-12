@@ -67,7 +67,11 @@ function ManualForm({
           className="h-12"
         />
       </Field>
-      <Button type="submit" disabled={disabled} className="h-12 text-body">
+      {/* text-base, not this project's text-body: cn() runs tailwind-merge,
+          which cannot know a custom --text-body is a font size and files it
+          under text colour instead, silently dropping the variant's
+          text-primary-fg. That shipped as ink on primary at 1.87:1. */}
+      <Button type="submit" disabled={disabled} className="h-12 text-base">
         Check in
       </Button>
     </form>
@@ -291,7 +295,7 @@ export function ScanSession({
                 {scanning ? (
                   <Button
                     variant="outline"
-                    className="h-12 flex-1 text-body"
+                    className="h-12 flex-1 text-base"
                     aria-expanded={manualOpen}
                     onClick={() => setManualOpen((open) => !open)}
                   >
@@ -300,7 +304,7 @@ export function ScanSession({
                 ) : null}
                 <Button
                   variant="ghost"
-                  className="h-12 flex-1 text-body"
+                  className="h-12 flex-1 text-base"
                   onClick={() => {
                     setEventId(null);
                     setVerdict(null);
