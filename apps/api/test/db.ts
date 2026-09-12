@@ -12,14 +12,24 @@ import { PrismaClient } from '../src/generated/prisma/client';
  * table in a production database's public schema.
  */
 export function testDatabaseUrl(): string {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url) throw new Error('TEST_DATABASE_URL is not set. Copy .env.example to .env.');
+  const url = process.env.TEST_DATABASE_URL ?? deriveFromDatabaseUrl();
 
   const { pathname } = new URL(url);
   if (pathname !== '/majlis_test') {
     throw new Error(`Refusing to run integration tests against a non-test database: ${url}`);
   }
   return url;
+}
+
+// Same server and credentials as the development database, different name.
+// CI overrides it with TEST_DATABASE_URL.
+function deriveFromDatabaseUrl(): string {
+  const base = process.env.DATABASE_URL;
+  if (!base) throw new Error('DATABASE_URL is not set. Copy .env.example to .env.');
+
+  const url = new URL(base);
+  url.pathname = '/majlis_test';
+  return url.toString();
 }
 
 export function createTestPrisma(): PrismaClient {

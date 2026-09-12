@@ -1,6 +1,13 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
+// TEST_DATABASE_URL is normally unset (db.ts derives it). Assigning undefined
+// to process.env would store the string 'undefined'.
+function restore(saved: string | undefined): void {
+  if (saved === undefined) delete process.env.TEST_DATABASE_URL;
+  else process.env.TEST_DATABASE_URL = saved;
+}
+
 const prisma = createTestPrisma();
 
 afterAll(async () => {
@@ -28,7 +35,7 @@ describe('integration test harness', () => {
       process.env.TEST_DATABASE_URL = 'postgresql://majlis:majlis@localhost:5432/majlis_dev';
       expect(() => createTestPrisma()).toThrow(/non-test database/);
     } finally {
-      process.env.TEST_DATABASE_URL = saved;
+      restore(saved);
     }
   });
 
@@ -41,7 +48,7 @@ describe('integration test harness', () => {
       process.env.TEST_DATABASE_URL = 'postgresql://majlis_test_ro:pw@prod-host:5432/majlis_prod';
       expect(() => createTestPrisma()).toThrow(/non-test database/);
     } finally {
-      process.env.TEST_DATABASE_URL = saved;
+      restore(saved);
     }
   });
 

@@ -51,7 +51,6 @@ export const envSchema = z
     PORT: z.coerce.number().int().positive().max(65535).default(3001),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     DATABASE_URL: postgresUrl,
-    DIRECT_URL: postgresUrl,
     SESSION_SECRET: z.string().min(32, 'must be at least 32 characters'),
     ACCESS_TOKEN_TTL: jwtDuration.default('15m'),
     REFRESH_TOKEN_TTL: jwtDuration.default('30d'),

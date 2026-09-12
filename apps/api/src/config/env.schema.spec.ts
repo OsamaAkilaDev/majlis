@@ -3,7 +3,6 @@ import { EXAMPLE_SESSION_SECRET, envSchema } from './env.schema';
 
 const valid = {
   DATABASE_URL: 'postgresql://majlis:majlis@localhost:5432/majlis_dev?schema=public',
-  DIRECT_URL: 'postgresql://majlis:majlis@localhost:5432/majlis_dev?schema=public',
   SESSION_SECRET: EXAMPLE_SESSION_SECRET,
 };
 
@@ -40,7 +39,6 @@ describe('envSchema', () => {
 
 const base = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/d',
-  DIRECT_URL: 'postgresql://u:p@localhost:5432/d',
   SESSION_SECRET: 'x'.repeat(32),
 };
 
