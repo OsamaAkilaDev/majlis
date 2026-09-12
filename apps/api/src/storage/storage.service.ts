@@ -87,6 +87,25 @@ export class StorageService {
     };
   }
 
+  /**
+   * Uploads bytes the API produced itself, which is the opposite direction
+   * from `createSignedUploadUrl`: a certificate PDF is rendered server-side
+   * and must never be something a browser can put there.
+   *
+   * `x-upsert` so a reissued certificate's render replaces the previous
+   * object at the same deterministic path instead of failing on it.
+   */
+  async putObject(path: string, body: Buffer, contentType: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'content-type': contentType, 'x-upsert': 'true' },
+      body: new Uint8Array(body),
+    });
+
+    // Only the status. The body may echo the service role key back.
+    if (!res.ok) throw new Error(`Storage refused an upload: ${res.status}`);
+  }
+
   publicUrlFor(path: string, version: number): string {
     return publicUrl(this.baseUrl, path, version);
   }

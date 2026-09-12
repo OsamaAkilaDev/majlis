@@ -129,6 +129,11 @@ export const PERMISSIONS = {
   // window and the Admin override past it are enforced in the service, not
   // here — they are a property of the event's clock, not of the actor.
   'attendance:correct': { platform: ['ADMIN'], club: ['LEAD', 'OPERATIONS'] },
+  // Spec 6.1's "Issue / revoke certificate" row reads "Admin / system" and
+  // ticks no club role at all. A Lead cannot issue their own club's
+  // certificates, which is what keeps a certificate an institutional record
+  // rather than a thing a club hands out.
+  'certificate:manage': { platform: ['ADMIN'] },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;

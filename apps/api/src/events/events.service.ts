@@ -22,6 +22,8 @@ import { assertAcceptsEdits, assertAcceptsNewActivity } from '../clubs/club-stat
 import { loadClub } from '../clubs/load-club';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { ClubsService } from '../clubs/clubs.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { CertificatesService } from '../certificates/certificates.service';
 import { deriveSlug, uniqueSlug } from '../clubs/slug';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
@@ -175,6 +177,7 @@ export class EventsService {
     private readonly audit: AuditService,
     private readonly lifecycle: EventLifecycleService,
     private readonly clubs: ClubsService,
+    private readonly certificates: CertificatesService,
   ) {}
 
   /**
@@ -328,7 +331,12 @@ export class EventsService {
 
   /** GET /events/:eventId. Advances first, so nobody reads a stale status. */
   async detail(actor: Actor, eventId: string): Promise<EventDetail> {
-    await this.lifecycle.advance(eventId);
+    const status = await this.lifecycle.advance(eventId);
+    // Spec 7.6's opportunistic issuance, gated on the status the advance
+    // actually left behind so an ordinary read costs nothing extra. It
+    // rarely fires: an event completes 48 hours before its certificates are
+    // due, so the sweep is what usually issues them.
+    if (status === 'COMPLETED') await this.certificates.issueForEvent(eventId);
     return this.readDetail(actor, eventId);
   }
 

@@ -86,6 +86,13 @@ export const envSchema = z
      * issuing the moment an event completes would make this window zero.
      */
     ATTENDANCE_CORRECTION_WINDOW_HOURS: z.coerce.number().int().positive().max(8760).default(48),
+    /**
+     * Where the QR printed on a certificate points. The API is reached
+     * through the web app's rewrite rather than directly, so it has no other
+     * reason to know its own public origin — and a certificate carrying a
+     * QR nobody can scan is a QR that may as well not be there.
+     */
+    PUBLIC_WEB_ORIGIN: z.url().default('http://localhost:3000'),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],
