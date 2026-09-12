@@ -32,6 +32,7 @@ function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => 
       trigger={<Button>Invite</Button>}
       title="Invite a team member"
       confirmLabel="Send invitation"
+      clubId={clubId}
       onSubmit={async (user) => {
         await inviteTeamMember(clubId, { userId: user.id, role: role as InvitableRole });
         onInvited();

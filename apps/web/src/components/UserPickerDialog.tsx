@@ -1,6 +1,6 @@
 'use client';
 
-import type { UserListItem } from '@majlis/contracts';
+import type { UserSearchItem } from '@majlis/contracts';
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,7 @@ export function UserPickerDialog({
   title,
   confirmLabel,
   exclude,
+  clubId,
   children,
   onSubmit,
 }: {
@@ -36,11 +37,13 @@ export function UserPickerDialog({
   title: string;
   confirmLabel: string;
   exclude?: string[];
+  /** Present on a club console, absent on an Admin screen. See UserPicker. */
+  clubId?: string;
   children?: ReactNode;
-  onSubmit: (user: UserListItem) => Promise<void>;
+  onSubmit: (user: UserSearchItem) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<UserListItem | null>(null);
+  const [picked, setPicked] = useState<UserSearchItem | null>(null);
   const [error, setError] = useState<ProblemError | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -75,7 +78,7 @@ export function UserPickerDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <UserPicker value={picked} onChange={setPicked} exclude={exclude ?? []} />
+        <UserPicker value={picked} onChange={setPicked} exclude={exclude ?? []} clubId={clubId} />
         {children}
         {error ? <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p> : null}
         <DialogFooter>

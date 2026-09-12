@@ -1,6 +1,6 @@
 'use client';
 
-import type { ClubSummary, EventPage, EventStatus, EventSummary, UserListItem } from '@majlis/contracts';
+import type { ClubSummary, EventPage, EventStatus, EventSummary, UserSearchItem } from '@majlis/contracts';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
@@ -55,7 +55,7 @@ function OverrideDialog({
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
-  const [picked, setPicked] = useState<UserListItem | null>(null);
+  const [picked, setPicked] = useState<UserSearchItem | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);

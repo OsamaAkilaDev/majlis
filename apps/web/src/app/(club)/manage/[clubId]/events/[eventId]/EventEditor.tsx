@@ -8,7 +8,7 @@ import type {
   EventResponsibility,
   RegistrationPage,
   SessionUser,
-  UserListItem,
+  UserSearchItem,
 } from '@majlis/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -78,17 +78,19 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 }
 
 function AssignPanel({
+  clubId,
   eventId,
   held,
   overrideReason,
   onChanged,
 }: {
+  clubId: string;
   eventId: string;
   held: string[];
   overrideReason: string | undefined;
   onChanged: () => Promise<void>;
 }) {
-  const [picked, setPicked] = useState<UserListItem | null>(null);
+  const [picked, setPicked] = useState<UserSearchItem | null>(null);
   const [responsibility, setResponsibility] = useState<EventResponsibility>('EVENT_LEAD');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -110,7 +112,7 @@ function AssignPanel({
 
   return (
     <div className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4 sm:max-w-md">
-      <UserPicker value={picked} onChange={setPicked} exclude={held} />
+      <UserPicker value={picked} onChange={setPicked} exclude={held} clubId={clubId} />
       <Field label="Responsibility">
         <Select value={responsibility} onValueChange={(v) => setResponsibility(v as EventResponsibility)}>
           {/* A SelectTrigger is a button, which no <label htmlFor> can name. */}
@@ -139,6 +141,7 @@ function AssignPanel({
 }
 
 export function EventEditor({
+  clubId,
   eventId,
   platformRole,
   initialEvent,
@@ -146,6 +149,7 @@ export function EventEditor({
   initialRoster,
   initialAttendance,
 }: {
+  clubId: string;
   eventId: string;
   platformRole: SessionUser['platformRole'];
   initialEvent: EventDetail | null;
@@ -192,12 +196,14 @@ export function EventEditor({
   const [pending, setPending] = useState(false);
   const viewerZone = useViewerZone();
 
-  // Independent reads, not a chain: none of them depends on another, and
-  // waiting for one before starting the next cost a whole round trip on every
-  // save.
+  // getEvent FIRST, then the other three together. Not a taste for chains:
+  // reading the event is what calls lifecycle.advance() server-side, and the
+  // other three read rows that hop changes. Fired in one Promise.all, opening
+  // an event whose check-in window had just shut showed stale CONFIRMED
+  // badges and a pre-hop `expected` count until somebody refreshed.
   const load = useCallback(async () => {
-    const [detail, assigned, registered, attended] = await Promise.all([
-      getEvent(eventId),
+    const detail = await getEvent(eventId);
+    const [assigned, registered, attended] = await Promise.all([
       optional(listAssignments(eventId, { limit: PAGE })),
       optional(listRoster(eventId, { limit: PAGE })),
       optional(listAttendance(eventId, { limit: PAGE })),
@@ -369,6 +375,7 @@ export function EventEditor({
       {assignments === null ? null : (
         <Section title="Team">
           <AssignPanel
+            clubId={clubId}
             eventId={event.id}
             held={assignments.map((a) => a.userId)}
             overrideReason={overrideReason}

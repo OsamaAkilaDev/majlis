@@ -28,6 +28,7 @@ export default async function EventEditorPage({
   return (
     <ConsoleShell items={clubNav(clubId)} title="Event" context={null}>
       <EventEditor
+        clubId={clubId}
         eventId={eventId}
         platformRole={user.platformRole}
         initialEvent={event}

@@ -21,6 +21,7 @@ function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => v
       trigger={<Button>Add member</Button>}
       title="Add a member"
       confirmLabel="Add"
+      clubId={clubId}
       onSubmit={async (user) => {
         await addMember(clubId, { userId: user.id });
         onAdded();

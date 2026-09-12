@@ -27,6 +27,7 @@ import type {
   RemoveMemberBody,
   SignedUpload,
   UserListPage,
+  UserSearchResult,
 } from '@majlis/contracts';
 import { apiFetch, json, qs } from './api';
 
@@ -141,3 +142,12 @@ export const removeDepartment = (id: string): Promise<void> =>
 
 export const listUsers = (query: CursorPageQuery): Promise<UserListPage> =>
   apiFetch(`/users${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+
+/**
+ * The club-scoped lookup the officer consoles use. `GET /users` is Admin
+ * only and returns the full directory with platform role and status; this
+ * one is nested under the club because `user:search` is a club-scoped rule,
+ * returns a name and an address, and is refused below two characters.
+ */
+export const searchClubUsers = (clubId: string, q: string): Promise<UserSearchResult> =>
+  apiFetch(`/clubs/${clubId}/user-search${qs({ q })}`);
