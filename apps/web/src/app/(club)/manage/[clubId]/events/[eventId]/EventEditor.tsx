@@ -2,6 +2,8 @@
 
 import type {
   AssignmentList,
+  AttendanceMethod,
+  AttendancePage,
   EventDetail,
   EventResponsibility,
   RegistrationPage,
@@ -24,7 +26,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ProblemError } from '@/lib/api';
 import { enumLabel } from '@/lib/enum-label';
 import { canEditEventField, type EventField } from '@/lib/event-fields';
-import { eventTimes } from '@/lib/event-time';
+import { correctAttendance, listAttendance } from '@/lib/attendance';
+import { eventTimes, formatMoment } from '@/lib/event-time';
 import { needsOverrideReason } from '@/lib/override';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
@@ -44,6 +47,9 @@ import { EventFields, fromEvent, toPatchBody, type EventFormValues } from '../Ev
 import { useAsyncError } from '@/lib/use-async-error';
 
 const RESPONSIBILITIES: EventResponsibility[] = ['EVENT_LEAD', 'OPERATIONS', 'MARKETING'];
+
+/** enumLabel would render QR_SCAN as "Qr scan", which reads as a typo. */
+const METHOD: Record<AttendanceMethod, string> = { QR_SCAN: 'Scan', MANUAL: 'Manual' };
 
 /**
  * Two sections read behind their own permission (`event:assign`,
@@ -138,12 +144,14 @@ export function EventEditor({
   initialEvent,
   initialAssignments,
   initialRoster,
+  initialAttendance,
 }: {
   eventId: string;
   platformRole: SessionUser['platformRole'];
   initialEvent: EventDetail | null;
   initialAssignments: AssignmentList | null;
   initialRoster: RegistrationPage | null;
+  initialAttendance: AttendancePage | null;
 }) {
   const [event, setEvent] = useState<EventDetail | null>(initialEvent);
   const [values, setValues] = useState<EventFormValues | null>(
@@ -164,27 +172,44 @@ export function EventEditor({
     show: showRoster,
     append: appendRoster,
   } = useCursorPage(initialRoster);
+  const {
+    items: attendance,
+    cursor: attendanceCursor,
+    show: showAttendance,
+    append: appendAttendance,
+  } = useCursorPage(initialAttendance);
+  // The counter lives beside the page rather than in it: useCursorPage owns
+  // items and cursor, and checkedIn/expected are totals for the whole event,
+  // not for the page that happens to be on screen.
+  const [counts, setCounts] = useState<{ checkedIn: number; expected: number } | null>(
+    initialAttendance
+      ? { checkedIn: initialAttendance.checkedIn, expected: initialAttendance.expected }
+      : null,
+  );
   const [reason, setReason] = useState('');
   const [error, setError] = useState<ProblemError | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const viewerZone = useViewerZone();
 
-  // Three independent reads, not a chain: the roster does not depend on the
-  // assignments and waiting for one before starting the other cost a whole
-  // round trip on every save.
+  // Independent reads, not a chain: none of them depends on another, and
+  // waiting for one before starting the next cost a whole round trip on every
+  // save.
   const load = useCallback(async () => {
-    const [detail, assigned, registered] = await Promise.all([
+    const [detail, assigned, registered, attended] = await Promise.all([
       getEvent(eventId),
       optional(listAssignments(eventId, { limit: PAGE })),
       optional(listRoster(eventId, { limit: PAGE })),
+      optional(listAttendance(eventId, { limit: PAGE })),
     ]);
     setEvent(detail);
     setValues(fromEvent(detail));
     setBase(fromEvent(detail));
     showAssignments(assigned);
     showRoster(registered);
-  }, [eventId, showAssignments, showRoster]);
+    showAttendance(attended);
+    setCounts(attended ? { checkedIn: attended.checkedIn, expected: attended.expected } : null);
+  }, [eventId, showAssignments, showRoster, showAttendance]);
 
   const loadMoreAssignments = useCallback(async () => {
     if (!assignmentCursor) return;
@@ -197,6 +222,11 @@ export function EventEditor({
   }, [eventId, rosterCursor, appendRoster]);
 
   const fail = useAsyncError();
+
+  const loadMoreAttendance = useCallback(async () => {
+    if (!attendanceCursor) return;
+    appendAttendance(await listAttendance(eventId, { limit: PAGE, cursor: attendanceCursor }));
+  }, [eventId, attendanceCursor, appendAttendance]);
 
   useEffect(() => {
     if (!initialEvent) load().catch(fail);
@@ -223,7 +253,25 @@ export function EventEditor({
   const overrideReason = override ? reason.trim() || undefined : undefined;
   const canPublish = isAdmin || roles.includes('LEAD') || roles.includes('VICE_LEAD');
   const canCancel = isAdmin || roles.includes('LEAD');
+  // Mirrors 'attendance:correct' in apps/api/src/auth/permissions.ts: an
+  // EventAssignment grants the right to scan a queue, never to rewrite the
+  // record afterwards, so Vice Lead and an assigned operator are both absent.
+  // The API re-derives it per request, and enforces the correction window and
+  // the CERTIFIED lock that this cannot see at all.
+  const canCorrect = isAdmin || roles.includes('LEAD') || roles.includes('OPERATIONS');
   const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
+
+  async function correct(registrationId: string, present: boolean, why: string | undefined) {
+    // eventId, not event.id: this is a hoisted declaration, so TypeScript
+    // analyses it above the guard that narrows the event and would want a
+    // non-null assertion it does not actually need.
+    await correctAttendance(eventId, registrationId, {
+      present,
+      reason: why ?? '',
+      ...(overrideReason ? { override: { reason: overrideReason } } : {}),
+    });
+    await load();
+  }
 
   async function act(fn: () => Promise<EventDetail | void>) {
     setPending(true);
@@ -374,7 +422,7 @@ export function EventEditor({
       )}
 
       {roster === null ? null : (
-        <Section title="Attendees">
+        <Section title="Registrations">
           {roster.length === 0 ? (
             <EmptyState title="Nobody registered" />
           ) : (
@@ -409,6 +457,86 @@ export function EventEditor({
             </Table>
           )}
           <LoadMore cursor={rosterCursor} onClick={loadMoreRoster} />
+        </Section>
+      )}
+
+      {/* Beside the registration list, not instead of it: one answers who
+          signed up and carries the waitlist and the source, the other answers
+          who actually came. */}
+      {attendance === null ? null : (
+        <Section
+          title="Attendance"
+          action={
+            counts ? (
+              <span className="tabular text-h1 text-ink">
+                {counts.checkedIn} / {counts.expected}
+              </span>
+            ) : undefined
+          }
+        >
+          {attendance.length === 0 ? (
+            <EmptyState title="Nobody registered" />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Person</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Checked in</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {attendance.map((row) => {
+                  // The attendance record, never the registration status: a
+                  // correction deletes the record, and the two would disagree
+                  // for as long as the page went unrefreshed.
+                  const present = row.checkedInAt !== null;
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-ink">{row.fullName}</span>
+                          <span className="text-label text-ink-2">{row.email}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={row.registrationStatus} />
+                      </TableCell>
+                      <TableCell className="tabular text-ink-2">
+                        {row.checkedInAt ? formatMoment(row.checkedInAt, event.timezone) : ''}
+                      </TableCell>
+                      <TableCell className="text-ink-2">
+                        {row.method ? METHOD[row.method] : ''}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          {canCorrect ? (
+                            <ConfirmDialog
+                              title={`Mark ${row.fullName} ${present ? 'absent' : 'present'}?`}
+                              confirmLabel={present ? 'Mark absent' : 'Mark present'}
+                              destructive={present}
+                              reason="required"
+                              trigger={
+                                <Button size="sm" variant={present ? 'destructive' : 'outline'}>
+                                  {present ? 'Mark absent' : 'Mark present'}
+                                </Button>
+                              }
+                              onConfirm={(why) => correct(row.id, !present, why)}
+                            />
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+          <LoadMore cursor={attendanceCursor} onClick={loadMoreAttendance} />
         </Section>
       )}
     </div>

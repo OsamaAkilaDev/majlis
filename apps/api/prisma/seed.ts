@@ -189,6 +189,112 @@ export async function seed(prisma: PrismaClient): Promise<void> {
       data: { eventId: showcase.id, userId: users['lead@uni.ac.ae']!, status: 'CONFIRMED' },
     });
   }
+
+  // Stage 6 needs two clocks the other events cannot supply, because nothing
+  // in the product can move an event's boundaries into the past: one event
+  // whose check-in window is open right now, and one whose 48-hour correction
+  // window has already closed. Without them the scanner can only ever be shown
+  // refusing, and no certificate can exist to verify.
+  //
+  // Both are seeded PUBLISHED and left for the lazy lifecycle to advance, so
+  // the status on screen is one the product actually computed rather than one
+  // this file asserted.
+  const ongoing = {
+    ...event,
+    title: 'Drone Build Night',
+    summary: 'Assemble and fly a micro quadcopter.',
+    description: 'Parts provided. Doors open at the start time.',
+    eventType: 'WORKSHOP',
+    venue: 'Engineering Building, Hangar',
+    startsAt: hours(-1),
+    endsAt: hours(2),
+    registrationOpensAt: hours(-48),
+    registrationClosesAt: hours(-2),
+    checkInOpensAt: hours(-1.5),
+    checkInClosesAt: hours(2.5),
+    confirmedCount: 1,
+    certificateEnabled: false,
+    certificateTitle: null,
+  };
+
+  const tonight = await prisma.event.upsert({
+    where: { clubId_slug: { clubId: club.id, slug: 'drone-build-night' } },
+    update: { ...ongoing, status: 'PUBLISHED' },
+    create: {
+      ...ongoing,
+      clubId: club.id,
+      slug: 'drone-build-night',
+      createdById: users['lead@uni.ac.ae']!,
+    },
+  });
+
+  const open = await prisma.eventRegistration.findFirst({
+    where: { eventId: tonight.id, userId: users['student@uni.ac.ae']!, status: { not: 'CANCELLED' } },
+  });
+  if (!open) {
+    await prisma.eventRegistration.create({
+      data: { eventId: tonight.id, userId: users['student@uni.ac.ae']!, status: 'CONFIRMED' },
+    });
+  }
+
+  const finished = {
+    ...event,
+    title: 'Line Follower Sprint',
+    summary: 'A one-evening race between self-built line followers.',
+    description: 'Track time is allocated on arrival.',
+    eventType: 'COMPETITION',
+    venue: 'Engineering Building, Lab 1.02',
+    startsAt: hours(-75),
+    endsAt: hours(-72),
+    registrationOpensAt: hours(-120),
+    registrationClosesAt: hours(-76),
+    checkInOpensAt: hours(-75.5),
+    checkInClosesAt: hours(-71.5),
+    confirmedCount: 1,
+    certificateEnabled: true,
+    certificateTitle: 'Certificate of Attendance: Line Follower Sprint',
+    certificateSignatory: 'Head of Engineering',
+  };
+
+  const past = await prisma.event.upsert({
+    where: { clubId_slug: { clubId: club.id, slug: 'line-follower-sprint' } },
+    // Left alone once it has advanced: the walk is forward-only, and putting
+    // a CERTIFIED event back to PUBLISHED on every reseed would strand the
+    // certificates it has already issued.
+    update: finished,
+    create: {
+      ...finished,
+      clubId: club.id,
+      slug: 'line-follower-sprint',
+      status: 'PUBLISHED',
+      createdById: users['lead@uni.ac.ae']!,
+    },
+  });
+
+  // CHECKED_IN, so the COMPLETED hop leaves it alone (it only sweeps CONFIRMED
+  // and WAITLISTED into NO_SHOW) and it is eligible for a certificate. The
+  // attendance record comes with it: a registration checked in with no record
+  // is a state the product itself cannot produce.
+  let attended = await prisma.eventRegistration.findFirst({
+    where: { eventId: past.id, userId: users['student@uni.ac.ae']!, status: { not: 'CANCELLED' } },
+  });
+  if (!attended) {
+    attended = await prisma.eventRegistration.create({
+      data: { eventId: past.id, userId: users['student@uni.ac.ae']!, status: 'CHECKED_IN' },
+    });
+  }
+  await prisma.attendanceRecord.upsert({
+    where: { registrationId: attended.id },
+    update: {},
+    create: {
+      registrationId: attended.id,
+      eventId: past.id,
+      userId: users['student@uni.ac.ae']!,
+      checkedInById: users['ops@uni.ac.ae']!,
+      checkedInAt: hours(-74.5),
+      method: 'QR_SCAN',
+    },
+  });
 }
 
 /**
