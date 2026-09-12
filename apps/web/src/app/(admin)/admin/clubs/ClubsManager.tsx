@@ -1,7 +1,7 @@
 'use client';
 
 import type { ClubStatus, ClubSummary, Department } from '@majlis/contracts';
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';

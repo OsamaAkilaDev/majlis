@@ -1,7 +1,7 @@
 'use client';
 
 import type { Department } from '@majlis/contracts';
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react/ssr';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';

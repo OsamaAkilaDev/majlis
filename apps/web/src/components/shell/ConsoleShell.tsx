@@ -1,7 +1,8 @@
-import { Menu } from 'lucide-react';
+import { List } from '@phosphor-icons/react/ssr';
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { ICON_WEIGHT } from '@/lib/icons';
 import { requireUser } from '@/lib/session';
 import { ShellBrand } from './ShellBrand';
 import { SideNav, type NavItem } from './SideNav';
@@ -42,7 +43,7 @@ export async function ConsoleShell({
               aria-label="Open navigation"
               className="grid size-11 place-items-center rounded-control text-ink-2 hover:bg-surface-2 lg:hidden"
             >
-              <Menu className="size-5" aria-hidden />
+              <List size={20} weight={ICON_WEIGHT} aria-hidden />
             </SheetTrigger>
             <SheetContent side="left" className="w-64 bg-surface-2 p-3">
               <SheetTitle className="sr-only">Navigation</SheetTitle>

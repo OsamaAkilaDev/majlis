@@ -1,9 +1,10 @@
 'use client';
 
-import { CalendarDays, House, QrCode, User, Users } from 'lucide-react';
+import { CalendarDots, House, QrCode, User, Users } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { ICON_WEIGHT } from '@/lib/icons';
 import { activeNavHref } from '@/lib/routing';
 import { SideNav } from './SideNav';
 
@@ -12,7 +13,7 @@ import { SideNav } from './SideNav';
 const TABS = [
   { href: '/home', label: 'Home', icon: House },
   { href: '/clubs', label: 'Clubs', icon: Users },
-  { href: '/events', label: 'Events', icon: CalendarDays },
+  { href: '/events', label: 'Events', icon: CalendarDots },
   { href: '/me/qr', label: 'My QR', icon: QrCode },
   { href: '/me', label: 'Me', icon: User },
 ] as const;
@@ -44,7 +45,7 @@ export function TabBar() {
             {active ? (
               <span className="absolute inset-x-[22%] top-0 h-0.5 rounded-b bg-primary" aria-hidden />
             ) : null}
-            <Icon className="size-5" aria-hidden />
+            <Icon size={20} weight={ICON_WEIGHT} aria-hidden />
             {label}
           </Link>
         );
@@ -60,7 +61,7 @@ export function StudentSideNav() {
       items={TABS.map(({ href, label, icon: Icon }) => ({
         href,
         label,
-        icon: <Icon className="size-4 shrink-0" aria-hidden />,
+        icon: <Icon size={16} weight={ICON_WEIGHT} className="shrink-0" aria-hidden />,
       }))}
     />
   );

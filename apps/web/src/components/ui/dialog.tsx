@@ -5,7 +5,8 @@ import { cn } from "@/lib/cn"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
-import { XIcon } from "lucide-react"
+import { X } from "@phosphor-icons/react/ssr"
+import { ICON_WEIGHT } from "@/lib/icons"
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -57,7 +58,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button variant="ghost" className="absolute top-3 right-3" size="icon-sm">
-              <XIcon />
+              <X size={14} weight={ICON_WEIGHT} aria-hidden />
               <span className="sr-only">Close</span>
             </Button>
           </DialogPrimitive.Close>

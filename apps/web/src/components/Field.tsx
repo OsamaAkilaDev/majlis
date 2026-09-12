@@ -1,7 +1,8 @@
 'use client';
 
-import { CircleAlert } from 'lucide-react';
+import { WarningCircle } from '@phosphor-icons/react/ssr';
 import { cloneElement, useId, type ReactElement, type ReactNode } from 'react';
+import { ICON_WEIGHT } from '@/lib/icons';
 
 export function Field({
   label,
@@ -33,7 +34,7 @@ export function Field({
       })}
       {error ? (
         <p id={errorId} className="flex items-center gap-1.5 text-sm text-bad-fg">
-          <CircleAlert className="size-3.5 shrink-0" aria-hidden />
+          <WarningCircle size={14} weight={ICON_WEIGHT} className="shrink-0" aria-hidden />
           {error}
         </p>
       ) : null}

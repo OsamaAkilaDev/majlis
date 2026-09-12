@@ -1,7 +1,7 @@
 'use client';
 
 import type { ClubRole, EventSummary, SessionUser } from '@majlis/contracts';
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
