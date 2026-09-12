@@ -21,6 +21,9 @@ const WINDOW_HOURS = 48;
 /** Bytes the API produced, keyed by object path. No test touches Supabase. */
 const uploaded = new Map<string, { size: number; contentType: string }>();
 
+/** Every path createSignedDownloadUrl was asked to sign, in order. */
+const signed: string[] = [];
+
 const fakeStorage = {
   createSignedUploadUrl: async (path: string) => ({ signedUrl: `https://example.test/${path}`, token: 't' }),
   statObject: async (path: string) => uploaded.get(path) ?? null,
@@ -29,6 +32,10 @@ const fakeStorage = {
   },
   publicUrlFor: (path: string, version: number) =>
     `https://example.supabase.co/storage/v1/object/public/majlis-storage/${path}?v=${version}`,
+  createSignedDownloadUrl: async (path: string, expiresIn: number) => {
+    signed.push(path);
+    return `https://example.supabase.co/storage/v1/object/sign/majlis-storage/${path}?token=tok-${expiresIn}-${signed.length}`;
+  },
 };
 
 beforeAll(async () => {
@@ -42,6 +49,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   uploaded.clear();
+  signed.length = 0;
   await truncateAll(prisma);
 });
 
@@ -204,7 +212,7 @@ describe('the lifecycle sweep', () => {
 });
 
 describe('GET /certificates/:id/pdf', () => {
-  it('renders and uploads once, then serves the stored URL', async () => {
+  it('renders and uploads once, then signs a fresh short-lived URL per call', async () => {
     const { event, attendee } = await aCertifiableEvent();
     const admin = await loginAsAdmin(app);
     await issue(admin.sessionCookie, event.id);
@@ -216,6 +224,14 @@ describe('GET /certificates/:id/pdf', () => {
 
     expect(first.status).toBe(200);
     expect(first.body.pdfUrl).toContain(`certificates/${certificate.id}/certificate.pdf`);
+    // The object path is a pure function of the certificate id, and every
+    // holder of registration:read can list those ids. A public URL here
+    // makes the ownership check below decorative: anyone who can read the
+    // listing reads every student's credential document with no cookie.
+    expect(first.body.pdfUrl).not.toContain('/object/public/');
+    expect(first.body.pdfUrl).toContain('/object/sign/');
+    expect(first.body.pdfUrl).toContain('token=');
+    expect(signed).toEqual([`certificates/${certificate.id}/certificate.pdf`]);
     // A real PDF, not an empty buffer: the render is the thing that can fail
     // silently once the fake storage accepts anything.
     expect(uploaded.get(`certificates/${certificate.id}/certificate.pdf`)?.contentType).toBe(
@@ -228,7 +244,11 @@ describe('GET /certificates/:id/pdf', () => {
       .get(`${API_PREFIX}/certificates/${certificate.id}/pdf`)
       .set('Cookie', attendee.sessionCookie);
 
-    expect(second.body.pdfUrl).toBe(first.body.pdfUrl);
+    // A second call signs again rather than replaying a stored URL: the
+    // first one expires, and a persisted URL would have to be either
+    // long-lived or already dead.
+    expect(second.body.pdfUrl).not.toBe(first.body.pdfUrl);
+    expect(second.body.pdfUrl).toContain('/object/sign/');
     // Rendered once, on the first download. Spec 7.6: issuance stays cheap
     // enough to run inline because it renders nothing.
     expect(uploaded.size).toBe(0);
@@ -312,6 +332,46 @@ describe('GET /verify/:code', () => {
 
     const audit = await prisma.auditLog.findMany({ where: { action: 'certificate.revoked' } });
     expect(audit[0]?.reason).toBe('Issued against a corrected attendance record');
+  });
+});
+
+describe('an attendance correction after the certificates have issued', () => {
+  it('revokes the certificate of someone corrected to absent, so /verify stops saying ACTIVE', async () => {
+    const { event, attended } = await aCertifiableEvent();
+    const admin = await loginAsAdmin(app);
+    await issue(admin.sessionCookie, event.id);
+    const certificate = await prisma.certificate.findFirstOrThrow({ where: { eventId: event.id } });
+    expect((await verify(certificate.verificationCode)).body.status).toBe('ACTIVE');
+
+    // The event is CERTIFIED, which assertCorrectable admits for an Admin
+    // carrying an override reason. Correcting a mis-scan here used to leave
+    // /verify answering ACTIVE, with that student's name, indefinitely.
+    const res = await request(app.getHttpServer())
+      .patch(`${API_PREFIX}/events/${event.id}/attendance/${attended.id}`)
+      .set('Cookie', admin.sessionCookie)
+      .send({
+        present: false,
+        reason: 'Scanned the wrong badge at the door',
+        override: { reason: 'Registrar review after the event was certified' },
+      });
+
+    expect(res.status).toBe(204);
+
+    const after = await verify(certificate.verificationCode);
+    expect(after.status).toBe(200);
+    expect(after.body.status).toBe('REVOKED');
+    expect(after.body.revokedAt).not.toBeNull();
+
+    const row = await prisma.certificate.findUniqueOrThrow({ where: { id: certificate.id } });
+    expect(row.revokedById).toBe(admin.userId);
+    expect(row.revokedReason).toBe('Scanned the wrong badge at the door');
+
+    // Audited in the same transaction as the correction, like every other
+    // sensitive action.
+    const audit = await prisma.auditLog.findMany({ where: { action: 'certificate.revoked' } });
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.actorUserId).toBe(admin.userId);
+    expect(audit[0]?.reason).toBe('Scanned the wrong badge at the door');
   });
 });
 

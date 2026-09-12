@@ -12,6 +12,8 @@ import type {
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { AuditService } from '../audit/audit.service';
 import type { PlatformRole } from '../auth/permissions';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { CertificatesService } from '../certificates/certificates.service';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { violatedConstraintName } from '../common/prisma-constraint';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
@@ -33,16 +35,42 @@ const HOUR_MS = 60 * 60 * 1000;
 const EXPECTED = ['CONFIRMED', 'CHECKED_IN', 'ATTENDED', 'NO_SHOW'] as const;
 
 /**
- * Statuses a scan may check in. NO_SHOW is here because a correction can put
- * a registration back into it while the event is still open, and the person
- * arriving late should scan like anyone else.
+ * Statuses a scan may check in: spec 7.5 step 5 requires a confirmed place,
+ * and CONFIRMED is the only status that is one.
  *
- * WAITLISTED is deliberately absent: spec 7.5 step 5 requires a confirmed
- * place. The operator is answered NOT_REGISTERED, because the six results
- * carry no "waitlisted" case and the action is the same either way — that
- * person holds no place at this event.
+ * NO_SHOW is deliberately absent. Nothing writes it while an event is still
+ * open: `correct()` writes CONFIRMED during ONGOING, and the only other
+ * writer is the hop to COMPLETED, after which checkInTx has already
+ * answered EVENT_NOT_OPEN before this list is consulted. Admitting it would
+ * have let a scan resurrect a closed event's absentee if either of those
+ * ever changed.
+ *
+ * WAITLISTED is absent for the same rule. The operator is answered
+ * NOT_REGISTERED, because the six results carry no "waitlisted" case and
+ * the action is the same either way: that person holds no place here.
  */
-const CHECKABLE = ['CONFIRMED', 'NO_SHOW'] as const;
+const CHECKABLE = ['CONFIRMED'] as const;
+
+/**
+ * Registration statuses a correction may rewrite. Everything else is
+ * refused rather than overwritten:
+ *
+ * - CANCELLED and REMOVED would be resurrected as CHECKED_IN, making a
+ *   withdrawn student certificate-eligible, or would collide with the
+ *   student's second open row on
+ *   event_registration_one_open_per_user and surface as a bare 409.
+ * - WAITLISTED would become CHECKED_IN without incrementing
+ *   Event.confirmedCount, diverging the counter the
+ *   `capacity >= confirmed_count` CHECK guards.
+ */
+const CORRECTABLE = ['CONFIRMED', 'CHECKED_IN', 'ATTENDED', 'NO_SHOW'] as const;
+
+/** Why each refused status is refused, in the officer's own terms. */
+const NOT_CORRECTABLE: Record<string, string> = {
+  CANCELLED: 'That student cancelled their registration, so there is no attendance to correct.',
+  REMOVED: 'That student was removed from the event, so there is no attendance to correct.',
+  WAITLISTED: 'That student was on the waiting list and never held a place at the event.',
+};
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
 
@@ -62,6 +90,14 @@ const EVENT_FOR_CHECK_IN = {
 
 type CheckInEvent = Prisma.EventGetPayload<{ select: typeof EVENT_FOR_CHECK_IN }>;
 
+/**
+ * Who is being checked in, unresolved. A scan carries the id the signed
+ * token committed to; manual check-in carries the address the operator
+ * typed. It stays unresolved until checkInTx has passed the event gate, so
+ * that no refusal before that point can vary on whether the subject exists.
+ */
+type Subject = { userId: string } | { email: string };
+
 /** What a successful scan records beyond the registration it is for. */
 interface Recording {
   method: AttendanceMethod;
@@ -78,6 +114,7 @@ export class AttendanceService {
     private readonly host: TransactionHost,
     private readonly audit: AuditService,
     private readonly lifecycle: EventLifecycleService,
+    private readonly certificates: CertificatesService,
     config: ConfigService<Env, true>,
   ) {
     this.secret = config.get('QR_SIGNING_SECRET', { infer: true });
@@ -103,7 +140,7 @@ export class AttendanceService {
     // image printed before a rotation still verifies and still fails.
     if (!pass || pass.tokenVersion !== verified.payload.tokenVersion) return { result: 'INVALID_PASS' };
 
-    return this.checkIn(actor, eventId, verified.payload.userId, {
+    return this.checkIn(actor, eventId, { userId: verified.payload.userId }, {
       method: 'QR_SCAN',
       deviceHint: body.deviceHint,
     });
@@ -116,13 +153,15 @@ export class AttendanceService {
    * a reason that is required and audited.
    */
   async manual(actor: Actor, eventId: string, body: ManualCheckInBody): Promise<CheckInResult> {
-    const user = await this.host.tx.user.findUnique({ where: { email: body.email }, select: { id: true } });
-    // An address with no account is answered exactly like an address with an
-    // account and no registration. The check-in screen is not an oracle for
-    // who has signed up for Majlis.
-    if (!user) return { result: 'NOT_REGISTERED' };
-
-    return this.checkIn(actor, eventId, user.id, { method: 'MANUAL', manualReason: body.reason });
+    // The address is resolved inside checkInTx, after the event gate, never
+    // here. Resolving it first made this route an oracle for who holds a
+    // Majlis account: an unknown address answered NOT_REGISTERED while a
+    // known one reached the window check and answered EVENT_NOT_OPEN, which
+    // is the state every event is in for all but a few hours of its life.
+    return this.checkIn(actor, eventId, { email: body.email }, {
+      method: 'MANUAL',
+      manualReason: body.reason,
+    });
   }
 
   /**
@@ -137,13 +176,13 @@ export class AttendanceService {
   private async checkIn(
     actor: Actor,
     eventId: string,
-    userId: string,
+    subject: Subject,
     recording: Recording,
   ): Promise<CheckInResult> {
     await this.lifecycle.advance(eventId);
 
     try {
-      return await this.host.run(() => this.checkInTx(actor, eventId, userId, recording));
+      return await this.host.run(() => this.checkInTx(actor, eventId, subject, recording));
     } catch (e) {
       // attendance_record_registration_id_key. Two operators scanning the
       // same person at the same instant is an ordinary event in a queue, not
@@ -154,7 +193,7 @@ export class AttendanceService {
         e.code === 'P2002' &&
         violatedConstraintName(e.meta).includes('attendance_record_registration_id')
       ) {
-        const already = await this.alreadyCheckedIn(eventId, userId);
+        const already = await this.alreadyCheckedIn(eventId, subject);
         if (already) return already;
       }
       throw e;
@@ -164,7 +203,7 @@ export class AttendanceService {
   private async checkInTx(
     actor: Actor,
     eventId: string,
-    userId: string,
+    subject: Subject,
     recording: Recording,
   ): Promise<CheckInResult> {
     const event = await this.host.tx.event.findUnique({
@@ -177,17 +216,29 @@ export class AttendanceService {
     if (event.status !== 'ONGOING' || now < event.checkInOpensAt || now > event.checkInClosesAt) {
       return { result: 'EVENT_NOT_OPEN', eventStatus: event.status };
     }
+    // A suspended club freezes the event for everybody, so this answer does
+    // not vary with who was presented and is safe to give before the lookup.
+    if (event.club.status !== 'ACTIVE') return { result: 'INVALID_PASS' };
 
     const user = await this.host.tx.user.findUnique({
-      where: { id: userId },
-      select: { status: true, fullName: true, email: true },
+      where: 'userId' in subject ? { id: subject.userId } : { email: subject.email },
+      select: { id: true, status: true, fullName: true, email: true },
     });
-    // A suspended holder and a suspended club both answer INVALID_PASS, and
-    // deliberately not a message that would confirm the person exists or
-    // name them to whoever is holding the scanner.
-    if (!user || user.status !== 'ACTIVE' || event.club.status !== 'ACTIVE') {
-      return { result: 'INVALID_PASS' };
-    }
+    // Every refusal from here down is the SAME answer whether the subject
+    // has no account, a suspended one, or an active one with no place at
+    // this event. Splitting them makes the screen an oracle for who holds a
+    // Majlis account, and manual check-in takes an arbitrary address from
+    // any club Operations officer, so the set probed need have nothing to do
+    // with the event they hold a role in.
+    //
+    // Which answer differs by route, and only because the operator sees it:
+    // a scan is a pass that did not work, a typed address is a person with
+    // no place here. Neither varies on account existence.
+    const missing: CheckInResult =
+      recording.method === 'MANUAL' ? { result: 'NOT_REGISTERED' } : { result: 'INVALID_PASS' };
+    if (!user || user.status !== 'ACTIVE') return missing;
+
+    const userId = user.id;
 
     // One query rather than a filtered lookup and then a second one on the
     // miss: only CANCELLED is excluded from the partial unique index, so a
@@ -251,10 +302,17 @@ export class AttendanceService {
     };
   }
 
-  /** The answer to a scan that lost the race for the unique index. */
-  private async alreadyCheckedIn(eventId: string, userId: string): Promise<CheckInResult | null> {
+  /**
+   * The answer to a scan that lost the race for the unique index. Resolving
+   * the subject here discloses nothing: a P2002 on that index is proof the
+   * row already exists.
+   */
+  private async alreadyCheckedIn(eventId: string, subject: Subject): Promise<CheckInResult | null> {
     const record = await this.host.tx.attendanceRecord.findFirst({
-      where: { eventId, userId },
+      where: {
+        eventId,
+        ...('userId' in subject ? { userId: subject.userId } : { user: { email: subject.email } }),
+      },
       include: WITH_USER,
     });
     if (!record) return null;
@@ -333,6 +391,13 @@ export class AttendanceService {
       });
 
       const override = this.assertCorrectable(actor, event, body);
+
+      if (!(CORRECTABLE as readonly string[]).includes(registration.status)) {
+        throw new UnprocessableError(
+          NOT_CORRECTABLE[registration.status] ?? 'That registration has no attendance to correct.',
+        );
+      }
+
       const record = await this.host.tx.attendanceRecord.findUnique({ where: { registrationId } });
       const now = new Date();
 
@@ -367,6 +432,15 @@ export class AttendanceService {
       const status = body.present ? 'CHECKED_IN' : event.status === 'ONGOING' ? 'CONFIRMED' : 'NO_SHOW';
       await this.host.tx.eventRegistration.update({ where: { id: registrationId }, data: { status } });
 
+      // A correction that records someone as absent has to take their
+      // certificate with it, in this transaction. assertCorrectable lets an
+      // Admin correct after CERTIFIED, and without this /verify would keep
+      // answering ACTIVE, with that student's name, for a person the system
+      // now records as not having been there.
+      const certificateRevoked = body.present
+        ? false
+        : await this.certificates.revokeForRegistration(actor, registrationId, body.reason);
+
       await this.audit.record({
         action: 'attendance.corrected',
         entityType: 'EventRegistration',
@@ -379,7 +453,7 @@ export class AttendanceService {
           checkedInAt: record?.checkedInAt.toISOString() ?? null,
           ...(override ? { override } : {}),
         },
-        after: { status, present: body.present },
+        after: { status, present: body.present, ...(certificateRevoked ? { certificateRevoked } : {}) },
       });
     });
   }

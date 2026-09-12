@@ -12,10 +12,12 @@ import { CertificatesService } from './certificates.service';
  * handler inside CertificatesController would sit one line away from six
  * routes that must never be public.
  *
- * Not rate limited today — deferred to Stage 8 with the rest, decided
- * 2026-09-12. The code carries 128 bits and the route is one indexed read,
- * and what it does keep is a uniform answer with no early return, so it
- * cannot be used as an enumeration oracle.
+ * Not rate limited today, deferred to Stage 8 with the rest, decided
+ * 2026-09-12. What makes that safe is the code: 128 bits of
+ * crypto.randomBytes leaves nothing to enumerate, and the route is one
+ * indexed read. The response shape is not part of that argument. A miss
+ * answers 404 and a hit answers 200, sooner, so the two are perfectly
+ * distinguishable; the shape's job is to cap what a HIT discloses.
  */
 @Controller()
 export class VerifyController {

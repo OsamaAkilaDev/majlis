@@ -265,6 +265,62 @@ describe('POST /events/:eventId/check-in/manual', () => {
 
     expect(res.body).toEqual({ result: 'NOT_REGISTERED' });
   });
+
+  it('gives a closed event the same answer whether or not the address has an account', async () => {
+    // The test above only covers an OPEN event, which is the one state where
+    // both answers agreed anyway. The account-existence oracle lived in the
+    // closed case: the address was resolved before the window was checked,
+    // so an unknown address short-circuited to NOT_REGISTERED while a known
+    // one reached the gate and came back EVENT_NOT_OPEN. Every event is
+    // closed for all but a few hours of its life, so that was the ordinary
+    // state of this route, and any club Operations officer could probe
+    // arbitrary addresses through it.
+    const now = Date.now();
+    const { ops, event, student } = await anOngoingEvent({
+      status: 'PUBLISHED',
+      startsAt: new Date(now + 2 * DAY),
+      endsAt: new Date(now + 2 * DAY + HOUR),
+      registrationClosesAt: new Date(now + DAY),
+      checkInOpensAt: new Date(now + 2 * DAY - HOUR),
+      checkInClosesAt: new Date(now + 2 * DAY + 2 * HOUR),
+    });
+    const registered = await prisma.user.findUniqueOrThrow({ where: { id: student.userId } });
+
+    const known = await manual(ops.sessionCookie, event.id, {
+      email: registered.email,
+      reason: 'Camera failed',
+    });
+    const unknown = await manual(ops.sessionCookie, event.id, {
+      email: 'nobody-at-all@uni.ac.ae',
+      reason: 'Camera failed',
+    });
+
+    expect(known.body).toEqual(unknown.body);
+    expect(known.body.result).toBe('EVENT_NOT_OPEN');
+  });
+
+  it('does not distinguish a suspended account from one that does not exist', async () => {
+    // The same oracle one layer down: a suspended holder used to answer
+    // INVALID_PASS and an unknown address NOT_REGISTERED, which separates
+    // the two for anyone holding a scanner on an open event.
+    const { ops, event } = await anOngoingEvent();
+    const suspended = await loginAsStudent(app);
+    await mkRegistration(event.id, suspended.userId, 'CONFIRMED');
+    await prisma.user.update({ where: { id: suspended.userId }, data: { status: 'SUSPENDED' } });
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: suspended.userId } });
+
+    const known = await manual(ops.sessionCookie, event.id, {
+      email: row.email,
+      reason: 'Camera failed',
+    });
+    const unknown = await manual(ops.sessionCookie, event.id, {
+      email: 'nobody-at-all@uni.ac.ae',
+      reason: 'Camera failed',
+    });
+
+    expect(known.body).toEqual(unknown.body);
+    expect(known.body).toEqual({ result: 'NOT_REGISTERED' });
+  });
 });
 
 describe('who may scan', () => {
@@ -414,6 +470,78 @@ describe('PATCH /events/:eventId/attendance/:registrationId', () => {
     expect(audit[0]?.before).toMatchObject({ override: 'Dean requested a correction on appeal' });
   });
 
+  it('corrects a NO_SHOW back to present, which is a status it may rewrite', async () => {
+    // The allowed half of the status guard below: NO_SHOW is exactly the
+    // row an officer reaches for after the event, so refusing everything
+    // outside CONFIRMED/CHECKED_IN would break the ordinary correction.
+    const { ops, event, registration } = await aFinishedEvent(1);
+    await prisma.attendanceRecord.delete({ where: { registrationId: registration.id } });
+    await prisma.eventRegistration.update({ where: { id: registration.id }, data: { status: 'NO_SHOW' } });
+
+    const res = await correct(ops.sessionCookie, event.id, registration.id, {
+      present: true,
+      reason: 'Signed the paper sheet at the door',
+    });
+
+    expect(res.status).toBe(204);
+    const after = await prisma.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    expect(after.status).toBe('CHECKED_IN');
+    expect(await prisma.attendanceRecord.count({ where: { registrationId: registration.id } })).toBe(1);
+  });
+
+  it('refuses to correct a cancelled registration, rather than resurrecting it', async () => {
+    // Without the status guard this wrote CHECKED_IN over a withdrawal,
+    // making a student who pulled out certificate-eligible; and where the
+    // student had since registered again, it hit
+    // event_registration_one_open_per_user and told the officer nothing.
+    const { ops, event, student, registration } = await aFinishedEvent(1);
+    await prisma.attendanceRecord.delete({ where: { registrationId: registration.id } });
+    await prisma.eventRegistration.update({
+      where: { id: registration.id },
+      data: { status: 'CANCELLED' },
+    });
+
+    const res = await correct(ops.sessionCookie, event.id, registration.id, {
+      present: true,
+      reason: 'Thought they were here',
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.detail).toBe(
+      'That student cancelled their registration, so there is no attendance to correct.',
+    );
+    const after = await prisma.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    expect(after.status).toBe('CANCELLED');
+    expect(await prisma.attendanceRecord.count({ where: { userId: student.userId } })).toBe(0);
+  });
+
+  it('refuses to correct a waitlisted registration, which never held a seat', async () => {
+    // CHECKED_IN here would not increment Event.confirmedCount, diverging
+    // the counter the `capacity >= confirmed_count` CHECK guards.
+    const { ops, event, registration } = await aFinishedEvent(1);
+    await prisma.attendanceRecord.delete({ where: { registrationId: registration.id } });
+    await prisma.eventRegistration.update({
+      where: { id: registration.id },
+      data: { status: 'WAITLISTED', waitlistPosition: 1 },
+    });
+    const before = await prisma.event.findUniqueOrThrow({ where: { id: event.id } });
+
+    const res = await correct(ops.sessionCookie, event.id, registration.id, {
+      present: true,
+      reason: 'Let them in on the night',
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.detail).toBe(
+      'That student was on the waiting list and never held a place at the event.',
+    );
+    const after = await prisma.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    expect(after.status).toBe('WAITLISTED');
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).confirmedCount).toBe(
+      before.confirmedCount,
+    );
+  });
+
   it('refuses a registration that belongs to a different event', async () => {
     // A club-scoped or event-scoped permission cannot authorize a bare row
     // id: without both ids in the lookup, an officer of one event could
@@ -471,10 +599,52 @@ describe('the roster after an event completes', () => {
     );
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe('COMPLETED');
     expect(byId.get(absentReg.id)).toBe('NO_SHOW');
-    expect(byId.get(waitingReg.id)).toBe('NO_SHOW');
+    // A waitlisted student never held a seat, so they were never expected
+    // in the room and cannot have failed to turn up. Turning them into a
+    // NO_SHOW also inflated the roster's `expected` denominator, which
+    // counts NO_SHOW and excludes WAITLISTED, the moment the event
+    // completed.
+    expect(byId.get(waitingReg.id)).toBe('WAITLISTED');
     // Someone who was in the room, and someone who withdrew before it, are
     // both records of something that happened. Neither is a no-show.
     expect(byId.get(attendedReg.id)).toBe('CHECKED_IN');
     expect(byId.get(goneReg.id)).toBe('CANCELLED');
+  });
+
+  it('still counts only the seats that were held, after the hop to COMPLETED', async () => {
+    // The counter test above reads while the event is ONGOING, which is
+    // before the transition that can break this. An event whose waitlisted
+    // rows were swept into NO_SHOW reports 1 / 1 all evening and then 1 / 2
+    // the moment it completes, with nobody having arrived or left.
+    const now = Date.now();
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId, {
+      status: 'ONGOING',
+      startsAt: new Date(now - 4 * HOUR),
+      endsAt: new Date(now - 2 * HOUR),
+      registrationOpensAt: new Date(now - 30 * DAY),
+      registrationClosesAt: new Date(now - 5 * HOUR),
+      checkInOpensAt: new Date(now - 5 * HOUR),
+      checkInClosesAt: new Date(now - HOUR),
+      capacity: 1,
+      confirmedCount: 1,
+    });
+    const attended = await loginAsStudent(app);
+    const waiting = await loginAsStudent(app);
+    await mkRegistration(event.id, attended.userId, 'CHECKED_IN');
+    await mkRegistration(event.id, waiting.userId, 'WAITLISTED', { waitlistPosition: 1 });
+
+    // The roster route does not advance the event; reading the event does,
+    // which is the order EventEditor loads them in. So this is the roster
+    // as it looks after the hop.
+    await request(app.getHttpServer())
+      .get(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', lead.sessionCookie);
+    const res = await roster(lead.sessionCookie, event.id);
+
+    expect(res.status).toBe(200);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe('COMPLETED');
+    expect(res.body.expected).toBe(1);
   });
 });

@@ -50,6 +50,13 @@ const INSERT_ATTEMPTS = 3;
 /** A sweep that found more than this has a bigger problem than a slow run. */
 const ISSUE_SWEEP_LIMIT = 500;
 
+/**
+ * Long enough for a browser to follow the URL it was just handed, short
+ * enough that one leaked out of a history entry or a referrer header is
+ * already dead.
+ */
+const PDF_URL_TTL_SECONDS = 300;
+
 const EVENT_FOR_ISSUE = {
   id: true,
   title: true,
@@ -185,7 +192,7 @@ export class CertificatesService {
    * The clock gate is `endsAt` plus the correction window, not COMPLETED.
    * Issuing the moment an event completes would reduce spec 7.5's 48 hours
    * for correcting attendance to zero, and §7.6 locks attendance at
-   * CERTIFIED — so the two rules only coexist if issuance waits.
+   * CERTIFIED, so the two rules only coexist if issuance waits.
    */
   private notIssuableReason(event: IssuableEvent): string | null {
     if (!event.certificateEnabled) return 'That event does not issue certificates.';
@@ -314,35 +321,39 @@ export class CertificatesService {
     if (row.userId !== actor.id && actor.platformRole !== 'ADMIN') {
       throw new ForbiddenError('That certificate belongs to someone else.');
     }
-    if (row.pdfUrl) return { pdfUrl: row.pdfUrl };
-
-    const event = await this.host.tx.event.findUniqueOrThrow({
-      where: { id: row.eventId },
-      select: { certificateTitle: true, certificateSignatory: true },
-    });
-
-    const bytes = await renderCertificate({
-      serialNumber: row.serialNumber,
-      verificationCode: row.verificationCode,
-      holderName: row.holderNameSnapshot,
-      eventTitle: row.eventTitleSnapshot,
-      clubName: row.clubNameSnapshot,
-      clubLogoUrl: row.clubLogoSnapshotUrl,
-      issuedAt: row.issuedAt,
-      certificateTitle: event.certificateTitle ?? 'Certificate of Attendance',
-      signatory: event.certificateSignatory,
-      verifyUrl: this.verifyUrl(row.verificationCode),
-    });
 
     const path = certificatePdfPath(row.id);
-    await this.storage.putObject(path, bytes, 'application/pdf');
-    // The version query is the issue time, so a reissue's render — which
-    // writes a different row at a different path — is never confused with
-    // this one by a CDN.
-    const pdfUrl = this.storage.publicUrlFor(path, row.issuedAt.getTime());
 
-    await this.host.tx.certificate.update({ where: { id: row.id }, data: { pdfUrl } });
-    return { pdfUrl };
+    if (!row.pdfUrl) {
+      const event = await this.host.tx.event.findUniqueOrThrow({
+        where: { id: row.eventId },
+        select: { certificateTitle: true, certificateSignatory: true },
+      });
+
+      const bytes = await renderCertificate({
+        serialNumber: row.serialNumber,
+        verificationCode: row.verificationCode,
+        holderName: row.holderNameSnapshot,
+        eventTitle: row.eventTitleSnapshot,
+        clubName: row.clubNameSnapshot,
+        clubLogoUrl: row.clubLogoSnapshotUrl,
+        issuedAt: row.issuedAt,
+        certificateTitle: event.certificateTitle ?? 'Certificate of Attendance',
+        signatory: event.certificateSignatory,
+        verifyUrl: this.verifyUrl(row.verificationCode),
+      });
+
+      await this.storage.putObject(path, bytes, 'application/pdf');
+      // The column stores the object path, not a URL, and is only a marker
+      // that the render has happened: every URL this route hands out is
+      // signed and expires, so there is none worth persisting.
+      await this.host.tx.certificate.update({ where: { id: row.id }, data: { pdfUrl: path } });
+    }
+
+    // Signed, never public. The object path is a pure function of the
+    // certificate id and every holder of `registration:read` can list those
+    // ids, so a public URL would make the ownership check above decorative.
+    return { pdfUrl: await this.storage.createSignedDownloadUrl(path, PDF_URL_TTL_SECONDS) };
   }
 
   /**
@@ -367,6 +378,37 @@ export class CertificatesService {
       });
 
       return toCertificate(revoked);
+    });
+  }
+
+  /**
+   * The certificate side of an attendance correction that records someone
+   * as absent. Not a route: AttendanceService calls it inside its own
+   * transaction, so the revocation and the correction commit together or
+   * neither does.
+   *
+   * A registration with no active certificate is the ordinary case, not an
+   * error: most corrections happen long before anything is issued.
+   */
+  async revokeForRegistration(actor: Actor, registrationId: string, reason: string): Promise<boolean> {
+    return this.host.run(async () => {
+      const row = await this.host.tx.certificate.findFirst({
+        where: { registrationId, status: 'ACTIVE' },
+      });
+      if (!row) return false;
+
+      await this.revokeRow(actor, row, reason);
+      await this.audit.record({
+        action: 'certificate.revoked',
+        entityType: 'Certificate',
+        entityId: row.id,
+        outcome: 'SUCCESS',
+        reason,
+        actorUserId: actor.id,
+        before: { status: 'ACTIVE' },
+        after: { status: 'REVOKED', registrationId },
+      });
+      return true;
     });
   }
 
@@ -432,9 +474,16 @@ export class CertificatesService {
   /**
    * GET /verify/{code}. Public and unauthenticated.
    *
-   * One shape for every answer and no early return for a missing code: the
-   * route must not become an oracle that distinguishes "no such certificate"
-   * from anything else by how fast it answers or by which fields it carries.
+   * The protection here is the code's entropy, not the response shape: this
+   * DOES answer a miss with a 404, sooner than it answers a hit, so the
+   * route is distinguishable. That is acceptable because there is nothing
+   * to enumerate at 128 bits of crypto.randomBytes, not because the answers
+   * look alike.
+   *
+   * What the shape is doing instead is limiting disclosure on a HIT: the
+   * six fields of spec 7.6 and nothing else, revoked rows included, so
+   * holding a valid code buys the holder no more than the document already
+   * told them.
    */
   async verify(code: string): Promise<Verification> {
     const row = await this.host.tx.certificate.findUnique({ where: { verificationCode: code } });

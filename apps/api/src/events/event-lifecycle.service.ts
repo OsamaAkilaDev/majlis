@@ -100,13 +100,18 @@ export class EventLifecycleService {
       // makes the roster truthful after an event, and it is what gives "a
       // NO_SHOW never receives a certificate" (spec 7.6) something to
       // assert against rather than the mere absence of an attendance row.
-      // CHECKED_IN and ATTENDED are untouched; so is CANCELLED, which is a
-      // record of someone who withdrew, not of someone who failed to come.
+      //
+      // CONFIRMED only. CHECKED_IN and ATTENDED are untouched; so is
+      // CANCELLED, which records someone who withdrew rather than someone
+      // who failed to come. WAITLISTED stays WAITLISTED: that student never
+      // held a seat, so they were never expected in the room, and turning
+      // them into a NO_SHOW would inflate the roster's `expected`
+      // denominator the moment the event completed.
       const noShow =
         next === 'COMPLETED'
           ? (
               await this.host.tx.eventRegistration.updateMany({
-                where: { eventId: event.id, status: { in: ['CONFIRMED', 'WAITLISTED'] } },
+                where: { eventId: event.id, status: 'CONFIRMED' },
                 data: { status: 'NO_SHOW' },
               })
             ).count
