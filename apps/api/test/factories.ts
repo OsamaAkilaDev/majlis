@@ -144,6 +144,11 @@ export interface ActiveLead {
  * SessionGuard like any other, then gives them an ACTIVE LEAD appointment on
  * `clubId`. Exported so Tasks 6, 7 and 8 all exercise club-scoped permission
  * checks against the same fixture.
+ *
+ * Reimplements signup and cookie extraction rather than calling
+ * `loginAsStudent` from auth-helpers.ts: that module already imports `uniq`
+ * from this one, so importing it back here would make the two files a
+ * cycle. Do not "simplify" this into a loginAsStudent call.
  */
 export async function makeActiveLead(app: INestApplication, clubId: string): Promise<ActiveLead> {
   const res = await request(app.getHttpServer())

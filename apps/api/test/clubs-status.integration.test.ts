@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ClubsService } from '../src/clubs/clubs.service';
 import { API_PREFIX } from '../src/config/api-prefix';
 import { StorageService } from '../src/storage/storage.service';
 import { createTestApp } from './app';
@@ -127,11 +128,13 @@ describe('PATCH /clubs/:clubId', () => {
     expect((await patchClub(suspendedLead.sessionCookie, suspended.id, { category: 'XX' })).status).toBe(200);
   });
 
-  it('does not let the body smuggle status or slug', async () => {
-    // Catches a service that spreads the request body into Prisma's data.
-    // patchClubBodySchema has no status or slug key, so Zod strips them,
-    // but a service that reads from the raw request instead of the DTO
-    // would let a Lead archive their own club through the edit route.
+  it('the validation pipe strips keys the edit schema does not declare', async () => {
+    // This only proves patchClubBodySchema's ZodValidationPipe strips
+    // status/slug before the service ever sees the body. Real, but not a
+    // statement about the service. Catches the schema switched to
+    // passthrough mode, or one that gained a `status` or `slug` key. It
+    // would NOT catch a service that spread the (already-stripped) body into
+    // Prisma's data, see the service-level test below for that.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     await patchClub(lead.sessionCookie, club.id, { status: 'ARCHIVED', slug: 'stolen' });
@@ -139,6 +142,25 @@ describe('PATCH /clubs/:clubId', () => {
     const after = await prisma.club.findUniqueOrThrow({ where: { id: club.id } });
     expect(after.status).toBe('ACTIVE');
     expect(after.slug).toBe(club.slug);
+  });
+
+  it('ClubsService.update ignores keys outside PatchClubBody even with no validation pipe in the way', async () => {
+    // Calls the service directly, bypassing ZodValidationPipe entirely.
+    // Fails the moment `update` builds `data` by spreading `body` instead of
+    // picking each key explicitly, which is the one thing the test above
+    // cannot exercise: Zod never lets a smuggled key reach the service in
+    // the first place.
+    const club = await makeClub();
+    const admin = await loginAsAdmin(app);
+    const actor = await prisma.user.findUniqueOrThrow({ where: { id: admin.userId } });
+    const clubs = app.get(ClubsService, { strict: false });
+
+    await clubs.update(actor, club.id, { status: 'ARCHIVED', slug: 'stolen', name: 'Renamed' } as never);
+
+    const after = await prisma.club.findUniqueOrThrow({ where: { id: club.id } });
+    expect(after.status).toBe('ACTIVE');
+    expect(after.slug).toBe(club.slug);
+    expect(after.name).toBe(club.name);
   });
 
   it('refuses a logoUploaded edit with no uploaded object, leaving logoUrl unchanged', async () => {
