@@ -29,7 +29,6 @@ import { EVENT_SUMMARY_SELECT, toEventSummary } from './events.service';
 import { promoteFromWaitlist } from './waitlist';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
-type RegistrationWithUser = RegistrationRow & { user: { fullName: string; email: string } };
 
 /** Statuses that still hold a place: everything except a cancellation. */
 const OPEN = { status: { not: 'CANCELLED' } } as const;
@@ -342,11 +341,13 @@ export class RegistrationsService {
     }
   }
 
-  private async findOpen(eventId: string, userId: string): Promise<RegistrationWithUser | null> {
-    return this.host.tx.eventRegistration.findFirst({
-      where: { eventId, userId, ...OPEN },
-      include: WITH_USER,
-    });
+  /**
+   * No `include` here: Prisma issues the relation query even when the parent
+   * query matches nothing, so an `include` would cost a second round trip on
+   * the common path (a first-time registration) to fetch nobody.
+   */
+  private async findOpen(eventId: string, userId: string): Promise<RegistrationRow | null> {
+    return this.host.tx.eventRegistration.findFirst({ where: { eventId, userId, ...OPEN } });
   }
 
   /** Assigned under the event row lock, which is what keeps the queue order stable. */

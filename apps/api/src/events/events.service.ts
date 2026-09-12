@@ -355,19 +355,11 @@ export class EventsService {
   private async visibilityFilter(actor: Actor): Promise<Prisma.EventWhereInput | null> {
     if (actor.platformRole === 'ADMIN') return null;
 
-    const [appointments, assignments] = await Promise.all([
-      this.host.tx.clubTeamAppointment.findMany({
-        where: { userId: actor.id, status: 'ACTIVE' },
-        select: { clubId: true },
-      }),
-      this.host.tx.eventAssignment.findMany({ where: { userId: actor.id }, select: { eventId: true } }),
-    ]);
-
     return {
       OR: [
         { status: { not: 'DRAFT' } },
-        { clubId: { in: appointments.map((a) => a.clubId) } },
-        { id: { in: assignments.map((a) => a.eventId) } },
+        { club: { appointments: { some: { userId: actor.id, status: 'ACTIVE' } } } },
+        { assignments: { some: { userId: actor.id } } },
       ],
     };
   }

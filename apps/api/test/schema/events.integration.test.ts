@@ -209,3 +209,26 @@ describe('EventAssignment', () => {
     ).resolves.toBeDefined();
   });
 });
+
+describe('cursor-pagination indexes', () => {
+  // Every list endpoint pages with `ORDER BY id`, which a (scope, status)
+  // index cannot serve: Postgres walks the primary key instead and filters
+  // out every other scope's rows. Measured on a 92k-row event_registration
+  // table, one event's first roster page went from 16.3ms scanning 91,528
+  // rows to 0.12ms scanning 21. These two indexes look redundant next to the
+  // (scope, status) ones above them and are not. Do not drop them.
+  it.each([
+    ['event_registration', 'event_registration_event_id_id_idx', ['event_id', 'id']],
+    ['club_membership', 'club_membership_club_id_id_idx', ['club_id', 'id']],
+  ])('%s pages by id through %s', async (table, index, columns) => {
+    const rows = await prisma.$queryRaw<{ column_name: string }[]>`
+      SELECT a.attname AS column_name
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
+      WHERE c.relname = ${index}
+      ORDER BY array_position(i.indkey::int[], a.attnum)`;
+
+    expect(rows.map((r) => r.column_name), `${table} is missing ${index}`).toEqual(columns);
+  });
+});
