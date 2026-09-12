@@ -65,6 +65,24 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     },
   });
 
+  // A club nobody can self-join, so the accessibility suite always has a
+  // disabled join control to scan. Without it that scan depends on whichever
+  // policy the first club happens to carry.
+  await prisma.club.upsert({
+    where: { slug: 'chess-club' },
+    update: { membershipPolicy: 'CLOSED' },
+    create: {
+      departmentId: department.id,
+      name: 'Chess Club',
+      slug: 'chess-club',
+      description: 'Weekly rapid and blitz.',
+      category: 'Games',
+      academicYear: '2026/2027',
+      logoUrl: 'https://placehold.co/512x512/png?text=CC',
+      membershipPolicy: 'CLOSED',
+    },
+  });
+
   // Appointments have no natural unique key, so idempotency is a guarded
   // create rather than an upsert. The one-active-Lead partial index would
   // otherwise reject the second run.

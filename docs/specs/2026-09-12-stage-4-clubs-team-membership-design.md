@@ -236,7 +236,9 @@ The partial unique index `club_membership_one_open_per_user` on `(club_id, user_
 
 ### 7.2 Officer-added members
 
-`POST /clubs/{id}/members`, permission `membership:decide`. Body `{ userId }`. Creates an `ACTIVE` membership directly. This is the only route in under `INVITE_ONLY`, and it works under every other policy too.
+`POST /clubs/{id}/members`, permission `membership:decide`. Body `{ userId }`. Creates an `ACTIVE` membership directly. This is the only route in under `INVITE_ONLY`, and it works under `OPEN` and `APPROVAL_REQUIRED` too.
+
+**Corrected during Stage 4.** This route refuses under `CLOSED`. An earlier draft said it worked under every policy, which contradicts the main spec's "no new memberships" and would have made `CLOSED` and `INVITE_ONLY` behave identically, leaving one of the four policies meaningless.
 
 ### 7.3 Decisions
 

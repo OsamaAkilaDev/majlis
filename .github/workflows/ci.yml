@@ -23,6 +23,10 @@ env:
   # apps/web throws rather than silently rewriting /api/v1 to localhost in a
   # production build, so the build step needs this set.
   API_ORIGIN: http://localhost:3001
+  # No CI job reaches Supabase: the club tests stub StorageService. These
+  # exist only so the API can boot, since both keys are required.
+  SUPABASE_STORAGE_URL: https://example.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY: ci-only-not-a-real-key-0000000000
 
 jobs:
   verify:

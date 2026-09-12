@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { SESSION_COOKIE } from '../src/auth/cookies';
+import { API_PREFIX } from '../src/config/api-prefix';
 import type {
   AppointmentStatus,
   Club,
@@ -94,6 +98,13 @@ export async function mkClub(overrides: Partial<ClubSeed> = {}): Promise<Club> {
   return testDb().club.create({ data: aClub(departmentId, overrides) });
 }
 
+/**
+ * Stage 4's naming convention for the same fixture `mkClub` already
+ * provides, kept as one function rather than two implementations, so the
+ * two naming styles cannot drift apart.
+ */
+export const makeClub = mkClub;
+
 export interface AppointmentSeed {
   userId: string;
   clubId: string;
@@ -119,4 +130,81 @@ export function mkAppointment({
   return testDb().clubTeamAppointment.create({
     data: { userId, clubId, role, status, invitedById: userId },
   });
+}
+
+/**
+ * Inserts an INVITED appointment with a live invitationExpiresAt, matching
+ * what TeamService.invite would produce. Direct write rather than the real
+ * POST /clubs/:clubId/team route, which needs an authenticated Lead that
+ * Task 7's invitee-focused tests have no reason to set up.
+ */
+export function inviteOfficer(clubId: string, userId: string, role: ClubRole): Promise<ClubTeamAppointment> {
+  return testDb().clubTeamAppointment.create({
+    data: {
+      clubId,
+      userId,
+      role,
+      status: 'INVITED',
+      invitedById: userId,
+      invitationExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    },
+  });
+}
+
+export interface ActiveLead {
+  userId: string;
+  sessionCookie: string;
+  appointmentId: string;
+}
+
+/** Same shape as ActiveLead, kept as a distinct name at the call site for readability. */
+export type ActiveOfficer = ActiveLead;
+
+/**
+ * Signs up a fresh STUDENT through the real /auth/signup route, so
+ * `sessionCookie` is a genuine signed access token exercised through
+ * SessionGuard like any other.
+ *
+ * Reimplements signup and cookie extraction rather than calling
+ * `loginAsStudent` from auth-helpers.ts: that module already imports `uniq`
+ * from this one, so importing it back here would make the two files a
+ * cycle. Do not "simplify" this into a loginAsStudent call.
+ */
+async function signupForAppointment(
+  app: INestApplication,
+  emailPrefix: string,
+  fullName: string,
+): Promise<{ userId: string; sessionCookie: string }> {
+  const res = await request(app.getHttpServer())
+    .post(`${API_PREFIX}/auth/signup`)
+    .send({ email: `${uniq(emailPrefix)}@uni.ac.ae`, password: 'correct-horse-battery', fullName });
+  if (res.status !== 201) {
+    throw new Error(`signupForAppointment: signup failed with ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  const userId = (res.body as { id: string }).id;
+  const setCookie = res.headers['set-cookie'] as unknown as string[];
+  const sessionCookie = setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(';')[0]!;
+  return { userId, sessionCookie };
+}
+
+/**
+ * Gives a fresh STUDENT an ACTIVE LEAD appointment on `clubId`. Exported so
+ * Tasks 6, 7 and 8 all exercise club-scoped permission checks against the
+ * same fixture.
+ */
+export async function makeActiveLead(app: INestApplication, clubId: string): Promise<ActiveLead> {
+  const { userId, sessionCookie } = await signupForAppointment(app, 'lead', 'Test Lead');
+  const appointment = await mkAppointment({ userId, clubId, role: 'LEAD', status: 'ACTIVE' });
+  return { userId, sessionCookie, appointmentId: appointment.id };
+}
+
+/** Same as makeActiveLead, for any of the four non-Lead officer roles. */
+export async function makeActiveOfficer(
+  app: INestApplication,
+  clubId: string,
+  role: ClubRole,
+): Promise<ActiveOfficer> {
+  const { userId, sessionCookie } = await signupForAppointment(app, 'officer', 'Test Officer');
+  const appointment = await mkAppointment({ userId, clubId, role, status: 'ACTIVE' });
+  return { userId, sessionCookie, appointmentId: appointment.id };
 }

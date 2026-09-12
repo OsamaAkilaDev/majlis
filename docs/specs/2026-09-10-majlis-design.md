@@ -583,12 +583,55 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 1 | ✅ **Done** — Foundation | Monorepo, Turborepo, contracts package, Prisma schema + all migrations with every constraint, test database harness, health endpoint, transaction host, Problem Details filter, CI, seed script |
 | 2 | ✅ **Done** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md) |
 | 3 | ✅ **Done** — Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline. Designed in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) |
-| 4 | Clubs, team & membership | Departments, club CRUD + status machine, logo upload via signed URL, Lead appointment, team invitations and acceptance, the four membership policies, requests and decisions, member lists, leaving |
+| 4 | ✅ **Done** — Clubs, team & membership | Departments, club CRUD + status machine, image upload via signed URL, Lead appointment, in-app team invitations, the four membership policies, requests and decisions, member lists, leaving. Designed in [`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md) |
 | 5 | Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override |
-| 6 | QR & attendance | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections |
-| 7 | Certificates | Idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue |
-| 8 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
-| 9 | Hardening & deploy | Rate limits (all of them — none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
+| 6 | Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue |
+| 7 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
+| 8 | Hardening & deploy | Rate limits (all of them, none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
+
+### How a stage is built, revised 2026-09-12 after Stage 4
+
+Stage 4 shipped correct and took far too long. The cost was process, not code:
+twelve tasks, each with its own dispatch, its own review, and nearly always a
+fix round. Three round trips per task. The reviews found real defects, so the
+answer is fewer and later reviews, not none.
+
+**One stage is two dispatches and one review.**
+
+1. **Design.** No separate stage design document unless the stage introduces
+   architecture this spec does not already settle. Decisions go inline in the
+   plan. Stage 4's design doc was 3000 words and its only load-bearing parts
+   were four decisions.
+2. **Plan.** Three to five tasks, not twelve. A task is "the API half", not "one
+   endpoint". Name the files, the routes and the invariants; do not write out
+   every test.
+3. **Build.** One dispatch for the API half, one for the web half. Commit per
+   section inside a dispatch so work is recoverable.
+4. **Review once, at the end of the stage**, combining code and security. Fix
+   only what it finds. If it finds nothing, merge.
+
+**What still gets tested, and nothing beyond it:**
+
+- Database invariants, each proven by deliberately breaking the constraint.
+- Authorization: for each permission, one allowed role and one refused role.
+- State machines: the transitions that must be refused.
+- Anything that has already broken once.
+
+Not tested: every branch of every guard, every 404 path, every field of every
+response. Stage 4 wrote 269 integration tests and the defects that mattered
+were found by six of them.
+
+**Two lessons from Stage 4 that are cheap to keep:**
+
+- A status code proves an invariant; only a message assertion proves the code
+  path that produced it. A dead error-mapping branch survived three stages
+  because every test asserted the status and none asserted the text.
+- Verify a wire format against the live service before writing a client for
+  it, never from memory.
+
+**Renumbered 2026-09-12**, nine stages to eight: the old 6 and 7 merged, since
+attendance is what makes a certificate eligible and the two were always built
+together.
 
 **Renumbered 2026-09-11**, from twelve stages to nine. No feature was dropped — the old
 4+5, 6+7 and 10+11 are merged, because each pair is genuinely coupled (membership is

@@ -4,6 +4,8 @@ import { EXAMPLE_SESSION_SECRET, envSchema } from './env.schema';
 const valid = {
   DATABASE_URL: 'postgresql://majlis:majlis@localhost:5432/majlis_dev?schema=public',
   SESSION_SECRET: EXAMPLE_SESSION_SECRET,
+  SUPABASE_STORAGE_URL: 'https://example.supabase.co',
+  SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(40),
 };
 
 describe('envSchema', () => {
@@ -40,6 +42,8 @@ describe('envSchema', () => {
 const base = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/d',
   SESSION_SECRET: 'x'.repeat(32),
+  SUPABASE_STORAGE_URL: 'https://example.supabase.co',
+  SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(40),
 };
 
 describe('SESSION_SECRET', () => {
@@ -110,6 +114,13 @@ describe('token TTL format', () => {
 
   it('rejects a negative REFRESH_TOKEN_TTL too', () => {
     const r = envSchema.safeParse({ ...base, REFRESH_TOKEN_TTL: '-30d' });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('SUPABASE_STORAGE_URL', () => {
+  it('rejects an http Supabase URL, which would send the service key in clear', () => {
+    const r = envSchema.safeParse({ ...base, SUPABASE_STORAGE_URL: 'http://example.supabase.co' });
     expect(r.success).toBe(false);
   });
 });
