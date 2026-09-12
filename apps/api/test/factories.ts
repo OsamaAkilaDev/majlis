@@ -138,29 +138,54 @@ export interface ActiveLead {
   appointmentId: string;
 }
 
+/** Same shape as ActiveLead, kept as a distinct name at the call site for readability. */
+export type ActiveOfficer = ActiveLead;
+
 /**
  * Signs up a fresh STUDENT through the real /auth/signup route, so
  * `sessionCookie` is a genuine signed access token exercised through
- * SessionGuard like any other, then gives them an ACTIVE LEAD appointment on
- * `clubId`. Exported so Tasks 6, 7 and 8 all exercise club-scoped permission
- * checks against the same fixture.
+ * SessionGuard like any other.
  *
  * Reimplements signup and cookie extraction rather than calling
  * `loginAsStudent` from auth-helpers.ts: that module already imports `uniq`
  * from this one, so importing it back here would make the two files a
  * cycle. Do not "simplify" this into a loginAsStudent call.
  */
-export async function makeActiveLead(app: INestApplication, clubId: string): Promise<ActiveLead> {
+async function signupForAppointment(
+  app: INestApplication,
+  emailPrefix: string,
+  fullName: string,
+): Promise<{ userId: string; sessionCookie: string }> {
   const res = await request(app.getHttpServer())
     .post(`${API_PREFIX}/auth/signup`)
-    .send({ email: `${uniq('lead')}@uni.ac.ae`, password: 'correct-horse-battery', fullName: 'Test Lead' });
+    .send({ email: `${uniq(emailPrefix)}@uni.ac.ae`, password: 'correct-horse-battery', fullName });
   if (res.status !== 201) {
-    throw new Error(`makeActiveLead: signup failed with ${res.status}: ${JSON.stringify(res.body)}`);
+    throw new Error(`signupForAppointment: signup failed with ${res.status}: ${JSON.stringify(res.body)}`);
   }
   const userId = (res.body as { id: string }).id;
   const setCookie = res.headers['set-cookie'] as unknown as string[];
   const sessionCookie = setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(';')[0]!;
+  return { userId, sessionCookie };
+}
 
+/**
+ * Gives a fresh STUDENT an ACTIVE LEAD appointment on `clubId`. Exported so
+ * Tasks 6, 7 and 8 all exercise club-scoped permission checks against the
+ * same fixture.
+ */
+export async function makeActiveLead(app: INestApplication, clubId: string): Promise<ActiveLead> {
+  const { userId, sessionCookie } = await signupForAppointment(app, 'lead', 'Test Lead');
   const appointment = await mkAppointment({ userId, clubId, role: 'LEAD', status: 'ACTIVE' });
+  return { userId, sessionCookie, appointmentId: appointment.id };
+}
+
+/** Same as makeActiveLead, for any of the four non-Lead officer roles. */
+export async function makeActiveOfficer(
+  app: INestApplication,
+  clubId: string,
+  role: ClubRole,
+): Promise<ActiveOfficer> {
+  const { userId, sessionCookie } = await signupForAppointment(app, 'officer', 'Test Officer');
+  const appointment = await mkAppointment({ userId, clubId, role, status: 'ACTIVE' });
   return { userId, sessionCookie, appointmentId: appointment.id };
 }
