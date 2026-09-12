@@ -24,6 +24,7 @@ import { createDepartment, listDepartments, removeDepartment, updateDepartment }
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { ProblemError } from '@/lib/api';
+import { useAsyncError } from '@/lib/use-async-error';
 
 function DepartmentForm({
   department,
@@ -109,8 +110,10 @@ export function DepartmentsManager({ initial }: { initial: DepartmentPage | null
     (reset ? show : append)(page);
   }
 
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!initial) load(true);
+    if (!initial) load(true).catch(fail);
   }, [initial]);
 
   function onSaved(saved: Department) {

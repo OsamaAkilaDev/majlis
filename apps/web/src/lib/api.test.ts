@@ -99,6 +99,28 @@ describe('apiFetch', () => {
     expect(err.errors).toEqual([]);
   });
 
+  it('sends a session that cannot be refreshed to /login', async () => {
+    // The skeleton-forever defect the Stage 5 handoff names first. A promise
+    // rejected inside a load() effect reaches no error boundary, so a revoked
+    // refresh token has to end the session here or the screen never recovers.
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    mockFetch([() => problem(401), () => json({}), () => problem(401)]);
+    await expect(apiFetch('/me/certificates')).rejects.toBeInstanceOf(ProblemError);
+    expect(assign).toHaveBeenCalledWith('/login');
+  });
+
+  it('leaves a wrong password on the sign-in form rather than reloading it', async () => {
+    // Catches a redirect that fires for every 401. /auth/login answers 401 to
+    // a wrong password, and navigating away from the form throws the message
+    // the user needed to read.
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    mockFetch([() => problem(401, { detail: 'Email or password is incorrect.' })]);
+    await expect(apiFetch('/auth/login', { method: 'POST' })).rejects.toBeInstanceOf(ProblemError);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it('returns undefined for a 204', async () => {
     // Catches res.json() on an empty body, which logout returns.
     mockFetch([() => new Response(null, { status: 204 })]);

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
 import { getClubBySlug } from '@/lib/clubs';
 import { JoinControl } from './JoinControl';
+import { useAsyncError } from '@/lib/use-async-error';
 
 export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: Club | null }) {
   const [club, setClub] = useState<Club | null>(initialClub);
@@ -24,8 +25,10 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
 
   // Only when the server could not render it: a 404 or a dead API leaves the
   // client to fetch, which is also the path that reports "no such club".
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!initialClub) void load();
+    if (!initialClub) load().catch(fail);
   }, [initialClub, load]);
 
   if (missing) return <EmptyState title="No such club" />;

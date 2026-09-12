@@ -10,6 +10,7 @@ import { eventTimes, formatMoment } from '@/lib/event-time';
 import { getEvent } from '@/lib/events';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import { RegisterControl } from './RegisterControl';
+import { useAsyncError } from '@/lib/use-async-error';
 
 /** A <dl> may only hold dt/dd groups, so a Fact is one flat div child of it,
  *  never wrapped in a second layout div. */
@@ -38,8 +39,10 @@ export function EventDetail({ eventId, initialEvent }: { eventId: string; initia
 
   // Only when the server could not render it: a 404 or a dead API leaves the
   // client to fetch, which is also the path that reports "no such event".
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!initialEvent) void load();
+    if (!initialEvent) load().catch(fail);
   }, [initialEvent, load]);
 
   if (missing) return <EmptyState title="No such event" />;

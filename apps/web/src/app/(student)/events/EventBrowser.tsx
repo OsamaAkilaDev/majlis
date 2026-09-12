@@ -15,6 +15,7 @@ import { useViewerZone } from '@/lib/use-viewer-zone';
 import { listEvents } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
+import { useAsyncError } from '@/lib/use-async-error';
 
 const ANY_CLUB = 'any';
 
@@ -72,9 +73,13 @@ export function EventBrowser({
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialEvents !== null);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
     if (initialClubs) return;
-    void listClubs({ limit: 100, status: 'ACTIVE' }).then((page) => setClubs(page.items));
+    listClubs({ limit: 100, status: 'ACTIVE' })
+      .then((page) => setClubs(page.items))
+      .catch(fail);
   }, [initialClubs]);
 
   // Refetches from the first page whenever a filter changes, so a stale cursor
@@ -86,14 +91,16 @@ export function EventBrowser({
     }
     let cancelled = false;
     show(null);
-    void listEvents({
+    listEvents({
       limit: PAGE,
       upcoming: true,
       ...(clubId === ANY_CLUB ? {} : { clubId }),
       ...(q.trim() ? { q: q.trim() } : {}),
-    }).then((page) => {
-      if (!cancelled) show(page);
-    });
+    })
+      .then((page) => {
+        if (!cancelled) show(page);
+      })
+      .catch(fail);
     return () => {
       cancelled = true;
     };

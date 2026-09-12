@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ProblemError } from '@/lib/api';
 import { createClub, listDepartments } from '@/lib/clubs';
+import { useAsyncError } from '@/lib/use-async-error';
 
 const POLICIES: MembershipPolicy[] = ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY', 'CLOSED'];
 
@@ -29,9 +30,13 @@ export function ClubCreateForm({ initialDepartments }: { initialDepartments: Dep
   const [error, setError] = useState<ProblemError | null>(null);
   const [pending, setPending] = useState(false);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
     if (initialDepartments) return;
-    listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
+    listDepartments({ limit: 100 })
+      .then((page) => setDepartments(page.items))
+      .catch(fail);
   }, [initialDepartments]);
 
   async function submit(e: React.FormEvent) {

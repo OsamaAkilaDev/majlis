@@ -41,6 +41,7 @@ import {
   updateEvent,
 } from '@/lib/events';
 import { EventFields, fromEvent, toPatchBody, type EventFormValues } from '../EventFields';
+import { useAsyncError } from '@/lib/use-async-error';
 
 const RESPONSIBILITIES: EventResponsibility[] = ['EVENT_LEAD', 'OPERATIONS', 'MARKETING'];
 
@@ -195,8 +196,10 @@ export function EventEditor({
     appendRoster(await listRoster(eventId, { limit: PAGE, cursor: rosterCursor }));
   }, [eventId, rosterCursor, appendRoster]);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!initialEvent) void load();
+    if (!initialEvent) load().catch(fail);
   }, [initialEvent, load]);
 
   const set = useCallback(

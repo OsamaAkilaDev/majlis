@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations } from '@/lib/clubs';
 import { enumLabel } from '@/lib/enum-label';
 import { PAGE } from '@/lib/page-size';
+import { useAsyncError } from '@/lib/use-async-error';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -39,8 +40,10 @@ export function MeManager({
     setInvitations(i.items);
   }, []);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!seeded) void load();
+    if (!seeded) load().catch(fail);
   }, [seeded, load]);
 
   async function act(id: string, fn: () => Promise<unknown>) {
