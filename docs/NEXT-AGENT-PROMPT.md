@@ -1,61 +1,44 @@
 # Prompt for the next session
 
-Copy everything below the line into a fresh Claude Code session at `C:\Users\Osama\Desktop\majlis-v2`.
+Paste everything below into a fresh Claude Code session at `C:\Users\Osama\Desktop\majlis-v2`.
 
 ---
 
-You're picking up Majlis, a university club and event management system, at
-C:\Users\Osama\Desktop\majlis-v2. Stages 1 (foundation) and 2 (auth & users) are
-complete and merged to master. 125 unit tests, 174 integration tests against real
-PostgreSQL 18, all green.
+Build Stage 5 of Majlis: events and registration.
 
-Read `handoff.md` first, then `docs/specs/2026-09-10-majlis-design.md` — §9 is the
-frontend brief and §13 has the stage plan. CLAUDE.md is already in your context;
-follow it, especially the toolchain traps. Do not read `../majlis` — that's an
-abandoned build and its CLAUDE.md is confidently wrong about this stack.
+Read `handoff.md` first, then `docs/specs/2026-09-10-majlis-design.md` §13 "How a stage is built", §7.3 and §7.4. Do not read `../majlis`, which is an abandoned build whose `CLAUDE.md` is actively wrong about this stack.
 
-**Next is Stage 3: design system & shells.** The plan is now 9 stages, not 12 — the
-old 4+5, 6+7 and 10+11 were merged. No feature was dropped.
+**Work this way, and do not add ceremony to it.**
 
-Stage 3 builds `apps/web` from nothing: Next.js 16 App Router, the visual identity
-(palette, type ramp, tokens, dark mode), the shadcn component layer, and the three
-shells — student mobile-first with bottom tabs, club officer console, admin desktop
-dashboard. Plus role-based routing off `GET /api/v1/auth/me`, the PWA manifest, and
-the accessibility baseline. The spec deliberately left the visual identity undecided
-so it could be judged against real screens — so present it to me before building out.
+1. Brainstorm with me only on what the spec genuinely leaves open. Ask your questions in one message, not one at a time.
+2. Write a plan of three to five tasks. A task is "the API half", not "one endpoint". Name the files, the routes and the invariants. Do not write out every test in the plan.
+3. Build it in two dispatches, API then web, committing per section.
+4. Review once, at the end, for exploitable defects and spec violations only. Fix what it finds. If it finds nothing, we merge.
 
-Things that matter for this stage specifically:
+No per-task reviews. No separate stage design document unless you hit architecture the main spec does not settle, and if you do, keep it under a page. No fix round unless the review found something real.
 
-- Auth is httpOnly cookies; the browser never sees a token. A Next.js rewrite maps
-  `/api/v1/*` to the API so it's same-origin and there's no CORS at all. On a 401,
-  refresh once and retry — no client-side dedupe needed, the token doesn't rotate.
-- `/` redirects by role. Never render a page and then show an "authentication
-  required" panel inside it.
-- WCAG 2.2 AA is the target and must be verified, not asserted. A palette that fails
-  contrast gets rejected at design time, not patched later.
-- The student shell must read as an application, not a website — safe-area insets,
-  100dvh handling, sheet modals, 44px tap targets, no layout shift on navigation.
+**What Stage 5 owes, beyond the spec's own list:**
 
-Use the frontend skills before building screens, not as a review afterwards:
-`impeccable:impeccable`, `taste-skill:brandkit` for the identity,
-`taste-skill:imagegen-frontend-mobile` for the student shell, and
-`ui-ux-pro-max:ui-ux-pro-max` for planning and shadcn component search.
+- **Field-level edit permissions.** Spec §6.1 gives Marketing "public fields" and CTO "technical fields" on clubs and events. Stage 4 deferred this because events need the same mechanism. Build it once here and apply it to clubs in the same change.
+- **Event poster upload** reuses Stage 4's pipeline. Add `event-poster` to `IMAGE_KINDS` in `packages/contracts/src/clubs/index.ts` and `PATHS` in `apps/api/src/storage/image-kinds.ts`. The path convention `events/<eventId>/poster.webp` is already agreed.
 
-**On pace — this matters.** Stage 2 took about six hours and that was too long. The
-rigor caught six real defects, but cost four agent dispatches per task across twelve
-tasks, many of them fix rounds over comment wording. For this stage: one review per
-task, not review-plus-fix-plus-re-review. Batch small same-shape work into one
-dispatch. Keep code comments to a line or two. Keep commit messages to a subject plus
-two or three lines. Keep your replies to me short — lead with the answer.
+**What gets tested, and nothing beyond it:**
 
-What doesn't get traded away: tests that discriminate, invariants in the database, and
-a security review before anything touching auth, tokens or permissions lands. The
-speed comes out of ceremony, not out of correctness.
+- The capacity guarantee, under real concurrency, proven by removing the row lock and watching it break.
+- Waitlist ordering and transactional promotion.
+- The event lifecycle transitions that must be refused.
+- One allowed role and one refused role per new permission.
+- The registration window boundaries.
 
-The recurring defect across both stages has been tests that pass against badly broken
-code — Stage 2's review caught one on nine of twelve tasks. Before trusting a test,
-name the broken implementation it would catch.
+Not every guard branch, not every 404, not every field of every response. Stage 4 wrote 269 integration tests and six of them found everything that mattered.
 
-Brainstorm the visual direction with me before planning, plan before building, and
-execute with subagent-driven development. Tell me plainly when something doesn't go as
-planned, and ask before removing a constraint, a test, or a transaction boundary.
+**Two rules that are not negotiable, because each has already cost this project real bugs:**
+
+- When you write a test, delete the code it guards and confirm it goes red. If you cannot make it fail, it is not a test.
+- Assert the response detail message, not only the status code, wherever a specific error mapping is the thing under test. A dead error-mapping branch survived three stages because every test asserted the status and none asserted the text.
+
+**Keep:** database invariants as partial unique indexes and CHECK constraints with hand-written SQL, `TransactionHost` for every write, audit rows in the same transaction, `DomainError` subclasses, cursor pagination everywhere, and a security review before the stage merges.
+
+**Pace:** Stage 4 was correct and took far too long, entirely on process. Lead your replies to me with the answer. Keep code comments to a line or two. No em dashes anywhere, and no explanatory UI copy: layout guides the user, not prose.
+
+Stage 4 is on branch `stage-4-clubs-team-membership` and may still be unmerged. Check `git log` and `git status` before you start, and merge it to `master` first if it is green.
