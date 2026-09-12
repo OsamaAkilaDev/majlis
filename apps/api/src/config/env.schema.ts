@@ -54,6 +54,10 @@ export const envSchema = z
     SESSION_SECRET: z.string().min(32, 'must be at least 32 characters'),
     ACCESS_TOKEN_TTL: jwtDuration.default('15m'),
     REFRESH_TOKEN_TTL: jwtDuration.default('30d'),
+    SUPABASE_STORAGE_URL: z
+      .string()
+      .refine((v) => v.startsWith('https://'), { message: 'must be an https URL' }),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20, 'must be a real service role key'),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],

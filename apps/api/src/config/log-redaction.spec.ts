@@ -1,7 +1,7 @@
 import pino from 'pino';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { LOG_REDACT_PATHS } from './log-redaction';
+import { LOG_REDACT_PATHS, redactedReqSerializer } from './log-redaction';
 
 describe('LOG_REDACT_PATHS', () => {
   it('covers every path a secret is known to travel', () => {
@@ -73,5 +73,38 @@ describe('LOG_REDACT_PATHS', () => {
     const output = lines.join('');
     expect(output).toContain('Unhandled exception');
     expect(output).not.toContain('LEAKED');
+  });
+});
+
+describe('redactedReqSerializer', () => {
+  it('drops the query string from the logged URL', () => {
+    // Catches pino's default req serializer, which logs req.url verbatim.
+    // Path-based redaction cannot strip a substring of a string value, so a
+    // secret in a query parameter is redacted out of req.query and still
+    // sits in req.url in the same log line.
+    const out = redactedReqSerializer({
+      id: 'r1',
+      method: 'GET',
+      url: '/api/v1/clubs?token=super-secret&limit=20',
+      headers: {},
+      query: {},
+      params: {},
+    } as never);
+
+    expect(out.url).toBe('/api/v1/clubs');
+    expect(JSON.stringify(out)).not.toContain('super-secret');
+  });
+
+  it('leaves a URL with no query string untouched', () => {
+    const out = redactedReqSerializer({
+      id: 'r1',
+      method: 'GET',
+      url: '/api/v1/health',
+      headers: {},
+      query: {},
+      params: {},
+    } as never);
+
+    expect(out.url).toBe('/api/v1/health');
   });
 });

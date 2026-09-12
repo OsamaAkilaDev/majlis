@@ -7,9 +7,10 @@ import { RequestContextModule } from './common/request-context.module';
 import { resolveRequestId } from './common/request-id';
 import { ConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
-import { LOG_REDACT_PATHS } from './config/log-redaction';
+import { LOG_REDACT_PATHS, redactedReqSerializer } from './config/log-redaction';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module';
           // Nothing secret ever reaches a log line. The paths live in their
           // own module so they can be tested against real pino output.
           redact: { paths: [...LOG_REDACT_PATHS], remove: true },
+          serializers: { req: redactedReqSerializer },
           transport:
             config.get('NODE_ENV', { infer: true }) === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true } }
@@ -51,6 +53,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     HealthModule,
+    StorageModule,
   ],
 })
 export class AppModule {}

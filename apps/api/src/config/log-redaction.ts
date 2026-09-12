@@ -1,3 +1,5 @@
+import { stdSerializers, type SerializedRequest } from 'pino';
+
 /**
  * Paths stripped from every log line. A missing entry here means a secret in
  * the logs, so this is a security control rather than formatting.
@@ -15,14 +17,12 @@
  * path for pino's redactor to ever find and strip. Do not add one back
  * expecting it to do anything.
  *
- * Known remaining exposure: `req.url` (and `req.raw.url`) still carries the
- * full raw query string verbatim, unredacted, because pino-http serializes
- * it as one opaque string rather than structured fields. A token passed as
- * `?token=...` is redacted out of `req.query.token` here but still appears
- * inside `req.url`. There is no path-based way to redact a substring of a
- * string value; avoiding this requires either not logging `req.url` at all,
- * or accepting the exposure. Stage 3 introduces invitation tokens carried in
- * query strings — revisit this before then.
+ * `req.url` (and `req.raw.url`) carries the full raw query string verbatim,
+ * unredacted, because pino-http serializes it as one opaque string rather
+ * than structured fields — no path-based redaction can strip a substring out
+ * of it. That gap is closed below: `redactedReqSerializer` truncates `url` at
+ * the `?` before pino ever sees it, which matters now that Stage 4's
+ * invitation tokens travel in a query string.
  */
 export const LOG_REDACT_PATHS = [
   'req.headers.cookie',
@@ -37,3 +37,15 @@ export const LOG_REDACT_PATHS = [
   '*.headers.cookie',
   '*.headers.authorization',
 ] as const;
+
+/**
+ * pino serializes req.url as one opaque string, so no redaction path can
+ * strip a secret out of its query. The structured req.query is redacted by
+ * the paths above; this drops the duplicate raw copy, keeping the path (the
+ * part that carries the observability value) and discarding the query.
+ */
+export function redactedReqSerializer(req: Parameters<typeof stdSerializers.req>[0]): SerializedRequest {
+  const serialized = stdSerializers.req(req);
+  const cut = serialized.url.indexOf('?');
+  return cut === -1 ? serialized : { ...serialized, url: serialized.url.slice(0, cut) };
+}
