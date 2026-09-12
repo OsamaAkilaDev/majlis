@@ -80,7 +80,12 @@ describe('POST /clubs/:clubId/membership-requests, by policy', () => {
     const club = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
     const student = await loginAsStudent(app);
     expect((await join(student.sessionCookie, club.id)).status).toBe(201);
-    expect((await join(student.sessionCookie, club.id)).status).toBe(409);
+    const second = await join(student.sessionCookie, club.id);
+    expect(second.status).toBe(409);
+    // The global Problem Details filter maps any escaping P2002 to a generic
+    // 409 too, so the status code alone would pass even with mapWriteError
+    // deleted. The specific detail message is what proves mapWriteError ran.
+    expect(second.body.detail).toBe('You already have an open membership in that club.');
     // The 409 must not have left a second row behind.
     expect(
       await prisma.clubMembership.count({ where: { clubId: club.id, userId: student.userId } }),
@@ -119,8 +124,11 @@ describe('POST /clubs/:clubId/membership-requests, by policy', () => {
       join(student.sessionCookie, club.id),
     ]);
 
-    const codes = results.map((r) => (r.status === 'fulfilled' ? r.value.status : 500)).sort();
+    const responses = results.map((r) => (r.status === 'fulfilled' ? r.value : undefined));
+    const codes = responses.map((r) => r?.status ?? 500).sort();
     expect(codes).toEqual([201, 409]);
+    const loser = responses.find((r) => r?.status === 409);
+    expect(loser?.body.detail).toBe('You already have an open membership in that club.');
     expect(
       await prisma.clubMembership.count({
         where: { clubId: club.id, userId: student.userId, status: { in: ['PENDING', 'ACTIVE'] } },
@@ -187,6 +195,29 @@ describe('PATCH /clubs/:clubId/membership-requests/:requestId', () => {
       (await prisma.clubMembership.findUniqueOrThrow({ where: { id: req.body.id } })).status,
     ).toBe('ACTIVE');
   });
+
+  it('still lets a SUSPENDED club decide a request already in flight', async () => {
+    const club = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
+    const lead = await makeActiveLead(app, club.id);
+    const applicant = await loginAsStudent(app);
+    const req = await join(applicant.sessionCookie, club.id);
+    await prisma.club.update({ where: { id: club.id }, data: { status: 'SUSPENDED' } });
+
+    expect((await decide(lead.sessionCookie, club.id, req.body.id, 'ACTIVE')).status).toBe(200);
+  });
+
+  it('refuses deciding in an archived club, leaving the request PENDING', async () => {
+    const club = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
+    const lead = await makeActiveLead(app, club.id);
+    const applicant = await loginAsStudent(app);
+    const req = await join(applicant.sessionCookie, club.id);
+    await prisma.club.update({ where: { id: club.id }, data: { status: 'ARCHIVED' } });
+
+    expect((await decide(lead.sessionCookie, club.id, req.body.id, 'ACTIVE')).status).toBe(422);
+    expect(
+      (await prisma.clubMembership.findUniqueOrThrow({ where: { id: req.body.id } })).status,
+    ).toBe('PENDING');
+  });
 });
 
 describe('POST /clubs/:clubId/members', () => {
@@ -220,6 +251,22 @@ describe('POST /clubs/:clubId/members', () => {
     ).toBe(403);
     // The 403 must not have created a membership behind it.
     expect(await prisma.clubMembership.count({ where: { clubId: club.id, userId: outsider.userId } })).toBe(0);
+  });
+
+  it('refuses under CLOSED: CLOSED is the one policy nobody joins by any route', async () => {
+    // Ruling: if addMember worked under CLOSED, CLOSED and INVITE_ONLY would
+    // be behaviourally identical and CLOSED would not be a distinct policy.
+    const club = await makeClub({ membershipPolicy: 'CLOSED' });
+    const lead = await makeActiveLead(app, club.id);
+    const student = await loginAsStudent(app);
+
+    const res = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/clubs/${club.id}/members`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ userId: student.userId });
+
+    expect(res.status).toBe(422);
+    expect(await prisma.clubMembership.count({ where: { clubId: club.id, userId: student.userId } })).toBe(0);
   });
 });
 
@@ -358,6 +405,7 @@ describe('leave and remove refuse a row that is not open', () => {
 describe('GET /clubs/:clubId/members', () => {
   it('filters by status and shows club roles', async () => {
     const club = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
+    const otherClub = await makeClub({ membershipPolicy: 'OPEN' });
     const lead = await makeActiveLead(app, club.id);
     const pending = await loginAsStudent(app);
     await join(pending.sessionCookie, club.id);
@@ -368,6 +416,10 @@ describe('GET /clubs/:clubId/members', () => {
       .post(`${API_PREFIX}/clubs/${club.id}/members`)
       .set('Cookie', lead.sessionCookie)
       .send({ userId: activeMember.userId });
+    // The same user holds a role here and a different role in another club.
+    // Only the first must come back, proving the batching does not leak.
+    await mkAppointment({ userId: activeMember.userId, clubId: club.id, role: 'MARKETING', status: 'ACTIVE' });
+    await mkAppointment({ userId: activeMember.userId, clubId: otherClub.id, role: 'CTO', status: 'ACTIVE' });
 
     const res = await request(app.getHttpServer())
       .get(`${API_PREFIX}/clubs/${club.id}/members?status=PENDING`)
@@ -375,6 +427,13 @@ describe('GET /clubs/:clubId/members', () => {
 
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].userId).toBe(pending.userId);
+
+    const activeRes = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/clubs/${club.id}/members?status=ACTIVE`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(activeRes.body.items).toHaveLength(1);
+    expect(activeRes.body.items[0].clubRoles).toEqual(['MARKETING']);
   });
 });
 
@@ -399,5 +458,26 @@ describe('GET /me/clubs', () => {
     // two rows the same student holds.
     expect(byClub.get(club.id)!.clubRoles).toEqual([]);
     expect(byClub.get(clubWithRole.id)!.clubRoles).toEqual(['MARKETING']);
+  });
+
+  it('lists a left-and-rejoined club exactly once, as the new ACTIVE row', async () => {
+    // "lets someone who left request again" proves two rows exist for this
+    // club afterward (one LEFT, one live). Unfiltered, this club would show
+    // up twice: once as a dead LEFT entry with nothing sensible to do.
+    const club = await makeClub({ membershipPolicy: 'OPEN' });
+    const student = await loginAsStudent(app);
+    await join(student.sessionCookie, club.id);
+    await request(app.getHttpServer())
+      .delete(`${API_PREFIX}/clubs/${club.id}/membership`)
+      .set('Cookie', student.sessionCookie);
+    await join(student.sessionCookie, club.id);
+
+    const res = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/me/clubs`)
+      .set('Cookie', student.sessionCookie);
+
+    const rowsForClub = res.body.items.filter((i: { clubId: string }) => i.clubId === club.id);
+    expect(rowsForClub).toHaveLength(1);
+    expect(rowsForClub[0].status).toBe('ACTIVE');
   });
 });

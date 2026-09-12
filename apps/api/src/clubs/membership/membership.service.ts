@@ -47,17 +47,41 @@ function groupRoles(rows: AppointmentRoleRow[], key: (r: AppointmentRoleRow) => 
 }
 
 /**
- * P2002 here is club_membership_one_open_per_user, hand-written SQL rather than a
- * Prisma `@@unique`, so meta.target is the raw index name rather than a
- * column list, same shape as TeamService.mapWriteError's Lead index. Applied
- * to every write that can create an open row (request, addMember): both
- * insert into the same table under the same partial index.
+ * The violated index or constraint name, wherever Prisma 7's pg driver
+ * adapter buries it. Prisma 7 requires a driver adapter (see
+ * PrismaService), and under it `PrismaClientKnownRequestError.meta` is never
+ * `{ target: [...columns] }` the way the engine-based client documents it;
+ * it is `{ driverAdapterError: { cause: { constraint: { index } } } }`
+ * instead. A hand-written index has no column list for Prisma to resolve
+ * anyway, so `meta.target` was never going to carry this index's name even
+ * on the engine-based client; this reads the one field the adapter actually
+ * populates, and falls back to the raw driver message so the match survives
+ * a shape change in either.
+ */
+function violatedConstraintName(meta: unknown): string {
+  if (!meta || typeof meta !== 'object') return '';
+  const m = meta as Record<string, unknown>;
+  const target = m.target;
+  if (Array.isArray(target)) return target.join(',');
+  if (typeof target === 'string') return target;
+
+  const cause = (m.driverAdapterError as Record<string, unknown> | undefined)?.cause as
+    | Record<string, unknown>
+    | undefined;
+  const index = (cause?.constraint as Record<string, unknown> | undefined)?.index;
+  if (typeof index === 'string') return index;
+  return typeof cause?.originalMessage === 'string' ? cause.originalMessage : '';
+}
+
+/**
+ * P2002 here is club_membership_one_open_per_user, hand-written SQL rather
+ * than a Prisma `@@unique`. Applied to every write that can create an open
+ * row (request, addMember): both insert into the same table under the same
+ * partial index.
  */
 function mapWriteError(e: unknown): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    const target = e.meta?.target;
-    const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
-    if (columns.some((c) => c.includes('one_open_per_user'))) {
+    if (violatedConstraintName(e.meta).includes('one_open_per_user')) {
       throw new ConflictError('You already have an open membership in that club.');
     }
   }
@@ -124,12 +148,19 @@ export class MembershipService {
     });
   }
 
-  /** POST /clubs/:clubId/members. The way in under INVITE_ONLY; also usable under any other policy. */
+  /**
+   * POST /clubs/:clubId/members. The way in under INVITE_ONLY, and under
+   * OPEN and APPROVAL_REQUIRED too. Refused under CLOSED: if an officer
+   * could add a member to a CLOSED club, CLOSED and INVITE_ONLY would be
+   * behaviourally identical, so CLOSED has to be the one policy nobody
+   * joins by any route or it is not a distinct policy at all.
+   */
   async addMember(actor: { id: string }, clubId: string, body: AddMemberBody): Promise<Member> {
     return this.host.run(async () => {
       const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
       if (!club) throw new NotFoundError('No such club.');
       assertAcceptsNewActivity(club.status);
+      if (club.membershipPolicy === 'CLOSED') throw new UnprocessableError('That club is closed to new members.');
 
       const row = await this.host.tx.clubMembership
         .create({
@@ -155,9 +186,18 @@ export class MembershipService {
    * PATCH /clubs/:clubId/membership-requests/:requestId. Scoping the read to
    * `{ id: requestId, clubId }` is what makes a request from another club a
    * plain 404 rather than a cross-club decision (RULING D5).
+   *
+   * `assertAcceptsEdits` allows this in a SUSPENDED club (the request was
+   * already in flight) and refuses it in an ARCHIVED one (terminal, no new
+   * activity of any kind), same pattern as TeamService.accept for the same
+   * "pending thing turns into an active membership" case.
    */
   async decide(actor: { id: string }, clubId: string, requestId: string, body: DecideMembershipBody): Promise<Member> {
     return this.host.run(async () => {
+      const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
+      if (!club) throw new NotFoundError('No such club.');
+      assertAcceptsEdits(club.status);
+
       const existing = await this.host.tx.clubMembership.findFirst({ where: { id: requestId, clubId } });
       if (!existing) throw new NotFoundError('No such membership request.');
       // Main spec 6.2: an officer cannot decide their own request.
@@ -274,13 +314,13 @@ export class MembershipService {
 
   /**
    * GET /me/clubs. Self-scoped by `userId: actor.id`; no @RequirePermission.
-   * Lists every club the caller has ever had a membership row in, whatever
-   * its current status, so `status` on the wire shape is the record of
-   * that history rather than only its currently-active slice.
+   * Only PENDING/ACTIVE rows: a club left and rejoined leaves a LEFT row
+   * behind alongside the new open one, and an unfiltered list would show
+   * that club twice, once as a dead entry with nothing sensible to do.
    */
   async myClubs(actor: { id: string }, query: CursorPageQuery): Promise<MyClubPage> {
     const rows = await this.host.tx.clubMembership.findMany({
-      where: { userId: actor.id },
+      where: { userId: actor.id, status: { in: ['PENDING', 'ACTIVE'] } },
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       orderBy: { id: 'asc' },

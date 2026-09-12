@@ -22,10 +22,6 @@ class DecideMembershipDto extends createZodDto(decideMembershipBodySchema) {}
 class MemberListQueryDto extends createZodDto(memberListQuerySchema) {}
 class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
 
-/**
- * `clubs/:clubId/members` is declared ahead of `clubs/:clubId/members/:userId`
- * so the collection route can never be shadowed by the parameterised one.
- */
 @Controller()
 export class MembershipController {
   constructor(private readonly membership: MembershipService) {}
@@ -40,7 +36,7 @@ export class MembershipController {
   @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'That user already has an open membership.', type: ProblemDetailsDto })
-  @ApiResponse({ status: 422, description: 'That club is not accepting new activity.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That club is not accepting new activity, or its policy is CLOSED.', type: ProblemDetailsDto })
   addMember(@Actor() actor: User, @Param('clubId') clubId: string, @Body() body: AddMemberDto): Promise<Member> {
     return this.membership.addMember(actor, clubId, body);
   }
@@ -78,8 +74,8 @@ export class MembershipController {
   @Patch('clubs/:clubId/membership-requests/:requestId')
   @RequirePermission('membership:decide', { scope: 'club', from: 'params.clubId' })
   @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
-  @ApiResponse({ status: 404, description: 'No such request.', type: ProblemDetailsDto })
-  @ApiResponse({ status: 422, description: 'You cannot decide your own request, or it is not pending.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 404, description: 'No such club, or no such request.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That club is archived, you cannot decide your own request, or it is not pending.', type: ProblemDetailsDto })
   decide(
     @Actor() actor: User,
     @Param('clubId') clubId: string,
