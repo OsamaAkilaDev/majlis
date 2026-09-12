@@ -1,6 +1,6 @@
 import { ESLint } from 'eslint';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * Guards the ESLint rule that keeps `PrismaService` injectable only inside
@@ -34,6 +34,12 @@ async function boundaryErrors(relativePath: string, code: string): Promise<strin
 }
 
 describe('PrismaService boundary', () => {
+  // The first lintText loads the whole flat config; under a parallel suite run
+  // that can pass vitest's 5s default and fail a test that is not actually slow.
+  beforeAll(async () => {
+    await boundaryErrors('src/warmup.ts', 'export const warm = 1;\n');
+  }, 60_000);
+
   it('rejects injecting PrismaService from a service outside src/prisma/', async () => {
     const errors = await boundaryErrors('src/clubs/clubs.service.ts', INJECTS_PRISMA_SERVICE);
 
