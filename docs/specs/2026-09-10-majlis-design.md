@@ -774,6 +774,20 @@ they cannot offer different destinations, and the axe suite asserts that exactly
 "Sections" landmark exists at either width.
 
 ---
+### Deviation: GET /events filters on the stored status, renders the due one (2026-09-12)
+
+A list read renders each row's status as `dueStatus(row, now)`, a pure function, so the
+badge and the register affordance agree with the detail page and with what the API will
+accept. Writing on a list read would cost one transaction per row on the hottest read in
+the product, so the stored value is left to the sweep and to single-event reads.
+
+`?status=` still matches the **stored** value. A row whose due status has moved on but
+which nobody has opened is matched by its old status and then rendered under its new one,
+so a status-filtered page can show a row whose badge does not match the filter. Making the
+filter agree would mean expressing `dueStatus` in SQL over four columns on every list
+query. Accepted until a filtered list is something students actually use.
+
+---
 ## 14. Open items
 
 - ~~The visual identity itself, palette, type ramp and component language, is deferred to Stage 3~~ Settled in Stage 3; the approved values live in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) §2.

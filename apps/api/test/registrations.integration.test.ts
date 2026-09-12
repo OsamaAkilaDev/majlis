@@ -5,7 +5,7 @@ import { API_PREFIX } from '../src/config/api-prefix';
 import { createTestApp } from './app';
 import { loginAsAdmin, loginAsStudent, type LoggedInUser } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent } from './factories';
+import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent, uniq } from './factories';
 
 const prisma = createTestPrisma();
 let app: INestApplication;
@@ -286,5 +286,147 @@ describe('GET /events/:eventId/registrations', () => {
     const assigned = await roster(ops.sessionCookie);
     expect(assigned.status).toBe(200);
     expect(assigned.body.items[0].userEmail).toBeTruthy();
+  });
+});
+
+describe('what a promotion leaves behind', () => {
+  it('clears the waitlist position of the student it promoted', async () => {
+    // The column travels into eventDetail.viewerWaitlistPosition, the roster
+    // and GET /me/registrations, where a non-null value means "waitlisted".
+    // Left set, three screens render "Confirmed" and "Position 1" together.
+    const { event } = await anOpenEvent({ capacity: 1, waitlistEnabled: true });
+    const [holder, queued] = await students(2);
+
+    await register(holder!.sessionCookie, event.id);
+    expect((await register(queued!.sessionCookie, event.id)).body.waitlistPosition).toBe(1);
+    expect((await cancel(holder!.sessionCookie, event.id)).status).toBe(204);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', queued!.sessionCookie);
+    expect(detail.body.viewerRegistrationStatus).toBe('CONFIRMED');
+    expect(detail.body.viewerWaitlistPosition).toBeNull();
+
+    const mine = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/me/registrations`)
+      .set('Cookie', queued!.sessionCookie);
+    expect(mine.body.items).toHaveLength(1);
+    expect(mine.body.items[0].status).toBe('CONFIRMED');
+    expect(mine.body.items[0].waitlistPosition).toBeNull();
+  });
+
+  it('promotes nobody into a cancelled event', async () => {
+    // Spec 7.4's promotion is the counterpart of a freed seat, and a cancelled
+    // event has no seats. Promoting here makes someone CONFIRMED with a
+    // promotedAt on an event that is not happening, which in Stage 7 becomes
+    // a "you're off the waitlist" message for it.
+    const { lead, event } = await anOpenEvent({ capacity: 1, waitlistEnabled: true });
+    const [holder, queued] = await students(2);
+
+    await register(holder!.sessionCookie, event.id);
+    await register(queued!.sessionCookie, event.id);
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/events/${event.id}/cancel`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ reason: 'Venue fell through.' });
+    expect(cancelled.status).toBe(201);
+
+    expect((await cancel(holder!.sessionCookie, event.id)).status).toBe(204);
+
+    const rows = await prisma.eventRegistration.findMany({ where: { eventId: event.id } });
+    const byUser = new Map(rows.map((r) => [r.userId, r]));
+    expect(byUser.get(queued!.userId)?.status).toBe('WAITLISTED');
+    expect(byUser.get(queued!.userId)?.promotedAt).toBeNull();
+    // The seat still comes off the counter: it is the record of who held one.
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).confirmedCount).toBe(0);
+  });
+});
+
+describe('PATCH /events/:eventId capacity, against the confirmed count', () => {
+  it('promotes only as many as the new headroom, not the whole new capacity', async () => {
+    // capacity - confirmedCount, not capacity. With four queued and one seat
+    // already taken, raising 3 -> 4 has room for three more; promoting four
+    // oversells and the event_capacity_bounds CHECK is what stops it.
+    const { lead, event } = await anOpenEvent({ capacity: 3, waitlistEnabled: true, confirmedCount: 1 });
+    const queued = await students(4);
+    await prisma.eventRegistration.createMany({
+      data: queued.map((s, i) => ({
+        eventId: event.id,
+        userId: s.userId,
+        status: 'WAITLISTED' as const,
+        waitlistPosition: i + 1,
+      })),
+    });
+
+    const res = await request(app.getHttpServer())
+      .patch(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ capacity: 4 });
+
+    expect(res.status).toBe(200);
+    const after = await prisma.event.findUniqueOrThrow({ where: { id: event.id } });
+    expect(after.confirmedCount).toBe(4);
+    expect(
+      await prisma.eventRegistration.count({ where: { eventId: event.id, status: 'CONFIRMED' } }),
+    ).toBe(3);
+    expect(
+      await prisma.eventRegistration.count({ where: { eventId: event.id, status: 'WAITLISTED' } }),
+    ).toBe(1);
+  });
+
+  it('reads the confirmed count under the row lock, not before it', async () => {
+    // The guard and the headroom both decide on confirmedCount. Read outside
+    // the lock, a registration that commits in between makes the guard pass on
+    // a stale count and the CHECK constraint reject the write instead, which
+    // is a 23514 and not a P2002, so the caller gets a generic conflict rather
+    // than the message naming how many students are already confirmed.
+    const { lead, event } = await anOpenEvent({ capacity: 3, waitlistEnabled: true, confirmedCount: 2 });
+    const latecomer = await loginAsStudent(app);
+
+    // The in-flight request must NOT be returned from the callback: Prisma
+    // awaits what the callback returns before committing, and the request is
+    // waiting on that commit.
+    let inFlight!: Promise<request.Response>;
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${event.id}::uuid FOR UPDATE`;
+      inFlight = request(app.getHttpServer())
+        .patch(`${API_PREFIX}/events/${event.id}`)
+        .set('Cookie', lead.sessionCookie)
+        .send({ capacity: 2 })
+        .then((r) => r);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await tx.eventRegistration.create({
+        data: { eventId: event.id, userId: latecomer.userId, status: 'CONFIRMED' },
+      });
+      await tx.event.update({ where: { id: event.id }, data: { confirmedCount: { increment: 1 } } });
+    });
+    const res = await inFlight;
+
+    expect(res.status).toBe(422);
+    expect(res.body.detail).toBe('Capacity cannot be lower than the 3 students already confirmed.');
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).capacity).toBe(3);
+  });
+});
+
+describe('the Admin override response', () => {
+  it('carries the attendee, not the admin who registered them', async () => {
+    // person() short-circuits to the actor's own name and email for a
+    // self-registration. An override registers somebody else, so the response
+    // would otherwise name the admin as the attendee.
+    const email = `${uniq('attendee')}@uni.ac.ae`;
+    const { event } = await anOpenEvent({ capacity: 5 });
+    const attendee = await loginAsStudent(app, { email, fullName: 'Real Attendee' });
+    const admin = await loginAsAdmin(app, { fullName: 'The Administrator' });
+
+    const res = await register(admin.sessionCookie, event.id, {
+      userId: attendee.userId,
+      overrideReason: 'Invited speaker.',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.userId).toBe(attendee.userId);
+    expect(res.body.userFullName).toBe('Real Attendee');
+    expect(res.body.userEmail).toBe(email);
   });
 });

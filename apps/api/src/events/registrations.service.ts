@@ -244,7 +244,11 @@ export class RegistrationsService {
           where: { id: eventId },
           data: { confirmedCount: { decrement: 1 } },
         });
-        await promoteFromWaitlist(this.host, this.audit, eventId, 1);
+        // A cancelled event has no seats to promote anyone into. The counter
+        // still comes down: it is the record of who held a place.
+        if (event.status !== 'CANCELLED') {
+          await promoteFromWaitlist(this.host, this.audit, eventId, 1);
+        }
       }
     });
   }

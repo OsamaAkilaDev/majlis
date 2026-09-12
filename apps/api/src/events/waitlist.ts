@@ -36,9 +36,12 @@ export async function promoteFromWaitlist(
   if (queued.length === 0) return 0;
 
   const promotedAt = new Date();
+  // The position is cleared, not kept: it travels into eventDetail's
+  // viewerWaitlistPosition and the roster, where a non-null value reads as
+  // "this person is waitlisted" beside a Confirmed badge.
   await host.tx.eventRegistration.updateMany({
     where: { id: { in: queued.map((r) => r.id) } },
-    data: { status: 'CONFIRMED', promotedAt },
+    data: { status: 'CONFIRMED', promotedAt, waitlistPosition: null },
   });
 
   for (const row of queued) {
