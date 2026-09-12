@@ -8,29 +8,46 @@ import { cn } from '@/lib/cn';
 
 type State = 'idle' | 'converting' | 'uploading' | 'done' | 'refused';
 
+const LABELS: Record<ImageKind, string> = {
+  'club-logo': 'Logo',
+  'club-banner': 'Banner',
+  'event-poster': 'Poster',
+};
+
 /**
- * Uploads a club logo or banner: convert to WebP in the browser, mint a
- * signed URL, PUT the blob there (Content-Type only, no auth header: the
- * token in the URL's query string is the sole credential), then report the
- * public URL up. `clubId` absent means "minting a new club"; present means
- * "replacing an existing club's image".
+ * Uploads an image: convert to WebP in the browser, mint a signed URL, PUT the
+ * blob there (Content-Type only, no auth header: the token in the URL's query
+ * string is the sole credential), then report the public URL up.
+ *
+ * `mint` names the route that issues the signed URL and, for a resource that
+ * does not exist yet, the id it will be created with. It defaults to the club
+ * routes; the event poster passes its own.
  */
 export function ImageUpload({
   kind,
   clubId,
   currentUrl,
+  mint,
   onUploaded,
 }: {
   kind: ImageKind;
   clubId?: string;
   currentUrl?: string | null;
-  onUploaded: (publicUrl: string, clubId: string) => void;
+  mint?: () => Promise<{ signedUrl: string; publicUrl: string; id: string }>;
+  onUploaded: (publicUrl: string, id: string) => void;
 }) {
   const [state, setState] = useState<State>('idle');
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<string | null>(currentUrl ?? null);
   const inputId = useId();
-  const label = kind === 'club-logo' ? 'Logo' : 'Banner';
+  const label = LABELS[kind];
+
+  async function mintFor(): Promise<{ signedUrl: string; publicUrl: string; id: string }> {
+    if (mint) return mint();
+    if (clubId) return { ...(await mintClubEditUpload(clubId, kind)), id: clubId };
+    const { clubId: id, ...rest } = await mintClubLogoUpload();
+    return { ...rest, id };
+  }
 
   async function onChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -42,17 +59,7 @@ export function ImageUpload({
       const blob = await convertToWebp(file, kind);
 
       setState('uploading');
-      let signedUrl: string;
-      let publicUrl: string;
-      let resolvedClubId: string;
-      if (clubId) {
-        const minted = await mintClubEditUpload(clubId, kind);
-        ({ signedUrl, publicUrl } = minted);
-        resolvedClubId = clubId;
-      } else {
-        const minted = await mintClubLogoUpload();
-        ({ signedUrl, publicUrl, clubId: resolvedClubId } = minted);
-      }
+      const { signedUrl, publicUrl, id } = await mintFor();
 
       const res = await fetch(signedUrl, {
         method: 'PUT',
@@ -63,7 +70,7 @@ export function ImageUpload({
 
       setPreview(publicUrl);
       setState('done');
-      onUploaded(publicUrl, resolvedClubId);
+      onUploaded(publicUrl, id);
     } catch (err) {
       setState('refused');
       setMessage(err instanceof Error ? err.message : 'That upload failed. Try again.');

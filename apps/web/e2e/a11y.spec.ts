@@ -11,6 +11,14 @@ async function signIn(page: Page, email: string) {
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
+/** A club officer's landing is /manage/{clubId}, so the id comes from the URL
+ *  rather than from a nav click, which lives behind a sheet on mobile. */
+async function officerClubId(page: Page): Promise<string> {
+  const clubId = new URL(page.url()).pathname.split('/')[2];
+  expect(clubId).toBeTruthy();
+  return clubId!;
+}
+
 async function scan(page: Page) {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -89,6 +97,41 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
+    test('the student event list has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/events');
+      await expect(page.getByRole('link', { name: /Introduction to ROS 2/ })).toBeVisible();
+      await scan(page);
+    });
+
+    test('an event detail with an actionable register control has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/events');
+      await page.getByRole('link', { name: /Introduction to ROS 2/ }).click();
+      await expect(page.getByRole('button', { name: 'Register', exact: true })).toBeEnabled();
+      await scan(page);
+    });
+
+    test('an event detail with a refused register control has no violations', async ({ page }) => {
+      // A disabled control still needs an accessible name carrying the reason,
+      // or the refusal exists only in the layout and a screen reader user
+      // learns nothing about why they cannot act.
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/events');
+      await page.getByRole('link', { name: /Robotics Showcase/ }).click();
+      await expect(
+        page.getByRole('button', { name: 'This event is full and has no waitlist' }),
+      ).toBeDisabled();
+      await scan(page);
+    });
+
+    test('the student registrations page has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/me/registrations');
+      await expect(page.getByRole('link', { name: 'Browse events' })).toBeVisible();
+      await scan(page);
+    });
+
     test('the student me page has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/me');
@@ -105,6 +148,40 @@ for (const theme of ['light', 'dark'] as const) {
     test('the admin club creation form has no violations', async ({ page }) => {
       await signIn(page, 'admin@uni.ac.ae');
       await page.goto('/admin/clubs/new');
+      await scan(page);
+    });
+
+    test("the club's event list has no violations", async ({ page }) => {
+      await signIn(page, 'lead@uni.ac.ae');
+      await page.goto(`/manage/${await officerClubId(page)}/events`);
+      await expect(page.getByRole('link', { name: 'Introduction to ROS 2' })).toBeVisible();
+      await scan(page);
+    });
+
+    test('the event editor has no violations', async ({ page }) => {
+      await signIn(page, 'lead@uni.ac.ae');
+      await page.goto(`/manage/${await officerClubId(page)}/events`);
+      await page.getByRole('link', { name: 'Introduction to ROS 2' }).click();
+      await expect(page.getByRole('button', { name: 'Save changes' })).toBeVisible();
+      await scan(page);
+    });
+
+    test('an event editor with fields the viewer may not change has no violations', async ({ page }) => {
+      // Operations holds venue and capacity but not the title, so this is the
+      // only scan that covers a disabled input. A disabled input still needs
+      // an accessible name.
+      await signIn(page, 'ops@uni.ac.ae');
+      await page.goto(`/manage/${await officerClubId(page)}/events`);
+      await page.getByRole('link', { name: 'Introduction to ROS 2' }).click();
+      await expect(page.getByLabel('Title', { exact: true })).toBeDisabled();
+      await expect(page.getByLabel('Capacity')).toBeEnabled();
+      await scan(page);
+    });
+
+    test('the admin event overview has no violations', async ({ page }) => {
+      await signIn(page, 'admin@uni.ac.ae');
+      await page.goto('/admin/events');
+      await expect(page.getByRole('link', { name: 'Introduction to ROS 2' })).toBeVisible();
       await scan(page);
     });
   });
@@ -130,6 +207,25 @@ test('the account menu has no violations while open', async ({ page }) => {
   await signIn(page, 'student@uni.ac.ae');
   await page.getByRole('button', { name: 'Account' }).click();
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
+  await scan(page);
+});
+
+test('the event creation panel has no violations while open', async ({ page }) => {
+  // The largest form in the product, and the only screen carrying a Select
+  // built from the runtime's whole tz database.
+  await signIn(page, 'lead@uni.ac.ae');
+  await page.goto(`/manage/${await officerClubId(page)}/events`);
+  await page.getByRole('button', { name: 'New event' }).click();
+  await expect(page.getByRole('button', { name: 'Create event' })).toBeVisible();
+  await scan(page);
+});
+
+test('the admin override dialog has no violations while open', async ({ page }) => {
+  // A modal is where focus management and aria-hidden break.
+  await signIn(page, 'admin@uni.ac.ae');
+  await page.goto('/admin/events');
+  await page.getByRole('button', { name: 'Register someone for Introduction to ROS 2' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
   await scan(page);
 });
 
