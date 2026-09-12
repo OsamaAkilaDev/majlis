@@ -1,8 +1,9 @@
 'use client';
 
-import type { Appointment, ClubDetail, ClubStatus, UserListItem } from '@majlis/contracts';
+import type { Appointment, ClubDetail, ClubStatus } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@/components/StatusBadge';
+import { UserPickerDialog } from '@/components/UserPickerDialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,7 +17,6 @@ import { Field } from '@/components/Field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 import { appointLead, getClub, listTeam, updateClubStatus } from '@/lib/clubs';
 import { useViewerZone } from '@/lib/use-viewer-zone';
@@ -114,57 +114,16 @@ function LeadAppointment({
   currentLeadUserId?: string;
   onAppointed: (a: Appointment) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<UserListItem | null>(null);
-  const [error, setError] = useState<ProblemError | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function submit() {
-    if (!picked) return;
-    setPending(true);
-    setError(null);
-    try {
-      const appointment = await appointLead(clubId, { userId: picked.id });
-      onAppointed(appointment);
-      setOpen(false);
-      setPicked(null);
-    } catch (err) {
-      if (err instanceof ProblemError) setError(err);
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) {
-          setError(null);
-          setPicked(null);
-        }
+    <UserPickerDialog
+      trigger={<Button variant="outline">Appoint Lead</Button>}
+      title="Appoint Lead"
+      confirmLabel="Send invitation"
+      exclude={currentLeadUserId ? [currentLeadUserId] : []}
+      onSubmit={async (user) => {
+        onAppointed(await appointLead(clubId, { userId: user.id }));
       }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="outline">Appoint Lead</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Appoint Lead</DialogTitle>
-        </DialogHeader>
-        <UserPicker value={picked} onChange={setPicked} exclude={currentLeadUserId ? [currentLeadUserId] : []} />
-        {error ? <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p> : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !picked}>
-            Send invitation
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    />
   );
 }
 

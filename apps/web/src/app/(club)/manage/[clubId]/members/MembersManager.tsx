@@ -1,80 +1,30 @@
 'use client';
 
-import type { ClubDetail, MemberPage, UserListItem } from '@majlis/contracts';
+import type { ClubDetail, MemberPage } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { LoadMore } from '@/components/LoadMore';
+import { UserPickerDialog } from '@/components/UserPickerDialog';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UserPicker } from '@/components/UserPicker';
-import { ProblemError } from '@/lib/api';
 import { addMember, decideMembership, getClub, listMembers, removeMember } from '@/lib/clubs';
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 
 function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<UserListItem | null>(null);
-  const [error, setError] = useState<ProblemError | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function submit() {
-    if (!picked) return;
-    setPending(true);
-    setError(null);
-    try {
-      await addMember(clubId, { userId: picked.id });
-      onAdded();
-      setOpen(false);
-      setPicked(null);
-    } catch (err) {
-      if (err instanceof ProblemError) setError(err);
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) {
-          setError(null);
-          setPicked(null);
-        }
+    <UserPickerDialog
+      trigger={<Button>Add member</Button>}
+      title="Add a member"
+      confirmLabel="Add"
+      onSubmit={async (user) => {
+        await addMember(clubId, { userId: user.id });
+        onAdded();
       }}
-    >
-      <DialogTrigger asChild>
-        <Button>Add member</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add a member</DialogTitle>
-        </DialogHeader>
-        <UserPicker value={picked} onChange={setPicked} />
-        {error ? <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p> : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !picked}>
-            Add
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    />
   );
 }
 
