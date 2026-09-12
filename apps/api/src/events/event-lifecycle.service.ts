@@ -61,8 +61,10 @@ export class EventLifecycleService {
     if (dueStatus(event, now) === event.status) return event.status;
 
     return this.host.run(async () => {
-      // Re-read inside the transaction, so a concurrent advance that landed
-      // between the check above and this BEGIN is seen rather than replayed.
+      // Re-read inside the transaction, which skips the walk entirely when a
+      // concurrent advance COMMITTED between the check above and this BEGIN.
+      // One that is still open is invisible here under READ COMMITTED; each
+      // hop's conditional update is what catches that case.
       const fresh = await this.host.tx.event.findUnique({
         where: { id: eventId },
         select: LIFECYCLE_SELECT,
