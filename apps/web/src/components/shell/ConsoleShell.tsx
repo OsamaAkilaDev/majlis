@@ -2,6 +2,7 @@ import { List } from '@phosphor-icons/react/ssr';
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { cn } from '@/lib/cn';
 import { ICON_WEIGHT } from '@/lib/icons';
 import { requireUser } from '@/lib/session';
 import { ShellBrand } from './ShellBrand';
@@ -12,11 +13,21 @@ export async function ConsoleShell({
   items,
   title,
   context,
+  dark,
   children,
 }: {
   items: readonly NavItem[];
   title: string;
   context: ReactNode;
+  /**
+   * Forces the dark palette on this screen whatever the viewer's theme is. One
+   * screen asks for it, /scan: an operator standing in a lit hall holding a
+   * viewfinder needs the surround dark for the feed to read, and needs not to
+   * be blinded by a white bar between two people. The use scene decides it, not
+   * the toggle. Overlays render in a portal on <body> and so keep following the
+   * viewer's theme, which is the one seam this leaves.
+   */
+  dark?: boolean;
   children: ReactNode;
 }) {
   // Memoised by getSessionUser, so this shares the layout's /auth/me call.
@@ -31,7 +42,7 @@ export async function ConsoleShell({
   );
 
   return (
-    <div className="min-h-dvh bg-bg lg:grid lg:grid-cols-[14rem_1fr]">
+    <div className={cn('min-h-dvh bg-bg lg:grid lg:grid-cols-[14rem_1fr]', dark && 'dark')}>
       <aside className="hidden border-r border-border bg-surface-2 p-3 lg:block lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
         {nav}
       </aside>
