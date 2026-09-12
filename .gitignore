@@ -17,4 +17,3 @@ apps/web/CLAUDE.md
 
 # Next rewrites this between dev and build; it regenerates on demand
 apps/web/next-env.d.ts
-apps/api/.bench/
