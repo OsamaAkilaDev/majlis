@@ -330,6 +330,55 @@ test('a signed-out visitor verifies a certificate, and a revoked one still answe
   await expect(page.locator('dt')).toHaveCount(5);
 });
 
+test.describe('with a camera', () => {
+  // The fake device itself is in playwright.config.ts: launchOptions cannot be
+  // set per describe block without forcing a new worker.
+  test.use({ permissions: ['camera'] });
+
+  test('a scanned pass checks its holder in, and records that it was scanned', async ({ page }) => {
+    // The other branch. Headless Chromium ships no BarcodeDetector, so every
+    // other test in this file goes through the email form and none of them
+    // touch getUserMedia, the detect loop or the token path at all.
+    await clearCheckIn(page);
+
+    await signIn(page, STUDENT);
+    const token = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/me/qr-pass', { credentials: 'same-origin' });
+      return ((await res.json()) as { token: string }).token;
+    });
+    expect(token).toBeTruthy();
+
+    await signIn(page, 'ops@uni.ac.ae');
+    const clubId = await officerClubId(page);
+    await page.addInitScript((raw) => {
+      class FakeBarcodeDetector {
+        detect() {
+          return Promise.resolve([{ rawValue: raw }]);
+        }
+      }
+      Object.defineProperty(window, 'BarcodeDetector', {
+        value: FakeBarcodeDetector,
+        configurable: true,
+      });
+    }, token);
+
+    await page.goto(`/manage/${clubId}/scan`);
+    await page.getByRole('button', { name: /Drone Build Night/ }).click();
+
+    const verdict = page.getByRole('status');
+    await expect(verdict).toContainText('Checked in', { timeout: 15_000 });
+    await expect(verdict).toContainText('Layla Hassan');
+
+    // QR_SCAN, not MANUAL. This is the assertion that separates the two
+    // branches: everything above is identical on both.
+    await signIn(page, 'lead@uni.ac.ae');
+    await page.goto(`/manage/${clubId}/events`);
+    await page.getByRole('link', { name: 'Drone Build Night' }).click();
+    await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible();
+    await expect(attendanceRow(page, 'Layla Hassan')).toContainText('Scan');
+  });
+});
+
 test('an unknown code is answered, not left blank', async ({ page }) => {
   await page.goto('/verify/MJL-NOT-A-REAL-CODE');
   await expect(
