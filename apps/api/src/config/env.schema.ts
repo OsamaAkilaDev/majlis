@@ -47,6 +47,14 @@ export const EXAMPLE_SESSION_SECRET = 'dev-only-session-secret-change-me!!';
 export const EXAMPLE_LIFECYCLE_SWEEP_SECRET = 'dev-only-lifecycle-sweep-secret';
 
 /**
+ * Same bargain again, and the most expensive one to get wrong: this key
+ * signs every QR pass in the product, so a deployment running on the
+ * published example value lets anyone mint a pass for any user id they can
+ * guess.
+ */
+export const EXAMPLE_QR_SIGNING_SECRET = 'dev-only-qr-signing-secret-change-me!!';
+
+/**
  * The process refuses to start if any of this is wrong. A server that boots
  * with a broken configuration and fails on the first request is worse than
  * one that never boots.
@@ -68,6 +76,10 @@ export const envSchema = z
       .string()
       .min(16, 'must be at least 16 characters')
       .default(EXAMPLE_LIFECYCLE_SWEEP_SECRET),
+    QR_SIGNING_SECRET: z
+      .string()
+      .min(32, 'must be at least 32 characters')
+      .default(EXAMPLE_QR_SIGNING_SECRET),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],
@@ -76,6 +88,10 @@ export const envSchema = z
   .refine(
     (env) => env.NODE_ENV !== 'production' || env.LIFECYCLE_SWEEP_SECRET !== EXAMPLE_LIFECYCLE_SWEEP_SECRET,
     { path: ['LIFECYCLE_SWEEP_SECRET'], message: 'must not be the example secret in production' },
-  );
+  )
+  .refine((env) => env.NODE_ENV !== 'production' || env.QR_SIGNING_SECRET !== EXAMPLE_QR_SIGNING_SECRET, {
+    path: ['QR_SIGNING_SECRET'],
+    message: 'must not be the example secret in production',
+  });
 
 export type Env = z.infer<typeof envSchema>;

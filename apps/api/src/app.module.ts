@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { AuditModule } from './audit/audit.module';
+import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { ClubsModule } from './clubs/clubs.module';
 import { RequestContextModule } from './common/request-context.module';
@@ -58,6 +59,7 @@ import { UsersModule } from './users/users.module';
     DepartmentsModule,
     ClubsModule,
     EventsModule,
+    AttendanceModule,
     HealthModule,
     StorageModule,
   ],

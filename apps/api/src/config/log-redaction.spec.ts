@@ -2,6 +2,7 @@ import pino from 'pino';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { LOG_REDACT_PATHS, redactedReqSerializer } from './log-redaction';
+import { envSchema } from './env.schema';
 import { SWEEP_SECRET_HEADER } from './sweep-header';
 
 describe('LOG_REDACT_PATHS', () => {
@@ -13,6 +14,7 @@ describe('LOG_REDACT_PATHS', () => {
       'req.headers.authorization',
       'req.query.token',
       'req.query.code',
+      'req.query.pass',
       'res.headers["set-cookie"]',
       '*.headers.cookie',
       '*.headers.authorization',
@@ -131,5 +133,64 @@ describe('redactedReqSerializer', () => {
     } as never);
 
     expect(out.url).toBe('/api/v1/health');
+  });
+});
+
+describe('the QR pass token and its signing key', () => {
+  it('serializes no request body at all, which is where the pass token travels', () => {
+    // The whole redaction story for the pass rests on this: the token is
+    // posted in a body, and pino-http's request serializer produces
+    // { id, method, url, query, params, headers, remoteAddress, remotePort }
+    // and no `body` key for a path-based redaction to need to strip.
+    //
+    // Catches a serializer that starts passing the body through — the one
+    // change that would put a live credential into every scan's log line,
+    // with no redaction path covering it, silently.
+    const out = redactedReqSerializer({
+      id: 'r1',
+      method: 'POST',
+      url: '/api/v1/events/e1/check-in/scan',
+      headers: {},
+      query: {},
+      params: {},
+      body: { token: 'v1.LEAKEDPAYLOAD.LEAKEDSIGNATURE' },
+    } as never);
+
+    expect(out).not.toHaveProperty('body');
+    expect(JSON.stringify(out)).not.toContain('LEAKED');
+  });
+
+  it('keeps the signing secret out of every line a boot can emit', () => {
+    // Spec 11: the QR signing key never appears in a log. The one line a
+    // boot emits that has ever seen it is the environment validation
+    // failure NestFactory logs when the process refuses to start — so that
+    // error must carry the rule that was broken and never the value that
+    // broke it.
+    const failed = envSchema.safeParse({
+      DATABASE_URL: 'postgresql://u:p@localhost:5432/d',
+      SESSION_SECRET: 'too-short',
+      SUPABASE_STORAGE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(40),
+      QR_SIGNING_SECRET: 'SUPERSECRETVALUE'.repeat(2),
+    });
+
+    expect(failed.success).toBe(false);
+    expect(String(failed.error)).not.toContain('SUPERSECRETVALUE');
+    expect(JSON.stringify(failed.error)).not.toContain('SUPERSECRETVALUE');
+
+    // And, for the day a deep link or a prefetched image moves the token
+    // into a query string: req.query.pass is stripped from the emitted line.
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+    logger.info({ req: { query: { pass: 'v1.SUPERSECRETVALUE.SUPERSECRETVALUE' } } }, 'scan');
+
+    expect(lines.join('')).toContain('scan');
+    expect(lines.join('')).not.toContain('SUPERSECRETVALUE');
   });
 });
