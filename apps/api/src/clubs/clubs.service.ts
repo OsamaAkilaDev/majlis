@@ -48,9 +48,18 @@ function toClubDetail(
   };
 }
 
-/** P2002 here is the unique violation on name (slug is already made unique by uniqueSlug). */
+/**
+ * P2002 here is the unique violation on either name or slug. `uniqueSlug`'s
+ * pre-check is not a guarantee under READ COMMITTED: two concurrent creates
+ * with different names that derive the same base slug can both see it free,
+ * so the loser must still be told which constraint actually fired rather
+ * than being blamed for a name collision that never happened.
+ */
 function mapWriteError(e: unknown): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+    const target = e.meta?.target;
+    const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
+    if (columns.includes('slug')) throw new ConflictError('A club with that slug already exists.');
     throw new ConflictError('A club with that name already exists.');
   }
   throw e;

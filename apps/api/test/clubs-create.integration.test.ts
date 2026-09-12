@@ -110,6 +110,7 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
       .send({ ...validBody(dept.id), clubId: minted.body.clubId });
 
     expect(res.status).toBe(422);
+    expect(await prisma.club.count()).toBe(0);
   });
 
   it('refuses an uploaded object that is not WebP', async () => {
@@ -124,6 +125,7 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
       .send({ ...validBody(dept.id), clubId: minted.body.clubId });
 
     expect(res.status).toBe(422);
+    expect(await prisma.club.count()).toBe(0);
   });
 
   it('suffixes the slug when two clubs share a name', async () => {
@@ -150,10 +152,26 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
       (await request(app.getHttpServer()).post(UPLOAD_PATH).set('Cookie', student.sessionCookie)).status,
     ).toBe(403);
   });
+
+  it('refuses a STUDENT on POST /clubs itself, and no club is created', async () => {
+    // Both routes carry @RequirePermission('club:create'), but only the
+    // upload route above had a 403 test. This catches the same guard being
+    // missing from `create` specifically.
+    const student = await loginAsStudent(app);
+    const dept = await prisma.department.create({ data: aDepartment() });
+
+    const res = await request(app.getHttpServer())
+      .post(CLUBS_PATH)
+      .set('Cookie', student.sessionCookie)
+      .send({ ...validBody(dept.id), clubId: '01936c7e-0000-7000-8000-000000000099' });
+
+    expect(res.status).toBe(403);
+    expect(await prisma.club.count()).toBe(0);
+  });
 });
 
 describe('GET /clubs', () => {
-  it('filters by department and by status, and paginates', async () => {
+  it('filters by department', async () => {
     const student = await loginAsStudent(app);
     const a = await prisma.department.create({ data: aDepartment() });
     await makeClub({ departmentId: a.id });
@@ -167,6 +185,40 @@ describe('GET /clubs', () => {
     // returns everything and still looks correct in a one-club fixture.
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].departmentName).toBe(a.name);
+  });
+
+  it('filters by status, holding department constant', async () => {
+    // The two fixtures differ ONLY in status: a fixture that also varied
+    // department (as the combined test used to) would let an
+    // implementation that ignores `status` entirely pass unnoticed.
+    const student = await loginAsStudent(app);
+    const dept = await prisma.department.create({ data: aDepartment() });
+    const archived = await makeClub({ departmentId: dept.id, status: 'ARCHIVED' });
+    await makeClub({ departmentId: dept.id });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?status=ARCHIVED`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].id).toBe(archived.id);
+  });
+
+  it('filters by name, case-insensitively', async () => {
+    // Catches a `q` filter that is never applied, and separately a
+    // case-sensitive `contains` despite the where clause claiming
+    // `mode: 'insensitive'`.
+    const student = await loginAsStudent(app);
+    const dept = await prisma.department.create({ data: aDepartment() });
+    const target = await makeClub({ departmentId: dept.id, name: uniq('Robotics Society') });
+    await makeClub({ departmentId: dept.id, name: uniq('Chess Club') });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?q=ROBOTICS`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].id).toBe(target.id);
   });
 
   it('caps limit at MAX_PAGE_LIMIT', async () => {
