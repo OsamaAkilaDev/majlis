@@ -49,7 +49,9 @@ export function MeManager() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    // Two independent lists, so they sit side by side once there is room for
+    // both rather than making the viewer scroll past one to reach the other.
+    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
       <Section title="Invitations">
         {invitations === null ? (
           <Skeleton className="h-16" />

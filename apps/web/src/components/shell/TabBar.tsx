@@ -4,8 +4,11 @@ import { CalendarDays, House, QrCode, User, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
-import { activeTabHref } from '@/lib/routing';
+import { activeNavHref } from '@/lib/routing';
+import { SideNav } from './SideNav';
 
+// One list behind both student navigations: the phone's tab bar and the
+// desktop sidebar cannot drift into offering different destinations.
 const TABS = [
   { href: '/home', label: 'Home', icon: House },
   { href: '/clubs', label: 'Clubs', icon: Users },
@@ -14,14 +17,17 @@ const TABS = [
   { href: '/me', label: 'Me', icon: User },
 ] as const;
 
+const HREFS = TABS.map((t) => t.href);
+
+/** Phone and small-tablet navigation. Hidden once the sidebar takes over. */
 export function TabBar() {
   const pathname = usePathname();
-  const current = activeTabHref(pathname, TABS.map((t) => t.href));
+  const current = activeNavHref(pathname, HREFS);
 
   return (
     <nav
       aria-label="Sections"
-      className="grid grid-cols-5 border-t border-border bg-surface pb-[var(--safe-b)]"
+      className="grid grid-cols-5 border-t border-border bg-surface pb-[var(--safe-b)] lg:hidden"
     >
       {TABS.map(({ href, label, icon: Icon }) => {
         const active = href === current;
@@ -44,5 +50,18 @@ export function TabBar() {
         );
       })}
     </nav>
+  );
+}
+
+/** The same destinations as a desktop sidebar. */
+export function StudentSideNav() {
+  return (
+    <SideNav
+      items={TABS.map(({ href, label, icon: Icon }) => ({
+        href,
+        label,
+        icon: <Icon className="size-4 shrink-0" aria-hidden />,
+      }))}
+    />
   );
 }

@@ -120,6 +120,9 @@ test('an expired session is refreshed on navigation rather than bounced', async 
 });
 
 test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
+  // Pinned: the desktop project is above the breakpoint where the tab bar is
+  // replaced by the side nav, and would otherwise measure a sidebar row here.
+  await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, 'student@uni.ac.ae');
   const nav = page.getByRole('navigation', { name: 'Sections' });
   await expect(nav).toBeVisible();

@@ -248,6 +248,62 @@ test('the admin override dialog has no violations while open', async ({ page }) 
   await scan(page);
 });
 
+test('the student shell swaps the tab bar for a side nav above the breakpoint', async ({ page }) => {
+  // Exactly one "Sections" landmark at any width. Two would mean a shell
+  // rendering both navigations at once: duplicate links, an ambiguous
+  // landmark, and every destination announced twice.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page, 'student@uni.ac.ae');
+
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+  await expect(nav).toHaveCount(1);
+  await expect(nav.getByRole('link', { name: 'Events' })).toBeVisible();
+
+  // A narrow column at the top left, not a bar across the foot. Catches a shell
+  // that keeps the tab bar and merely adds an empty sidebar beside it.
+  const box = await nav.boundingBox();
+  expect(box!.width).toBeLessThan(1440 / 2);
+  expect(box!.y).toBeLessThan(900 / 2);
+  await scan(page);
+});
+
+test('the student shell keeps the tab bar below the breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, 'student@uni.ac.ae');
+
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+  await expect(nav).toHaveCount(1);
+
+  // The mirror image: a bar spanning the foot, not a column at the side.
+  const box = await nav.boundingBox();
+  expect(box!.width).toBe(390);
+  expect(box!.y).toBeGreaterThan(844 / 2);
+  await scan(page);
+});
+
+test('a console shows its side nav and no hamburger above the breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page, 'admin@uni.ac.ae');
+
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toBeHidden();
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+  await expect(nav).toHaveCount(1);
+  await expect(nav.getByRole('link', { name: 'Clubs' })).toBeVisible();
+  await scan(page);
+});
+
+test('a deep route keeps its section lit in the desktop side nav', async ({ page }) => {
+  // The side nav used to match the path exactly, so a club page lit nothing at
+  // all and left the viewer with no sense of place.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page, 'student@uni.ac.ae');
+  await page.goto('/clubs/robotics-club');
+
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+  await expect(nav.getByRole('link', { name: 'Clubs' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Events' })).not.toHaveAttribute('aria-current', 'page');
+});
+
 test('the console navigation sheet has no violations while open', async ({ page }) => {
   // A modal sheet is where focus management and aria-hidden break, and it is the
   // one interactive overlay this suite did not cover.

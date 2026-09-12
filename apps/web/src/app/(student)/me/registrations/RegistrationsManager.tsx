@@ -72,7 +72,7 @@ export function RegistrationsManager() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ul className="flex flex-col gap-2">
+      <ul className="grid gap-2 lg:grid-cols-2">
         {items.map((registration) => {
           const event = registration.event;
           const times = eventTimes(event.startsAt, event.endsAt, event.timezone);
@@ -80,7 +80,7 @@ export function RegistrationsManager() {
           return (
             <li
               key={registration.id}
-              className="flex flex-col gap-2 rounded-card border border-border bg-surface p-3"
+              className="flex h-full flex-col gap-2 rounded-card border border-border bg-surface p-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <Link href={`/events/${event.id}`} className="min-w-0 flex-1">
@@ -95,7 +95,7 @@ export function RegistrationsManager() {
                 {times.viewer ? <span className="tabular text-ink-3">{times.viewer}</span> : null}
               </p>
 
-              <div className="flex items-center justify-between gap-3">
+              <div className="mt-auto flex items-center justify-between gap-3">
                 <span className="tabular text-sm text-ink-2">
                   {registration.waitlistPosition === null
                     ? ''

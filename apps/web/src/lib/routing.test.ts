@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@majlis/contracts';
 import {
-  activeTabHref,
+  activeNavHref,
   decideRedirect,
   landingFor,
   mergeSessionCookie,
@@ -174,28 +174,28 @@ describe('shellDestinations', () => {
   });
 });
 
-describe('activeTabHref', () => {
+describe('activeNavHref', () => {
   const TABS = ['/home', '/clubs', '/events', '/me/qr', '/me'];
 
   it('lights the tab for its own route', () => {
-    expect(activeTabHref('/home', TABS)).toBe('/home');
-    expect(activeTabHref('/me', TABS)).toBe('/me');
+    expect(activeNavHref('/home', TABS)).toBe('/home');
+    expect(activeNavHref('/me', TABS)).toBe('/me');
   });
 
   it('lights My QR, not Me, on /me/qr', () => {
     // Catches a plain prefix match: /me is a prefix of /me/qr, so a naive
     // implementation lights two tabs at once.
-    expect(activeTabHref('/me/qr', TABS)).toBe('/me/qr');
+    expect(activeNavHref('/me/qr', TABS)).toBe('/me/qr');
   });
 
   it('lights Me on its sub-routes', () => {
     // The defect this replaces: excluding /me from prefix matching to protect
     // /me/qr left these two screens with no tab lit at all.
-    expect(activeTabHref('/me/registrations', TABS)).toBe('/me');
-    expect(activeTabHref('/me/certificates', TABS)).toBe('/me');
+    expect(activeNavHref('/me/registrations', TABS)).toBe('/me');
+    expect(activeNavHref('/me/certificates', TABS)).toBe('/me');
   });
 
   it('lights nothing for a route that is not under any tab', () => {
-    expect(activeTabHref('/admin/metrics', TABS)).toBeNull();
+    expect(activeNavHref('/admin/metrics', TABS)).toBeNull();
   });
 });

@@ -17,7 +17,7 @@ function ClubCard({ club }: { club: ClubSummary }) {
   return (
     <Link
       href={`/clubs/${club.slug}`}
-      className="flex items-center gap-3 rounded-card border border-border bg-surface p-3 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-surface-2"
+      className="flex h-full items-center gap-3 rounded-card border border-border bg-surface p-3 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-surface-2"
     >
       <img src={club.logoUrl} alt="" className="size-12 shrink-0 rounded-control object-cover" />
       <span className="min-w-0 flex-1">
@@ -102,15 +102,15 @@ export function ClubBrowser() {
       </div>
 
       {items === null ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-[4.5rem]" />
-          <Skeleton className="h-[4.5rem]" />
-          <Skeleton className="h-[4.5rem]" />
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-[4.5rem]" />
+          ))}
         </div>
       ) : items.length === 0 ? (
         <EmptyState title="No clubs found" />
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((club) => (
             <li key={club.id}>
               <ClubCard club={club} />

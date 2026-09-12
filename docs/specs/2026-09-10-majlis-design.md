@@ -762,6 +762,18 @@ which TypeScript already guaranteed, while the component was missing 14 real enu
 and had invented two. Both defects originated in the plan, not in the implementations.
 
 ---
+### Deviation: the student shell is no longer mobile-only (2026-09-12)
+
+§3 and §9.1 fix the student shell as mobile-first with bottom tabs, and say nothing about
+what it becomes on a desktop screen. The user overrode that directly: the site "looks bad on
+desktop, its not only for phone", and asked for "both desktop and mobile design". The bottom
+tabs survive unchanged below 1024px; above it the same five destinations become a persistent
+side navigation, matching the officer and admin consoles, and content takes a capped measure
+with multiple columns where the content earns them. One nav list feeds both presentations, so
+they cannot offer different destinations, and the axe suite asserts that exactly one
+"Sections" landmark exists at either width.
+
+---
 ## 14. Open items
 
 - ~~The visual identity itself, palette, type ramp and component language, is deferred to Stage 3~~ Settled in Stage 3; the approved values live in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) §2.

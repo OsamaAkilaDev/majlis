@@ -78,7 +78,7 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
   }
 
   return (
-    <div className="flex max-w-lg flex-col gap-6">
+    <div className="flex max-w-3xl flex-col gap-6">
       <div className="flex items-center gap-3">
         <h2 className="font-display text-h1 text-ink">{club.name}</h2>
         <StatusBadge status={club.status} />
@@ -105,6 +105,9 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
 
       {canEdit ? (
         <>
+          {/* Paired once there is room: a single column of six short fields
+              leaves half a console screen empty. */}
+          <div className="grid gap-5 md:grid-cols-2">
           <Field label="Department" error={error?.fieldError('departmentId')}>
             <Select value={departmentId} onValueChange={setDepartmentId}>
               <SelectTrigger aria-label="Department">
@@ -143,9 +146,12 @@ export function OverviewManager({ clubId, platformRole }: { clubId: string; plat
             </Select>
           </Field>
 
-          <Field label="Description" error={error?.fieldError('description')}>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
-          </Field>
+          <div className="md:col-span-2">
+            <Field label="Description" error={error?.fieldError('description')}>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
+            </Field>
+          </div>
+          </div>
 
           {error && error.errors.length === 0 ? (
             <p className="text-sm text-bad-fg">{error.detail ?? error.title}</p>
