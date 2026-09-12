@@ -584,7 +584,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 2 | ✅ **Done** — Auth & users | Signup, login, refresh rotation, logout, session guard, permission guard, user suspension, audit writer. Designed in [`2026-09-11-stage-2-auth-design.md`](2026-09-11-stage-2-auth-design.md) |
 | 3 | ✅ **Done** — Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline. Designed in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) |
 | 4 | ✅ **Done** — Clubs, team & membership | Departments, club CRUD + status machine, image upload via signed URL, Lead appointment, in-app team invitations, the four membership policies, requests and decisions, member lists, leaving. Designed in [`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md) |
-| 5 | Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override |
+| 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
 | 6 | Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue |
 | 7 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
 | 8 | Hardening & deploy | Rate limits (all of them, none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
@@ -786,6 +786,86 @@ which nobody has opened is matched by its old status and then rendered under its
 so a status-filtered page can show a row whose badge does not match the filter. Making the
 filter agree would mean expressing `dueStatus` in SQL over four columns on every list
 query. Accepted until a filtered list is something students actually use.
+
+---
+### Stage 5 completion note (2026-09-12)
+
+Events and registration, planned in
+[`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md).
+No new migration was needed for the invariants: every constraint §5.2 asks for already
+existed from Stage 1. The one migration added is two cursor-pagination indexes.
+
+| | |
+|---|---|
+| Tests | 320 API integration, 139 API unit, 52 contracts, 115 web unit, 134 Playwright/axe. All green |
+| Verified | Capacity proven by removing the row lock and watching five concurrent requests oversell. 21 further mutations applied and each watched go red |
+
+**Decisions taken in the plan rather than here:** field buckets for Marketing, CTO and
+Operations; event creation staying with Lead, Vice and Admin because a Marketing officer
+cannot set `startsAt`; `eligibilityRules` left null; list reads computing the due status
+without writing; capacity raises promoting from the waitlist; and cancellation leaving
+registration rows untouched.
+
+**The plan was wrong in one place.** It put the poster upload at an unscoped
+`POST /uploads/event-poster`, copied from the club-logo route. That works for clubs only
+because `club:create` is Admin-only; `event:create` is held by club Leads, so an unscoped
+route resolves no club scope and `PermissionsGuard` denies every real Lead their own club's
+upload. It is club-scoped instead.
+
+**Field-level permissions now exist** (`apps/api/src/auth/field-permissions.ts`), deferred
+from Stage 4 and applied to clubs in the same change. A key absent from a bucket map is
+refused, so a field added to a patch schema without a decision recorded there fails closed.
+CTO holds nothing on a club, because no column on `Club` is technical.
+
+**What the end-of-stage review earned, for the record**, since the process question of how
+much review to run is live. Two reviewers, one security and one correctness, found fourteen
+issues between them. Three were exploitable or spec-violating: the lifecycle sweep secret
+was written to the request log in cleartext on every call including failed guesses, against
+§11 which names that secret explicitly; `POST /events/:eventId/poster-upload-url` was gated
+on `event:edit` while the field it writes is Marketing-only, so a CTO or Operations officer
+could overwrite a live poster; and Admin overrides recorded no reason on six paths, three of
+them predating this stage. The correctness reviewer found that `GET /events` never applied
+`dueStatus` despite the plan requiring it, that `advance` replayed its whole walk under
+concurrency (six concurrent reads produced twelve audit rows for a two-hop advance), and
+that cancelling a place on a CANCELLED event promoted someone into it.
+
+It also found a regression introduced by the override-reason fix itself: the server began
+requiring `overrideReason` while no web screen sent one, so every Admin edit of an event or
+a club 422'd. A Stage 4 screen, broken by a Stage 5 fix, with no test covering an Admin club
+PATCH. That is the argument for the whole-branch review rather than per-task ones, again.
+
+**Six mutations survived the suite**, one of which was a real gap: deleting the sweep's
+`checkInOpensAt` candidate clause changed nothing, so an event whose check-in opens before
+registration closes would never be swept to `ONGOING`.
+
+**Carried forward:**
+
+- **Stage 6:** re-registering over a `REMOVED` row answers 201 with that row, against §5.2.
+  Latent until Stage 6 gives `REMOVED` a writer.
+- **Stage 6 or 8:** there is no `error.tsx` anywhere in `apps/web`, and every client `load()`
+  effect rejects unhandled on a non-404/403 API error, so a revoked refresh token mid-session
+  leaves the screen on its skeleton forever. Visible in the e2e server log as
+  `unhandledRejection: ProblemError`.
+- **Stage 7 or 8:** `GET /events?q=` is a sequential scan. `title ILIKE '%…%'` cannot use a
+  btree: 4.5ms over 4,000 events, linear, roughly 55ms at 50,000. The fix is `pg_trgm` plus a
+  GIN index, which changes the deployment's database requirements and needs a decision.
+- **Stage 7:** raising an event's capacity writes one audit row per promoted student in a
+  loop inside one transaction. Bounded by the waitlist, so a 100 to 5,000 rise with 4,900
+  waitlisted is ~4,900 round trips in one transaction. Batching means bypassing
+  `AuditService.record`, which is the single funnel by design.
+- **Stage 8:** the skip link's focus ring is `--color-primary`, low-contrast against the new
+  deep-green auth ground. Needs a focus token that works on both light surfaces and dark
+  grounds.
+- **Stage 8:** an uploaded poster can be replaced but never cleared; no delete-object route
+  exists. Same for club logos and banners.
+- `TeamManager` and `MembersManager` still fetch `limit=100` and discard `nextCursor`.
+
+**A toolchain landmine, now defused.** Commit `9f84214` made a comment-only edit to an
+already-applied migration and its message claimed "no checksum concerns". That was wrong:
+Prisma stores the file's hash, `migrate deploy` ignores it but `migrate dev` refuses to run
+at all and offers to reset the database. Stage 5's first migration hit exactly that. Both
+`majlis_dev` and `majlis_test` have been repaired. **Never edit an applied migration file,
+including its comments.**
 
 ---
 ## 14. Open items
