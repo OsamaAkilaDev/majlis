@@ -66,12 +66,6 @@ describe('POST /clubs/:clubId/lead', () => {
 });
 
 describe('the one ACTIVE Lead index', () => {
-  // Needs POST /appointments/:id/accept, which Task 7 adds. Re-enable by
-  // switching `it.todo` back to `it` and uncommenting the body below. Do
-  // not stub an accept route early just to make this pass.
-  it.todo('admits two INVITED Leads but only the first acceptance');
-
-  /*
   it('admits two INVITED Leads but only the first acceptance', async () => {
     // The partial unique index covers ACTIVE rows only, so a club can hold
     // several INVITED candidates at once and the constraint fires at
@@ -115,7 +109,6 @@ describe('the one ACTIVE Lead index', () => {
     expect(active).toHaveLength(1);
     expect(active[0]!.userId).toBe(first.userId);
   });
-  */
 });
 
 describe('POST /clubs/:clubId/team', () => {

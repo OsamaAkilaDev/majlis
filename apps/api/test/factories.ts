@@ -132,6 +132,25 @@ export function mkAppointment({
   });
 }
 
+/**
+ * Inserts an INVITED appointment with a live invitationExpiresAt, matching
+ * what TeamService.invite would produce. Direct write rather than the real
+ * POST /clubs/:clubId/team route, which needs an authenticated Lead that
+ * Task 7's invitee-focused tests have no reason to set up.
+ */
+export function inviteOfficer(clubId: string, userId: string, role: ClubRole): Promise<ClubTeamAppointment> {
+  return testDb().clubTeamAppointment.create({
+    data: {
+      clubId,
+      userId,
+      role,
+      status: 'INVITED',
+      invitedById: userId,
+      invitationExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    },
+  });
+}
+
 export interface ActiveLead {
   userId: string;
   sessionCookie: string;

@@ -43,6 +43,7 @@ export const invitationSchema = z.object({
 });
 
 export const appointmentPageSchema = cursorPageSchema(appointmentSchema);
+export const invitationPageSchema = cursorPageSchema(invitationSchema);
 
 // ClubRole and AppointmentStatus types come from ../common/enums via the
 // barrel; redeclaring them here would collide as ambiguous `export *` names.
@@ -51,3 +52,4 @@ export type EndAppointmentBody = z.infer<typeof endAppointmentBodySchema>;
 export type Appointment = z.infer<typeof appointmentSchema>;
 export type Invitation = z.infer<typeof invitationSchema>;
 export type AppointmentPage = z.infer<typeof appointmentPageSchema>;
+export type InvitationPage = z.infer<typeof invitationPageSchema>;

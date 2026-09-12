@@ -7,6 +7,7 @@ import {
   inviteTeamMemberBodySchema,
   type Appointment,
   type AppointmentPage,
+  type InvitationPage,
 } from '@majlis/contracts';
 import { createZodDto } from 'nestjs-zod';
 import { Actor } from '../../auth/actor.decorator';
@@ -69,5 +70,29 @@ export class TeamController {
     @Body() body: EndAppointmentDto,
   ): Promise<void> {
     return this.team.end(actor, clubId, appointmentId, body);
+  }
+
+  /**
+   * These three routes carry no @RequirePermission: they are self-scoped by
+   * `actor.id` inside TeamService, not by any club or event permission.
+   */
+  @Get('me/invitations')
+  myInvitations(@Actor() actor: User, @Query() query: TeamListQueryDto): Promise<InvitationPage> {
+    return this.team.myInvitations(actor, query);
+  }
+
+  @Post('appointments/:appointmentId/accept')
+  @ApiResponse({ status: 404, description: 'No such invitation.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 409, description: 'That club already has an active Lead.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That invitation is no longer open, or has expired.', type: ProblemDetailsDto })
+  accept(@Actor() actor: User, @Param('appointmentId') appointmentId: string): Promise<Appointment> {
+    return this.team.accept(actor, appointmentId);
+  }
+
+  @Post('appointments/:appointmentId/decline')
+  @ApiResponse({ status: 404, description: 'No such invitation.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That invitation is no longer open, or has expired.', type: ProblemDetailsDto })
+  decline(@Actor() actor: User, @Param('appointmentId') appointmentId: string): Promise<Appointment> {
+    return this.team.decline(actor, appointmentId);
   }
 }
