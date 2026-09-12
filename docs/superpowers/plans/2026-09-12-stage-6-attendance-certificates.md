@@ -76,8 +76,10 @@ no queue.
 
 **No rate limit on `/verify/{code}`.** Deferred to Stage 8 with the rest, decided
 2026-09-12: the code carries 128 bits of entropy and the route is one indexed read.
-What it does keep is a uniform response shape and no early return for a missing code,
-so it cannot be used as an enumeration oracle.
+The entropy is the whole protection: a miss answers 404 and a hit answers 200, sooner,
+so the route is perfectly distinguishable and there is simply nothing to enumerate.
+What the fixed response shape does instead is cap disclosure on a hit, to spec 7.6's
+six fields and nothing else.
 
 **New dependencies:** `qrcode@1.5.4` and `@types/qrcode@1.5.6` in both apps,
 `@react-pdf/renderer@4.9.0` and `react@19.3.0` in the API. `@react-pdf/renderer`

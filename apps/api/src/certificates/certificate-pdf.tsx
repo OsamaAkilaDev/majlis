@@ -45,7 +45,7 @@ const DATE = new Intl.DateTimeFormat('en-GB', {
 
 /**
  * Renders the document to PDF bytes. Called on the first download of a
- * certificate and never again — `pdfUrl` is filled in afterwards, which is
+ * certificate and never again. `pdfUrl` is filled in afterwards, which is
  * what keeps issuance cheap enough to run inline (spec 7.6).
  */
 export async function renderCertificate(doc: CertificateDocument): Promise<Buffer> {

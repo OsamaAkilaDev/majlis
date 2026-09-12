@@ -163,18 +163,27 @@ describe('the QR pass token and its signing key', () => {
   it('keeps the signing secret out of every line a boot can emit', () => {
     // Spec 11: the QR signing key never appears in a log. The one line a
     // boot emits that has ever seen it is the environment validation
-    // failure NestFactory logs when the process refuses to start — so that
+    // failure NestFactory logs when the process refuses to start, so that
     // error must carry the rule that was broken and never the value that
     // broke it.
+    //
+    // The secret below is 16 characters, so it is the field that FAILS
+    // min(32) and the one Zod is reporting on. A 32-character value passes
+    // that rule, Zod raises no issue for the field at all, and the
+    // assertions underneath would hold against a schema that interpolated
+    // every offending value into its messages.
     const failed = envSchema.safeParse({
       DATABASE_URL: 'postgresql://u:p@localhost:5432/d',
       SESSION_SECRET: 'too-short',
       SUPABASE_STORAGE_URL: 'https://example.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(40),
-      QR_SIGNING_SECRET: 'SUPERSECRETVALUE'.repeat(2),
+      QR_SIGNING_SECRET: 'SUPERSECRETVALUE',
     });
 
+    // The failure is about QR_SIGNING_SECRET, not only about the other
+    // fields: an issue list that never mentions it proves nothing below.
     expect(failed.success).toBe(false);
+    expect(failed.error?.issues.some((i) => i.path[0] === 'QR_SIGNING_SECRET')).toBe(true);
     expect(String(failed.error)).not.toContain('SUPERSECRETVALUE');
     expect(JSON.stringify(failed.error)).not.toContain('SUPERSECRETVALUE');
 

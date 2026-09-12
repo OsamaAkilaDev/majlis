@@ -15,7 +15,7 @@ import { signPass } from './qr-token';
  * The one persistent identity pass per user of spec 7.5.
  *
  * The signing key is read once, here, and held in a private field. It is
- * never returned, never logged, and never written to an audit row — and
+ * never returned, never logged, and never written to an audit row, and
  * neither is the token, which is derived on every read rather than stored:
  * the database holds only `tokenVersion`, which the signature commits to.
  */
@@ -42,7 +42,7 @@ export class QrPassService {
 
   /**
    * `qr_pass.user_id` is unique, and the first call from a freshly opened
-   * app races itself — two tabs, or a retry. The loser re-reads the winner's
+   * app races itself: two tabs, or a retry. The loser re-reads the winner's
    * row instead of failing: both callers want the same pass, and there is
    * only ever one.
    */

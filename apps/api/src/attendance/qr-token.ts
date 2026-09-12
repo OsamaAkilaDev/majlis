@@ -8,7 +8,7 @@ import { parse as parseUuid, stringify as stringifyUuid } from 'uuid';
  * length in a badly lit hall.
  *
  * The payload is 16 bytes of user id, 2 bytes of token version and 4 bytes
- * of epoch seconds, and nothing else. No event data, no personal data — the
+ * of epoch seconds, and nothing else. No event data, no personal data. The
  * pass is an identity, not a ticket, which is why one pass works for every
  * event the holder is registered for.
  *
@@ -76,7 +76,7 @@ export function signPass(payload: PassPayload, secret: string): string {
  * instead of "invalid pass".
  *
  * The signature is compared with `timingSafeEqual`, on buffers already
- * checked to be the same length — the length check is on the DECODED
+ * checked to be the same length. The length check is on the DECODED
  * signature, so it is a property of the wire format rather than a
  * byte-by-byte comparison that would leak the real digest.
  */
