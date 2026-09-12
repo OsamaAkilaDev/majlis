@@ -7,3 +7,4 @@ export * from './departments';
 export * from './clubs';
 export * from './team';
 export * from './membership';
+export * from './events';

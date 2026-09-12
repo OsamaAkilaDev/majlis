@@ -15,6 +15,9 @@ import {
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
+import { CLUB_FIELDS, assertFieldsAllowed } from '../auth/field-permissions';
+import { resolveClubFacts } from '../auth/permissions.guard';
+import type { PlatformRole } from '../auth/permissions';
 import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import { violatedConstraintName } from '../common/prisma-constraint';
 import { Prisma, type Club as ClubRow } from '../generated/prisma/client';
@@ -27,6 +30,12 @@ import { assertAcceptsEdits, assertTransition } from './club-status';
 import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
+
+/** Only what the service reads off the signed-in user. */
+interface Actor {
+  id: string;
+  platformRole: PlatformRole;
+}
 
 /** Maps a club row plus its computed fields onto the wire summary shape. */
 function toClubSummary(row: ClubRow, departmentName: string, memberCount: number): ClubSummary {
@@ -250,11 +259,17 @@ export class ClubsService {
    * (patchClubBodySchema has no such keys, but a service must not rely on
    * that alone) cannot smuggle either into the update.
    */
-  async update(actor: { id: string }, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
+  async update(actor: Actor, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
     return this.host.run(async () => {
       const club = await this.host.tx.club.findUnique({ where: { id: clubId } });
       if (!club) throw new NotFoundError('No such club.');
       assertAcceptsEdits(club.status);
+
+      // Re-derived from the database here rather than carried over from the
+      // guard: the field gate is a second authorization decision and must
+      // not trust anything the first one left on the request.
+      const { clubRoles } = await resolveClubFacts(this.host, actor.id, clubId);
+      assertFieldsAllowed(body, CLUB_FIELDS, { platformRole: actor.platformRole, clubRoles });
 
       const data: Prisma.ClubUncheckedUpdateInput = {};
       if (body.departmentId !== undefined) data.departmentId = body.departmentId;
