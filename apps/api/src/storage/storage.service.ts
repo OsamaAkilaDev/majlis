@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { ConfigService } from '@nestjs/config';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { Logger } from 'nestjs-pino';
 import type { Env } from '../config/env.schema';
 import { STORAGE_BUCKET, publicUrl } from './image-kinds';
 
@@ -17,7 +19,10 @@ export class StorageService {
   private readonly baseUrl: string;
   private readonly key: string;
 
-  constructor(config: ConfigService<Env, true>) {
+  constructor(
+    config: ConfigService<Env, true>,
+    private readonly logger: Logger,
+  ) {
     this.baseUrl = config.get('SUPABASE_STORAGE_URL', { infer: true }).replace(/\/+$/, '');
     this.key = config.get('SUPABASE_SERVICE_ROLE_KEY', { infer: true });
   }
@@ -62,11 +67,18 @@ export class StorageService {
     const res = await fetch(`${this.baseUrl}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`, {
       method: 'HEAD',
     });
+    if (res.status === 404) return null;
     // Verified live (task-2-report.md): a missing object answers 400 with a
     // NoSuchKey body on this project, not the 404 the docs' happy path
-    // implies. HEAD has no body to disambiguate further, so both are treated
-    // as "not found" rather than one throwing as a transport error.
-    if (res.status === 404 || res.status === 400) return null;
+    // implies. HEAD has no body to disambiguate further, so this is also
+    // treated as "not found" rather than a transport error, but unlike 404 it
+    // is not unambiguous: a misconfigured bucket, public access turned off,
+    // or a revoked key can also produce it. The warn line is how a systemic
+    // cause gets noticed instead of silently reading as routine misses.
+    if (res.status === 400) {
+      this.logger.warn({ path, status: res.status }, 'Storage returned 400 while stat-ing an object');
+      return null;
+    }
     if (!res.ok) throw new Error(`Storage refused to stat an object: ${res.status}`);
 
     return {

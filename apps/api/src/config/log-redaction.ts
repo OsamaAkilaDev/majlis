@@ -19,9 +19,9 @@ import { stdSerializers, type SerializedRequest } from 'pino';
  *
  * `req.url` (and `req.raw.url`) carries the full raw query string verbatim,
  * unredacted, because pino-http serializes it as one opaque string rather
- * than structured fields — no path-based redaction can strip a substring out
- * of it. That gap is closed below: `redactedReqSerializer` truncates `url` at
- * the `?` before pino ever sees it, which matters now that Stage 4's
+ * than structured fields, and no path-based redaction can strip a substring
+ * out of it. That gap is closed below: `redactedReqSerializer` truncates
+ * `url` at the `?` before pino ever sees it, which matters now that Stage 4's
  * invitation tokens travel in a query string.
  */
 export const LOG_REDACT_PATHS = [
