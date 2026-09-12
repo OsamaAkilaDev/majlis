@@ -72,6 +72,36 @@ export const userListItemSchema = z.object({
 export const userListPageSchema = cursorPageSchema(userListItemSchema);
 
 /**
+ * One row of `GET /clubs/{clubId}/user-search`, the club-scoped directory
+ * lookup an officer uses to pick a person to invite, add or assign.
+ *
+ * Deliberately narrower than `userListItemSchema`: a club Lead has no
+ * business reading every account's platform role, status and creation date,
+ * which is why `GET /users` stays Admin-only rather than being opened up.
+ * Name and address are what it takes to tell two people apart.
+ */
+export const userSearchItemSchema = z.object({
+  id: z.string(),
+  fullName: z.string(),
+  email: z.string(),
+});
+
+/**
+ * Not a cursor page. The result is capped server-side and the officer
+ * narrows it by typing, so paging it would only be a way to walk the whole
+ * directory two characters at a time.
+ */
+export const userSearchResultSchema = z.object({ items: z.array(userSearchItemSchema) });
+
+/**
+ * `q` is required and at least two characters, which is what stops the
+ * route from being a blank-query dump of every account.
+ */
+export const userSearchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(120),
+});
+
+/**
  * `PATCH /users/{id}/status`'s body. `reason` is required — every admin
  * override in spec §11's audited-action list carries one, and this is the
  * first of them Stage 2 implements.
@@ -87,4 +117,7 @@ export type Me = UserProfile;
 export type PatchMeBody = z.infer<typeof patchMeBodySchema>;
 export type UserListItem = z.infer<typeof userListItemSchema>;
 export type UserListPage = z.infer<typeof userListPageSchema>;
+export type UserSearchItem = z.infer<typeof userSearchItemSchema>;
+export type UserSearchResult = z.infer<typeof userSearchResultSchema>;
+export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;
 export type PatchUserStatusBody = z.infer<typeof patchUserStatusBodySchema>;

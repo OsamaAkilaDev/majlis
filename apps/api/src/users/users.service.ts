@@ -5,6 +5,8 @@ import type {
   PatchUserStatusBody,
   UserListPage,
   UserProfile,
+  UserSearchQuery,
+  UserSearchResult,
 } from '@majlis/contracts';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { AuditService } from '../audit/audit.service';
@@ -20,6 +22,9 @@ import { TransactionHost } from '../prisma/transaction.host';
  * call site.
  */
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** What one club-scoped search returns at most. */
+const SEARCH_LIMIT = 20;
 
 /**
  * Picks exactly the fields a profile response ever carries — never the raw
@@ -95,6 +100,33 @@ export class UsersService {
       })),
       nextCursor,
     };
+  }
+
+  /**
+   * GET /clubs/{clubId}/user-search. Authorized by the club in the path
+   * (`user:search`), but not restricted to that club's members: the whole
+   * point is appointing and inviting people who are not members yet.
+   *
+   * Three columns, never the row. `platformRole`, `status` and `createdAt`
+   * are `GET /users`' business, and that route stays Admin-only.
+   */
+  async search(query: UserSearchQuery): Promise<UserSearchResult> {
+    const items = await this.host.tx.user.findMany({
+      where: {
+        OR: [
+          { fullName: { contains: query.q, mode: 'insensitive' } },
+          { email: { contains: query.q, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, fullName: true, email: true },
+      orderBy: { fullName: 'asc' },
+      // Capped rather than paged. `q` is already at least two characters
+      // (see userSearchQuerySchema), and a cursor here would just be a way
+      // to walk the directory two characters at a time.
+      take: SEARCH_LIMIT,
+    });
+
+    return { items };
   }
 
   /**

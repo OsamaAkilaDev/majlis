@@ -88,6 +88,17 @@ export interface PermissionRule {
 
 export const PERMISSIONS = {
   'user:list': { platform: ['ADMIN'] },
+  // The narrow club-scoped directory lookup behind every "pick a person"
+  // control an officer has: inviting to the team, adding a member,
+  // assigning an event responsibility. `user:list` is not widened for it,
+  // because that route returns platform role, status and creation date for
+  // every account in the university. This one returns a name and an
+  // address, and only to somebody who already leads a club.
+  //
+  // Club-scoped, so it must only ever be required on a route carrying a
+  // clubId: a club rule cannot authorize a bare unscoped route, which is
+  // why the route is nested under /clubs/:clubId.
+  'user:search': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
   'user:suspend': { platform: ['ADMIN'] },
   'department:manage': { platform: ['ADMIN'] },
   'club:create': { platform: ['ADMIN'] },
