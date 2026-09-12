@@ -267,3 +267,41 @@ describe('GET /clubs/:clubId', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('GET /clubs/by-slug/:slug', () => {
+  it('resolves the same club the id route does', async () => {
+    const student = await loginAsStudent(app);
+    const club = await makeClub();
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/by-slug/${club.slug}`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(club.id);
+  });
+
+  it('reports the viewer own membership, not another user', async () => {
+    const student = await loginAsStudent(app);
+    const other = await loginAsStudent(app);
+    const club = await makeClub();
+    await prisma.clubMembership.create({
+      data: { clubId: club.id, userId: other.userId, status: 'ACTIVE' },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/by-slug/${club.slug}`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.body.viewerMembershipStatus).toBeNull();
+  });
+
+  it('returns 404 for an unknown slug', async () => {
+    const student = await loginAsStudent(app);
+    expect(
+      (await request(app.getHttpServer())
+        .get(`${CLUBS_PATH}/by-slug/no-such-club`)
+        .set('Cookie', student.sessionCookie)).status,
+    ).toBe(404);
+  });
+});

@@ -205,14 +205,27 @@ export class ClubsService {
    * never joined.
    */
   async detail(actor: { id: string }, clubId: string): Promise<ClubDetail> {
+    return this.detailWhere(actor, { id: clubId });
+  }
+
+  /** GET /clubs/by-slug/:slug. The slug is the club's public identifier. */
+  async detailBySlug(actor: { id: string }, slug: string): Promise<ClubDetail> {
+    return this.detailWhere(actor, { slug });
+  }
+
+  private async detailWhere(
+    actor: { id: string },
+    where: { id: string } | { slug: string },
+  ): Promise<ClubDetail> {
     const club = await this.host.tx.club.findUnique({
-      where: { id: clubId },
+      where,
       include: {
         department: { select: { name: true } },
         _count: { select: { memberships: { where: ACTIVE_ONLY } } },
       },
     });
     if (!club) throw new NotFoundError('No such club.');
+    const clubId = club.id;
 
     const membership = await this.host.tx.clubMembership.findFirst({
       where: { clubId, userId: actor.id },

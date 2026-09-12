@@ -54,6 +54,14 @@ export class ClubsController {
     return this.clubs.list(query);
   }
 
+  // Two path segments after `clubs`, so this cannot collide with the
+  // single-segment `clubs/:clubId` route at any declaration order.
+  @Get('clubs/by-slug/:slug')
+  @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
+  detailBySlug(@Actor() actor: User, @Param('slug') slug: string): Promise<ClubDetail> {
+    return this.clubs.detailBySlug(actor, slug);
+  }
+
   @Get('clubs/:clubId')
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   detail(@Actor() actor: User, @Param('clubId') clubId: string): Promise<ClubDetail> {

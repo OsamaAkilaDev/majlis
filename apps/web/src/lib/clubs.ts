@@ -75,26 +75,9 @@ export const listClubs = (query: ClubListQuery): Promise<ClubPage> =>
 
 export const getClub = (clubId: string): Promise<ClubDetail> => apiFetch(`/clubs/${clubId}`);
 
-/**
- * No slug-lookup route exists on the API (verified against
- * clubs.controller.ts: GET /clubs/:clubId resolves the primary key only).
- * Scans list pages for a matching slug, bounded at MAX_SLUG_SCAN_PAGES so a
- * miss cannot turn into an unbounded crawl. Flagged as a deviation in the
- * stage report; the clean fix is a server-side GET /clubs/by-slug/:slug.
- */
-const MAX_SLUG_SCAN_PAGES = 10;
-
-export async function getClubBySlug(slug: string): Promise<ClubDetail | null> {
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_SLUG_SCAN_PAGES; page++) {
-    const result = await listClubs({ limit: 100, cursor });
-    const hit = result.items.find((c) => c.slug === slug);
-    if (hit) return getClub(hit.id);
-    if (!result.nextCursor) return null;
-    cursor = result.nextCursor;
-  }
-  return null;
-}
+/** The slug is the club's public identifier, so student URLs resolve by it. */
+export const getClubBySlug = (slug: string): Promise<ClubDetail> =>
+  apiFetch(`/clubs/by-slug/${encodeURIComponent(slug)}`);
 
 // -- Team ---------------------------------------------------------------
 
