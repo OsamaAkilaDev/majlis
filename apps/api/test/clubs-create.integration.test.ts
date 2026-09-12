@@ -142,7 +142,15 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
 
     expect((await create('Robotics Club')).body.slug).toBe('robotics-club');
     // The name column is unique, so this must fail on name before slug.
-    expect((await create('Robotics Club')).status).toBe(409);
+    // uniqueSlug's pre-check already moved the second attempt's slug to
+    // -2, so the only constraint left to fail here is the name.
+    const collision = await create('Robotics Club');
+    expect(collision.status).toBe(409);
+    // The global Problem Details filter maps any escaping P2002 to a generic
+    // 409 too, so the status code alone would pass even with mapWriteError
+    // silently failing to match this constraint. The specific detail message
+    // is what proves the mapping actually fired and picked the name branch.
+    expect(collision.body.detail).toBe('A club with that name already exists.');
     expect((await create('Robotics  Club!')).body.slug).toBe('robotics-club-2');
   });
 

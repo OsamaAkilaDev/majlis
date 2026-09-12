@@ -11,6 +11,7 @@ import type {
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
+import { violatedConstraintName } from '../../common/prisma-constraint';
 import type { ClubRole } from '../../generated/prisma/enums';
 import { Prisma, type ClubMembership as MembershipRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
@@ -44,33 +45,6 @@ function groupRoles(rows: AppointmentRoleRow[], key: (r: AppointmentRoleRow) => 
   const map = new Map<string, ClubRole[]>();
   for (const r of rows) map.set(key(r), [...(map.get(key(r)) ?? []), r.role]);
   return map;
-}
-
-/**
- * The violated index or constraint name, wherever Prisma 7's pg driver
- * adapter buries it. Prisma 7 requires a driver adapter (see
- * PrismaService), and under it `PrismaClientKnownRequestError.meta` is never
- * `{ target: [...columns] }` the way the engine-based client documents it;
- * it is `{ driverAdapterError: { cause: { constraint: { index } } } }`
- * instead. A hand-written index has no column list for Prisma to resolve
- * anyway, so `meta.target` was never going to carry this index's name even
- * on the engine-based client; this reads the one field the adapter actually
- * populates, and falls back to the raw driver message so the match survives
- * a shape change in either.
- */
-function violatedConstraintName(meta: unknown): string {
-  if (!meta || typeof meta !== 'object') return '';
-  const m = meta as Record<string, unknown>;
-  const target = m.target;
-  if (Array.isArray(target)) return target.join(',');
-  if (typeof target === 'string') return target;
-
-  const cause = (m.driverAdapterError as Record<string, unknown> | undefined)?.cause as
-    | Record<string, unknown>
-    | undefined;
-  const index = (cause?.constraint as Record<string, unknown> | undefined)?.index;
-  if (typeof index === 'string') return index;
-  return typeof cause?.originalMessage === 'string' ? cause.originalMessage : '';
 }
 
 /**

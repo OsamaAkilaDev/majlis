@@ -95,13 +95,15 @@ describe('the one ACTIVE Lead index', () => {
       ).status,
     ).toBe(201);
 
-    expect(
-      (
-        await request(app.getHttpServer())
-          .post(`${API_PREFIX}/appointments/${b.body.id}/accept`)
-          .set('Cookie', second.sessionCookie)
-      ).status,
-    ).toBe(409);
+    const secondAccept = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/appointments/${b.body.id}/accept`)
+      .set('Cookie', second.sessionCookie);
+    expect(secondAccept.status).toBe(409);
+    // The global Problem Details filter maps any escaping P2002 to a generic
+    // 409 too, so the status code alone would pass even with mapWriteError
+    // silently failing to match this index. The specific detail message is
+    // what proves the mapping actually fired.
+    expect(secondAccept.body.detail).toBe('That club already has an active Lead.');
 
     const active = await prisma.clubTeamAppointment.findMany({
       where: { clubId: club.id, role: 'LEAD', status: 'ACTIVE' },

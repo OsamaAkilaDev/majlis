@@ -12,6 +12,7 @@ import type {
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
+import { violatedConstraintName } from '../../common/prisma-constraint';
 import { Prisma, type ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
@@ -70,18 +71,18 @@ function toAppointment(row: AppointmentWithUser, hasLeftClub: boolean): Appointm
 
 /**
  * The one-active-Lead partial index (club_team_appointment_one_active_lead)
- * is hand-written SQL, not a Prisma `@@unique`, so Prisma cannot resolve it
- * to column names the way it does for ClubsService.mapWriteError's targets
- * and instead reports the raw constraint name as `meta.target`. Unreachable
- * from Task 6 (appointLead/invite only ever create INVITED rows, and the
- * index only constrains ACTIVE ones); this exists for Task 7's accept,
- * which is the first path that can produce the collision.
+ * is hand-written SQL, not a Prisma `@@unique`. Its name comes back through
+ * `violatedConstraintName`, not `meta.target`: Prisma 7's pg driver adapter
+ * never populates `meta.target` at all for a P2002, hand-written index or
+ * not, and reports the constraint name at `meta.driverAdapterError.cause
+ * .constraint.index` instead. Unreachable from Task 6 (appointLead/invite
+ * only ever create INVITED rows, and the index only constrains ACTIVE
+ * ones); this exists for Task 7's accept, which is the first path that can
+ * produce the collision.
  */
 function mapWriteError(e: unknown): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    const target = e.meta?.target;
-    const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
-    if (columns.some((c) => c.includes('one_active_lead'))) {
+    if (violatedConstraintName(e.meta).includes('one_active_lead')) {
       throw new ConflictError('That club already has an active Lead.');
     }
   }

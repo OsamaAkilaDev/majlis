@@ -16,6 +16,7 @@ import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
 import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
+import { violatedConstraintName } from '../common/prisma-constraint';
 import { Prisma, type Club as ClubRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../prisma/transaction.host';
@@ -67,13 +68,20 @@ function toClubDetail(
  * with different names that derive the same base slug can both see it free,
  * so the loser must still be told which constraint actually fired rather
  * than being blamed for a name collision that never happened.
+ *
+ * Both branches require a positive match rather than one defaulting to the
+ * other: `club` has exactly two unique columns, so in practice this always
+ * picks one of the two real messages, but a defaulted branch can't be
+ * proven to have identified anything, since it fires whether or not
+ * `violatedConstraintName` actually worked. See `test/clubs-create
+ * .integration.test.ts`'s name-collision test, which needs this to
+ * discriminate a broken `violatedConstraintName`.
  */
 function mapWriteError(e: unknown): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    const target = e.meta?.target;
-    const columns = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
-    if (columns.includes('slug')) throw new ConflictError('A club with that slug already exists.');
-    throw new ConflictError('A club with that name already exists.');
+    const constraint = violatedConstraintName(e.meta);
+    if (constraint.includes('slug')) throw new ConflictError('A club with that slug already exists.');
+    if (constraint.includes('name')) throw new ConflictError('A club with that name already exists.');
   }
   throw e;
 }
