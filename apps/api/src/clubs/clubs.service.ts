@@ -15,7 +15,7 @@ import {
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
-import { CLUB_FIELDS, assertFieldsAllowed } from '../auth/field-permissions';
+import { CLUB_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
 import { resolveClubFacts } from '../auth/permissions.guard';
 import type { PlatformRole } from '../auth/permissions';
 import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
@@ -269,7 +269,13 @@ export class ClubsService {
       // guard: the field gate is a second authorization decision and must
       // not trust anything the first one left on the request.
       const { clubRoles } = await resolveClubFacts(this.host, actor.id, clubId);
-      assertFieldsAllowed(body, CLUB_FIELDS, { platformRole: actor.platformRole, clubRoles });
+      const facts = { platformRole: actor.platformRole, clubRoles };
+
+      // overrideReason is a meta field, not a column, so it is held out of the
+      // field gate (CLUB_FIELDS has no entry for it, which fails closed).
+      const { overrideReason, ...fields } = body;
+      assertFieldsAllowed(fields, CLUB_FIELDS, facts);
+      const reason = overrideReasonFor(facts, overrideReason);
 
       const data: Prisma.ClubUncheckedUpdateInput = {};
       if (body.departmentId !== undefined) data.departmentId = body.departmentId;
@@ -288,6 +294,7 @@ export class ClubsService {
         entityId: clubId,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: data as Record<string, unknown>,
       });
 

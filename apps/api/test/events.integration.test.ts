@@ -284,3 +284,81 @@ describe('DELETE /events/:eventId/assignments/:assignmentId', () => {
     expect(await prisma.eventAssignment.count({ where: { id: onB.body.id } })).toBe(1);
   });
 });
+
+describe('field permissions on the poster upload route', () => {
+  // The route is gated by event:edit, which admits all five club roles, but
+  // posterUploaded is Marketing-only. Without the field gate in
+  // EventsService.mintEditUpload, a CTO or Operations officer mints a signed
+  // URL and overwrites the live poster object at events/<id>/poster.webp.
+  it.each(['CTO', 'OPERATIONS'] as const)('refuses %s a poster upload URL', async (role) => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId);
+    const officer = await makeActiveOfficer(app, club.id, role);
+
+    const res = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/events/${event.id}/poster-upload-url`)
+      .set('Cookie', officer.sessionCookie);
+
+    expect(res.status).toBe(403);
+    expect(res.body.detail).toBe('You do not have permission to change posterUploaded.');
+  });
+
+  it('still lets Marketing mint one', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId);
+    const marketing = await makeActiveOfficer(app, club.id, 'MARKETING');
+
+    const res = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/events/${event.id}/poster-upload-url`)
+      .set('Cookie', marketing.sessionCookie);
+
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('admin override reason', () => {
+  // Spec 6.1: "Every Admin override requires a recorded reason and writes an
+  // audit row in the same transaction as the overridden action." Before this,
+  // an Admin edit wrote event.updated with reason null.
+  it('refuses an admin edit with no reason, and records it when given', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId);
+    const admin = await loginAsAdmin(app);
+
+    const bare = await request(app.getHttpServer())
+      .patch(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', admin.sessionCookie)
+      .send({ title: 'Renamed by admin' });
+
+    expect(bare.status).toBe(422);
+    expect(bare.body.detail).toBe('An admin override requires a reason.');
+
+    const withReason = await request(app.getHttpServer())
+      .patch(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', admin.sessionCookie)
+      .send({ title: 'Renamed by admin', overrideReason: 'Reported title breached policy.' });
+
+    expect(withReason.status).toBe(200);
+    const row = await prisma.auditLog.findFirst({
+      where: { action: 'event.updated', entityId: event.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(row?.reason).toBe('Reported title breached policy.');
+  });
+
+  it('does not ask a club Lead for one', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId);
+
+    const res = await request(app.getHttpServer())
+      .patch(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ title: 'Renamed by the lead' });
+
+    expect(res.status).toBe(200);
+  });
+});

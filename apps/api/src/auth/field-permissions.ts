@@ -13,7 +13,7 @@
  * to whoever holds the route permission.
  */
 
-import { ForbiddenError } from '../common/problem/domain-error';
+import { ForbiddenError, UnprocessableError } from '../common/problem/domain-error';
 import type { ActorFacts, ClubRole } from './permissions';
 
 /** Lead and Vice hold every field, so neither is ever listed in a bucket. */
@@ -78,6 +78,23 @@ export type FieldMap = Record<string, readonly ClubRole[]>;
  * ADMIN passes: spec 6.1 reads "override" in the Admin column of both edit
  * rows. Every Admin override is audited by the calling service.
  */
+/**
+ * Spec 6.1: "Every Admin override requires a recorded reason and writes an
+ * audit row in the same transaction as the overridden action."
+ *
+ * An Admin who also holds an ACTIVE club role is acting in that capacity, not
+ * overriding, so only a club-roleless Admin is asked for a reason. Returns the
+ * reason to record, or undefined when this is not an override.
+ */
+export function overrideReasonFor(
+  facts: Pick<ActorFacts, 'platformRole' | 'clubRoles'>,
+  reason: string | undefined,
+): string | undefined {
+  if (facts.platformRole !== 'ADMIN' || facts.clubRoles.length > 0) return undefined;
+  if (!reason) throw new UnprocessableError('An admin override requires a reason.');
+  return reason;
+}
+
 export function assertFieldsAllowed(
   body: object,
   map: FieldMap,

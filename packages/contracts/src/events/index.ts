@@ -117,6 +117,8 @@ export const patchEventBodySchema = z
     certificateSignatory: z.string().trim().min(1).max(160).nullable(),
     attendancePolicy: attendancePolicySchema,
     posterUploaded: z.boolean(),
+    /** Required when an Admin holding no club role edits. Spec 6.1. */
+    overrideReason: z.string().trim().min(1).max(500),
   })
   .partial();
 

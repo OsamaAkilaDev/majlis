@@ -99,8 +99,8 @@ export class EventsController {
   @Post('events/:eventId/poster-upload-url')
   @RequirePermission('event:edit', { scope: 'event', from: 'params.eventId' })
   @ApiResponse(FORBIDDEN)
-  posterUploadUrl(@Param('eventId') eventId: string): Promise<SignedUpload> {
-    return this.events.mintEditUpload(eventId);
+  posterUploadUrl(@Actor() actor: User, @Param('eventId') eventId: string): Promise<SignedUpload> {
+    return this.events.mintEditUpload(actor, eventId);
   }
 
   @Post('events/:eventId/publish')

@@ -13,7 +13,7 @@ import type {
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
-import { EVENT_FIELDS, assertFieldsAllowed } from '../auth/field-permissions';
+import { EVENT_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
 import type { PlatformRole } from '../auth/permissions';
 import { resolveClubFacts, resolveEventFacts } from '../auth/permissions.guard';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../clubs/club-status';
@@ -148,8 +148,28 @@ export class EventsService {
     return { eventId, ...(await this.clubs.mintEditUpload(eventId, 'event-poster')) };
   }
 
-  /** POST /events/:eventId/poster-upload-url, for replacing an existing event's poster. */
-  mintEditUpload(eventId: string): Promise<SignedUpload> {
+  /**
+   * POST /events/:eventId/poster-upload-url, for replacing an existing event's
+   * poster.
+   *
+   * Gated on the same field permission as `posterUploaded`, not on the route's
+   * `event:edit` alone. `event:edit` admits all five club roles, so without
+   * this a CTO or Operations officer could mint a signed URL and overwrite the
+   * live poster object they are not allowed to set.
+   */
+  async mintEditUpload(actor: Actor, eventId: string): Promise<SignedUpload> {
+    const event = await this.host.tx.event.findUnique({
+      where: { id: eventId },
+      select: { clubId: true },
+    });
+    if (!event) throw new NotFoundError('No such event.');
+
+    const { clubRoles } = await resolveClubFacts(this.host, actor.id, event.clubId);
+    assertFieldsAllowed({ posterUploaded: true }, EVENT_FIELDS, {
+      platformRole: actor.platformRole,
+      clubRoles,
+    });
+
     return this.clubs.mintEditUpload(eventId, 'event-poster');
   }
 
@@ -348,7 +368,13 @@ export class EventsService {
       // gate is a second authorization decision and trusts nothing the first
       // one left on the request.
       const { clubRoles } = await resolveClubFacts(this.host, actor.id, event.clubId);
-      assertFieldsAllowed(body, EVENT_FIELDS, { platformRole: actor.platformRole, clubRoles });
+      const facts = { platformRole: actor.platformRole, clubRoles };
+
+      // overrideReason is a meta field, not a column, so it is held out of the
+      // field gate (EVENT_FIELDS has no entry for it, which fails closed).
+      const { overrideReason, ...fields } = body;
+      assertFieldsAllowed(fields, EVENT_FIELDS, facts);
+      const reason = overrideReasonFor(facts, overrideReason);
 
       const patch = body as Record<string, unknown>;
       const data: Record<string, unknown> = {};
@@ -392,6 +418,7 @@ export class EventsService {
         entityId: eventId,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
+        ...(reason ? { reason } : {}),
         after: data,
       });
 
