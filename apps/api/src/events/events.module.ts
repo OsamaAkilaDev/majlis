@@ -5,6 +5,8 @@ import { EventLifecycleService } from './event-lifecycle.service';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
 import { LifecycleSweepController } from './lifecycle-sweep.controller';
+import { RegistrationsController } from './registrations.controller';
+import { RegistrationsService } from './registrations.service';
 
 /**
  * ClubsModule is imported for ClubsService's upload minting and verification,
@@ -13,7 +15,7 @@ import { LifecycleSweepController } from './lifecycle-sweep.controller';
  */
 @Module({
   imports: [ClubsModule],
-  controllers: [EventsController, LifecycleSweepController],
-  providers: [EventsService, EventLifecycleService, AssignmentsService],
+  controllers: [EventsController, RegistrationsController, LifecycleSweepController],
+  providers: [EventsService, EventLifecycleService, AssignmentsService, RegistrationsService],
 })
 export class EventsModule {}

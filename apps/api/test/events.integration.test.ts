@@ -29,7 +29,7 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const at = (ms: number) => new Date(Date.now() + ms).toISOString();
 
-function patch(cookie: string, eventId: string, body: unknown) {
+function patch(cookie: string, eventId: string, body: object) {
   return request(app.getHttpServer())
     .patch(`${API_PREFIX}/events/${eventId}`)
     .set('Cookie', cookie)
