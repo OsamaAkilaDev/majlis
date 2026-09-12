@@ -40,8 +40,12 @@ export class TeamController {
   }
 
   @Get('clubs/:clubId/team')
-  list(@Param('clubId') clubId: string, @Query() query: TeamListQueryDto): Promise<AppointmentPage> {
-    return this.team.list(clubId, query);
+  list(
+    @Actor() actor: User,
+    @Param('clubId') clubId: string,
+    @Query() query: TeamListQueryDto,
+  ): Promise<AppointmentPage> {
+    return this.team.list(actor, clubId, query);
   }
 
   @Post('clubs/:clubId/team')

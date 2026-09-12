@@ -27,8 +27,12 @@ export class MembershipController {
   constructor(private readonly membership: MembershipService) {}
 
   @Get('clubs/:clubId/members')
-  members(@Param('clubId') clubId: string, @Query() query: MemberListQueryDto): Promise<MemberPage> {
-    return this.membership.members(clubId, query);
+  members(
+    @Actor() actor: User,
+    @Param('clubId') clubId: string,
+    @Query() query: MemberListQueryDto,
+  ): Promise<MemberPage> {
+    return this.membership.members(actor, clubId, query);
   }
 
   @Post('clubs/:clubId/members')

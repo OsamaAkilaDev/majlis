@@ -16,6 +16,7 @@ import type { ClubRole } from '../../generated/prisma/enums';
 import { Prisma, type ClubMembership as MembershipRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
+import { assertCanReadRoster } from '../roster-access';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../club-status';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
@@ -262,7 +263,9 @@ export class MembershipService {
   }
 
   /** GET /clubs/:clubId/members. Same cursor pattern as ClubsService.list and TeamService.list. */
-  async members(clubId: string, query: MemberListQuery): Promise<MemberPage> {
+  async members(actor: { id: string; platformRole: string }, clubId: string, query: MemberListQuery): Promise<MemberPage> {
+    await assertCanReadRoster(this.host, actor, clubId);
+
     const where: Prisma.ClubMembershipWhereInput = {
       clubId,
       ...(query.status ? { status: query.status } : {}),

@@ -481,3 +481,56 @@ describe('GET /me/clubs', () => {
     expect(rowsForClub[0].status).toBe('ACTIVE');
   });
 });
+
+describe('roster visibility by club status', () => {
+  it('keeps an ACTIVE club roster open to any signed-in user', async () => {
+    // The gate added below must not over-restrict: an active club's list is
+    // deliberately public to signed-in users.
+    const club = await makeClub({ membershipPolicy: 'OPEN' });
+    const outsider = await loginAsStudent(app);
+
+    expect(
+      (await request(app.getHttpServer())
+        .get(`${API_PREFIX}/clubs/${club.id}/members`)
+        .set('Cookie', outsider.sessionCookie)).status,
+    ).toBe(200);
+  });
+
+  it('hides a suspended club roster from a non-member', async () => {
+    // Member rows carry full name and email. Without this gate a student can
+    // enumerate suspended clubs and read every member's email address.
+    const club = await makeClub({ status: 'SUSPENDED' });
+    const outsider = await loginAsStudent(app);
+
+    expect(
+      (await request(app.getHttpServer())
+        .get(`${API_PREFIX}/clubs/${club.id}/members`)
+        .set('Cookie', outsider.sessionCookie)).status,
+    ).toBe(403);
+  });
+
+  it('still shows a suspended club roster to its own officer and to an Admin', async () => {
+    const club = await makeClub({ status: 'SUSPENDED' });
+    const lead = await makeActiveLead(app, club.id);
+    const admin = await loginAsAdmin(app);
+
+    for (const cookie of [lead.sessionCookie, admin.sessionCookie]) {
+      expect(
+        (await request(app.getHttpServer())
+          .get(`${API_PREFIX}/clubs/${club.id}/members`)
+          .set('Cookie', cookie)).status,
+      ).toBe(200);
+    }
+  });
+
+  it('applies the same gate to the team list', async () => {
+    const club = await makeClub({ status: 'ARCHIVED' });
+    const outsider = await loginAsStudent(app);
+
+    expect(
+      (await request(app.getHttpServer())
+        .get(`${API_PREFIX}/clubs/${club.id}/team`)
+        .set('Cookie', outsider.sessionCookie)).status,
+    ).toBe(403);
+  });
+});

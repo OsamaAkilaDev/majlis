@@ -16,6 +16,7 @@ import { violatedConstraintName } from '../../common/prisma-constraint';
 import { Prisma, type ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
+import { assertCanReadRoster } from '../roster-access';
 import { assertAcceptsEdits } from '../club-status';
 
 const INVITATION_TTL_DAYS = 14;
@@ -212,7 +213,9 @@ export class TeamService {
   }
 
   /** GET /clubs/:clubId/team. Same cursor pattern as ClubsService.list. */
-  async list(clubId: string, query: CursorPageQuery): Promise<AppointmentPage> {
+  async list(actor: { id: string; platformRole: string }, clubId: string, query: CursorPageQuery): Promise<AppointmentPage> {
+    await assertCanReadRoster(this.host, actor, clubId);
+
     const rows = await this.host.tx.clubTeamAppointment.findMany({
       where: { clubId },
       take: query.limit + 1,
