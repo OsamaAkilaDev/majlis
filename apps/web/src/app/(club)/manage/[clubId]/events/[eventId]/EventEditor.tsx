@@ -1,11 +1,9 @@
 'use client';
 
 import type {
-  Assignment,
   AssignmentList,
   EventDetail,
   EventResponsibility,
-  Registration,
   RegistrationPage,
   SessionUser,
   UserListItem,
@@ -14,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { Field } from '@/components/Field';
+import { LoadMore } from '@/components/LoadMore';
 import { ImageUpload } from '@/components/ImageUpload';
 import { OverrideReason } from '@/components/OverrideReason';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -23,10 +22,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ProblemError } from '@/lib/api';
+import { enumLabel } from '@/lib/enum-label';
 import { canEditEventField, type EventField } from '@/lib/event-fields';
 import { eventTimes } from '@/lib/event-time';
 import { needsOverrideReason } from '@/lib/override';
 import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import {
   assignResponsibility,
@@ -37,7 +38,6 @@ import {
   mintEventPosterEditUpload,
   publishEvent,
   removeAssignment,
-  responsibilityLabel,
   updateEvent,
 } from '@/lib/events';
 import { EventFields, fromEvent, toPatchBody, type EventFormValues } from '../EventFields';
@@ -113,7 +113,7 @@ function AssignPanel({
           <SelectContent>
             {RESPONSIBILITIES.map((r) => (
               <SelectItem key={r} value={r}>
-                {responsibilityLabel(r)}
+                {enumLabel(r)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -151,12 +151,18 @@ export function EventEditor({
   const [base, setBase] = useState<EventFormValues | null>(
     initialEvent ? fromEvent(initialEvent) : null,
   );
-  const [assignments, setAssignments] = useState<Assignment[] | null>(initialAssignments?.items ?? null);
-  const [assignmentCursor, setAssignmentCursor] = useState<string | null>(
-    initialAssignments?.nextCursor ?? null,
-  );
-  const [roster, setRoster] = useState<Registration[] | null>(initialRoster?.items ?? null);
-  const [rosterCursor, setRosterCursor] = useState<string | null>(initialRoster?.nextCursor ?? null);
+  const {
+    items: assignments,
+    cursor: assignmentCursor,
+    show: showAssignments,
+    append: appendAssignments,
+  } = useCursorPage(initialAssignments);
+  const {
+    items: roster,
+    cursor: rosterCursor,
+    show: showRoster,
+    append: appendRoster,
+  } = useCursorPage(initialRoster);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<ProblemError | null>(null);
   const [saved, setSaved] = useState(false);
@@ -175,25 +181,19 @@ export function EventEditor({
     setEvent(detail);
     setValues(fromEvent(detail));
     setBase(fromEvent(detail));
-    setAssignments(assigned?.items ?? null);
-    setAssignmentCursor(assigned?.nextCursor ?? null);
-    setRoster(registered?.items ?? null);
-    setRosterCursor(registered?.nextCursor ?? null);
-  }, [eventId]);
+    showAssignments(assigned);
+    showRoster(registered);
+  }, [eventId, showAssignments, showRoster]);
 
   const loadMoreAssignments = useCallback(async () => {
     if (!assignmentCursor) return;
-    const page = await listAssignments(eventId, { limit: PAGE, cursor: assignmentCursor });
-    setAssignments((prev) => [...(prev ?? []), ...page.items]);
-    setAssignmentCursor(page.nextCursor);
-  }, [eventId, assignmentCursor]);
+    appendAssignments(await listAssignments(eventId, { limit: PAGE, cursor: assignmentCursor }));
+  }, [eventId, assignmentCursor, appendAssignments]);
 
   const loadMoreRoster = useCallback(async () => {
     if (!rosterCursor) return;
-    const page = await listRoster(eventId, { limit: PAGE, cursor: rosterCursor });
-    setRoster((prev) => [...(prev ?? []), ...page.items]);
-    setRosterCursor(page.nextCursor);
-  }, [eventId, rosterCursor]);
+    appendRoster(await listRoster(eventId, { limit: PAGE, cursor: rosterCursor }));
+  }, [eventId, rosterCursor, appendRoster]);
 
   useEffect(() => {
     if (!initialEvent) void load();
@@ -345,7 +345,7 @@ export function EventEditor({
                         <span className="text-label text-ink-2">{a.userEmail}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{responsibilityLabel(a.responsibility)}</TableCell>
+                    <TableCell>{enumLabel(a.responsibility)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end">
                         <ConfirmDialog
@@ -366,11 +366,7 @@ export function EventEditor({
               </TableBody>
             </Table>
           )}
-          {assignmentCursor ? (
-            <Button variant="outline" onClick={loadMoreAssignments} className="self-center">
-              Load more
-            </Button>
-          ) : null}
+          <LoadMore cursor={assignmentCursor} onClick={loadMoreAssignments} />
         </Section>
       )}
 
@@ -409,11 +405,7 @@ export function EventEditor({
               </TableBody>
             </Table>
           )}
-          {rosterCursor ? (
-            <Button variant="outline" onClick={loadMoreRoster} className="self-center">
-              Load more
-            </Button>
-          ) : null}
+          <LoadMore cursor={rosterCursor} onClick={loadMoreRoster} />
         </Section>
       )}
     </div>

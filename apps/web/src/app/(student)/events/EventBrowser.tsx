@@ -4,8 +4,8 @@ import type { ClubSummary, EventPage, EventSummary } from '@majlis/contracts';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,6 +14,7 @@ import { eventTimes } from '@/lib/event-time';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import { listEvents } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 
 const ANY_CLUB = 'any';
 
@@ -64,8 +65,7 @@ export function EventBrowser({
   const [clubs, setClubs] = useState<ClubSummary[]>(initialClubs ?? []);
   const [clubId, setClubId] = useState(ANY_CLUB);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
+  const { items, cursor, show, append } = useCursorPage(initialEvents);
   const [loadingMore, setLoadingMore] = useState(false);
   const viewerZone = useViewerZone();
   // The server rendered the unfiltered first page, so the mount run of the
@@ -85,21 +85,19 @@ export function EventBrowser({
       return;
     }
     let cancelled = false;
-    setItems(null);
+    show(null);
     void listEvents({
       limit: PAGE,
       upcoming: true,
       ...(clubId === ANY_CLUB ? {} : { clubId }),
       ...(q.trim() ? { q: q.trim() } : {}),
     }).then((page) => {
-      if (cancelled) return;
-      setItems(page.items);
-      setCursor(page.nextCursor);
+      if (!cancelled) show(page);
     });
     return () => {
       cancelled = true;
     };
-  }, [clubId, q]);
+  }, [clubId, q, show]);
 
   async function loadMore() {
     if (!cursor) return;
@@ -111,8 +109,7 @@ export function EventBrowser({
       ...(clubId === ANY_CLUB ? {} : { clubId }),
       ...(q.trim() ? { q: q.trim() } : {}),
     });
-    setItems((prev) => [...(prev ?? []), ...page.items]);
-    setCursor(page.nextCursor);
+    append(page);
     setLoadingMore(false);
   }
 
@@ -160,11 +157,7 @@ export function EventBrowser({
         </ul>
       )}
 
-      {cursor ? (
-        <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={loadMore} busy={loadingMore} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { Field } from '@/components/Field';
+import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UserPicker } from '@/components/UserPicker';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import { listClubs } from '@/lib/clubs';
 import { formatMoment } from '@/lib/event-time';
 import { listEvents, register } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 
 const ALL = 'all';
 
@@ -118,8 +120,7 @@ export function EventsOverview({
   const [clubId, setClubId] = useState(ALL);
   const [status, setStatus] = useState(ALL);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
+  const { items, setItems, cursor, show, append } = useCursorPage(initialEvents);
   const [overriding, setOverriding] = useState<EventSummary | null>(null);
   // The server rendered the unfiltered first page, so the mount run of the
   // filter effect would refetch exactly what is already on screen.
@@ -138,8 +139,7 @@ export function EventsOverview({
       ...(q.trim() ? { q: q.trim() } : {}),
       ...(reset || !from ? {} : { cursor: from }),
     });
-    setItems((prev) => (reset || !prev ? page.items : [...prev, ...page.items]));
-    setCursor(page.nextCursor);
+    (reset ? show : append)(page);
   }
 
   // Refetches from the first page whenever a filter changes, so a stale cursor
@@ -248,11 +248,7 @@ export function EventsOverview({
               ))}
             </TableBody>
           </Table>
-          {cursor ? (
-            <Button variant="outline" onClick={() => load(false, cursor)} className="self-center">
-              Load more
-            </Button>
-          ) : null}
+          <LoadMore cursor={cursor} onClick={() => load(false, cursor)} />
         </>
       )}
 

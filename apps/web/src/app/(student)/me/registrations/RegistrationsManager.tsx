@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { eventTimes } from '@/lib/event-time';
 import { cancelRegistration, myRegistrations } from '@/lib/events';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import { PAGE } from '@/lib/page-size';
 
@@ -17,16 +19,13 @@ import { PAGE } from '@/lib/page-size';
 const CHANGEABLE = ['PUBLISHED', 'REGISTRATION_CLOSED', 'CANCELLED'];
 
 export function RegistrationsManager({ initial }: { initial: MyRegistrationPage | null }) {
-  const [items, setItems] = useState<MyRegistration[] | null>(initial?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
+  const { items, cursor, show, append } = useCursorPage(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const viewerZone = useViewerZone();
 
   const load = useCallback(async () => {
-    const page = await myRegistrations({ limit: PAGE });
-    setItems(page.items);
-    setCursor(page.nextCursor);
-  }, []);
+    show(await myRegistrations({ limit: PAGE }));
+  }, [show]);
 
   useEffect(() => {
     if (!initial) void load();
@@ -34,9 +33,7 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
 
   async function loadMore() {
     if (!cursor) return;
-    const page = await myRegistrations({ limit: PAGE, cursor });
-    setItems((prev) => [...(prev ?? []), ...page.items]);
-    setCursor(page.nextCursor);
+    append(await myRegistrations({ limit: PAGE, cursor }));
   }
 
   async function cancel(registration: MyRegistration) {
@@ -121,11 +118,7 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
         })}
       </ul>
 
-      {cursor ? (
-        <Button variant="outline" onClick={loadMore} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={loadMore} />
     </div>
   );
 }

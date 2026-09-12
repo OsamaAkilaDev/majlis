@@ -101,11 +101,3 @@ export const listRoster = (eventId: string, query: RegistrationListQuery): Promi
 
 export const myRegistrations = (query: CursorPageQuery): Promise<MyRegistrationPage> =>
   apiFetch(`/me/registrations${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
-
-/** "EVENT_LEAD" -> "Event Lead". Shared by every screen that renders a responsibility. */
-export function responsibilityLabel(value: string): string {
-  return value
-    .split('_')
-    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
-    .join(' ');
-}

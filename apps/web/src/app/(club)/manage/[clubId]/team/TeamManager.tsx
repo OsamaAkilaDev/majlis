@@ -1,9 +1,10 @@
 'use client';
 
-import type { Appointment, ClubDetail, ClubRole, UserListItem } from '@majlis/contracts';
+import type { AppointmentPage, ClubDetail, ClubRole, UserListItem } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,7 +21,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
-import { endAppointment, getClub, inviteTeamMember, listTeam, roleLabel } from '@/lib/clubs';
+import { endAppointment, getClub, inviteTeamMember, listTeam } from '@/lib/clubs';
+import { enumLabel } from '@/lib/enum-label';
+import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 
 const INVITABLE_ROLES: ClubRole[] = ['VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'];
@@ -75,7 +79,7 @@ function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => 
             <SelectContent>
               {INVITABLE_ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {roleLabel(r)}
+                  {enumLabel(r)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -104,17 +108,22 @@ export function TeamManager({
   clubId: string;
   viewerUserId: string;
   initialClub: ClubDetail | null;
-  initialTeam: Appointment[] | null;
+  initialTeam: AppointmentPage | null;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
-  const [items, setItems] = useState<Appointment[] | null>(initialTeam);
+  const { items, cursor, show, append } = useCursorPage(initialTeam);
   // See MembersManager: a locale-formatted date cannot be server-rendered.
   const mounted = useViewerZone() !== undefined;
 
   async function load() {
-    const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: 100 })]);
+    const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: PAGE })]);
     setClub(c);
-    setItems(page.items);
+    show(page);
+  }
+
+  async function loadMore() {
+    if (!cursor) return;
+    append(await listTeam(clubId, { limit: PAGE, cursor }));
   }
 
   const seeded = initialClub !== null && initialTeam !== null;
@@ -158,7 +167,7 @@ export function TeamManager({
                     <span className="text-label text-ink-2">{a.userEmail}</span>
                   </div>
                 </TableCell>
-                <TableCell>{roleLabel(a.role)}</TableCell>
+                <TableCell>{enumLabel(a.role)}</TableCell>
                 <TableCell className="flex items-center gap-2">
                   <StatusBadge status={a.status} />
                   {a.hasLeftClub ? <StatusBadge status="LEFT" className="opacity-70" /> : null}
@@ -187,6 +196,8 @@ export function TeamManager({
           </TableBody>
         </Table>
       )}
+
+      <LoadMore cursor={cursor} onClick={loadMore} />
     </div>
   );
 }

@@ -1,9 +1,10 @@
 'use client';
 
-import type { ClubDetail, Member, UserListItem } from '@majlis/contracts';
+import type { ClubDetail, MemberPage, UserListItem } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,6 +19,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 import { addMember, decideMembership, getClub, listMembers, removeMember } from '@/lib/clubs';
+import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 
 function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => void }) {
@@ -83,12 +86,22 @@ export function MembersManager({
 }: {
   clubId: string;
   initialClub: ClubDetail | null;
-  initialPending: Member[] | null;
-  initialActive: Member[] | null;
+  initialPending: MemberPage | null;
+  initialActive: MemberPage | null;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
-  const [pending, setPending] = useState<Member[] | null>(initialPending);
-  const [active, setActive] = useState<Member[] | null>(initialActive);
+  const {
+    items: pending,
+    cursor: pendingCursor,
+    show: showPending,
+    append: appendPending,
+  } = useCursorPage(initialPending);
+  const {
+    items: active,
+    cursor: activeCursor,
+    show: showActive,
+    append: appendActive,
+  } = useCursorPage(initialActive);
   // toLocaleDateString reads the runtime locale and zone, which differ between
   // the server and the browser. Undefined until mounted, so the server renders
   // no date rather than one that regenerates the tree on hydration.
@@ -97,12 +110,22 @@ export function MembersManager({
   async function load() {
     const [c, pendingPage, activePage] = await Promise.all([
       getClub(clubId),
-      listMembers(clubId, { status: 'PENDING', limit: 100 }),
-      listMembers(clubId, { status: 'ACTIVE', limit: 100 }),
+      listMembers(clubId, { status: 'PENDING', limit: PAGE }),
+      listMembers(clubId, { status: 'ACTIVE', limit: PAGE }),
     ]);
     setClub(c);
-    setPending(pendingPage.items);
-    setActive(activePage.items);
+    showPending(pendingPage);
+    showActive(activePage);
+  }
+
+  async function loadMorePending() {
+    if (!pendingCursor) return;
+    appendPending(await listMembers(clubId, { status: 'PENDING', limit: PAGE, cursor: pendingCursor }));
+  }
+
+  async function loadMoreActive() {
+    if (!activeCursor) return;
+    appendActive(await listMembers(clubId, { status: 'ACTIVE', limit: PAGE, cursor: activeCursor }));
   }
 
   const seeded = initialClub !== null && initialPending !== null && initialActive !== null;
@@ -179,6 +202,7 @@ export function MembersManager({
               </TableBody>
             </Table>
           )}
+          <LoadMore cursor={pendingCursor} onClick={loadMorePending} />
         </section>
       ) : null}
 
@@ -228,6 +252,7 @@ export function MembersManager({
             </TableBody>
           </Table>
         )}
+        <LoadMore cursor={activeCursor} onClick={loadMoreActive} />
       </section>
     </div>
   );

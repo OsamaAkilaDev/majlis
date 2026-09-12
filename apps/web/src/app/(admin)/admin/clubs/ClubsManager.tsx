@@ -1,10 +1,11 @@
 'use client';
 
-import type { ClubPage, ClubStatus, ClubSummary, Department } from '@majlis/contracts';
+import type { ClubPage, ClubStatus, Department } from '@majlis/contracts';
 import { Plus } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { listClubs, listDepartments } from '@/lib/clubs';
 import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 
 const STATUSES: ClubStatus[] = ['ACTIVE', 'SUSPENDED', 'ARCHIVED'];
 
@@ -31,8 +33,7 @@ export function ClubsManager({
   const [departments, setDepartments] = useState<Department[]>(initialDepartments ?? []);
   const [departmentId, setDepartmentId] = useState<string>('');
   const [status, setStatus] = useState<string>('');
-  const [items, setItems] = useState<ClubSummary[] | null>(initialClubs?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initialClubs?.nextCursor ?? null);
+  const { items, setItems, cursor, show, append } = useCursorPage(initialClubs);
   // The server rendered the unfiltered first page, so the mount run of the
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialClubs !== null);
@@ -49,8 +50,7 @@ export function ClubsManager({
       limit: PAGE,
       cursor: reset ? undefined : (cursor ?? undefined),
     });
-    setItems((prev) => (reset || !prev ? page.items : [...prev, ...page.items]));
-    setCursor(page.nextCursor);
+    (reset ? show : append)(page);
   }
 
   useEffect(() => {
@@ -136,11 +136,7 @@ export function ClubsManager({
               ))}
             </TableBody>
           </Table>
-          {cursor ? (
-            <Button variant="outline" onClick={() => load(false)} className="self-center">
-              Load more
-            </Button>
-          ) : null}
+          <LoadMore cursor={cursor} onClick={() => load(false)} />
         </>
       )}
     </div>

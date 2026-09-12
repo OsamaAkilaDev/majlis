@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { Field } from '@/components/Field';
+import { LoadMore } from '@/components/LoadMore';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { createDepartment, listDepartments, removeDepartment, updateDepartment } from '@/lib/clubs';
 import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { ProblemError } from '@/lib/api';
 
 function DepartmentForm({
@@ -100,13 +102,11 @@ function DepartmentForm({
 }
 
 export function DepartmentsManager({ initial }: { initial: DepartmentPage | null }) {
-  const [items, setItems] = useState<Department[] | null>(initial?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
+  const { items, cursor, setItems, show, append } = useCursorPage(initial);
 
   async function load(reset: boolean) {
     const page = await listDepartments({ limit: PAGE, cursor: reset ? undefined : (cursor ?? undefined) });
-    setItems((prev) => (reset || !prev ? page.items : [...prev, ...page.items]));
-    setCursor(page.nextCursor);
+    (reset ? show : append)(page);
   }
 
   useEffect(() => {
@@ -174,11 +174,7 @@ export function DepartmentsManager({ initial }: { initial: DepartmentPage | null
           ))}
         </TableBody>
       </Table>
-      {cursor ? (
-        <Button variant="outline" onClick={() => load(false)} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={() => load(false)} />
     </div>
   );
 }

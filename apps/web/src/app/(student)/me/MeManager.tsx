@@ -8,7 +8,8 @@ import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations, roleLabel } from '@/lib/clubs';
+import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations } from '@/lib/clubs';
+import { enumLabel } from '@/lib/enum-label';
 import { PAGE } from '@/lib/page-size';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -73,7 +74,7 @@ export function MeManager({
                 <img src={inv.clubLogoUrl} alt="" className="size-10 shrink-0 rounded-control object-cover" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-ink">{inv.clubName}</span>
-                  <span className="block text-sm text-ink-2">{roleLabel(inv.role)}</span>
+                  <span className="block text-sm text-ink-2">{enumLabel(inv.role)}</span>
                 </span>
                 <Button
                   size="sm"
@@ -119,7 +120,7 @@ export function MeManager({
                 <Link href={`/clubs/${club.slug}`} className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-ink">{club.name}</span>
                   <span className="block text-sm text-ink-2">
-                    {club.clubRoles.length > 0 ? club.clubRoles.map(roleLabel).join(', ') : 'Member'}
+                    {club.clubRoles.length > 0 ? club.clubRoles.map(enumLabel).join(', ') : 'Member'}
                   </span>
                 </Link>
                 {club.status === 'PENDING' ? <StatusBadge status="PENDING" /> : null}

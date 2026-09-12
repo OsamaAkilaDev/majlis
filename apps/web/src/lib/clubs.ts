@@ -141,11 +141,3 @@ export const removeDepartment = (id: string): Promise<void> =>
 
 export const listUsers = (query: CursorPageQuery): Promise<UserListPage> =>
   apiFetch(`/users${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
-
-/** "VICE_LEAD" -> "Vice Lead". Shared by every screen that renders a ClubRole. */
-export function roleLabel(role: string): string {
-  return role
-    .split('_')
-    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
-    .join(' ');
-}

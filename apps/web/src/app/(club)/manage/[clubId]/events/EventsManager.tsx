@@ -1,11 +1,12 @@
 'use client';
 
-import type { ClubRole, EventPage, EventSummary, SessionUser } from '@majlis/contracts';
+import type { ClubRole, EventPage, SessionUser } from '@majlis/contracts';
 import { Plus } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadMore } from '@/components/LoadMore';
 import { OverrideReason } from '@/components/OverrideReason';
 import { ImageUpload } from '@/components/ImageUpload';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -17,6 +18,7 @@ import { getClub } from '@/lib/clubs';
 import { formatMoment } from '@/lib/event-time';
 import { needsOverrideReason } from '@/lib/override';
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { createEvent, listEvents, mintEventPosterUpload } from '@/lib/events';
 import {
   EMPTY_EVENT,
@@ -115,23 +117,19 @@ export function EventsManager({
 }) {
   const router = useRouter();
   const [roles, setRoles] = useState<ClubRole[] | null>(initialRoles);
-  const [items, setItems] = useState<EventSummary[] | null>(initialEvents?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initialEvents?.nextCursor ?? null);
+  const { items, cursor, show, append } = useCursorPage(initialEvents);
   const [creating, setCreating] = useState(false);
   const seeded = initialRoles !== null && initialEvents !== null;
 
   const load = useCallback(async () => {
     const [club, page] = await Promise.all([getClub(clubId), listEvents({ clubId, limit: PAGE })]);
     setRoles(club.viewerClubRoles);
-    setItems(page.items);
-    setCursor(page.nextCursor);
-  }, [clubId]);
+    show(page);
+  }, [clubId, show]);
 
   async function loadMore() {
     if (!cursor) return;
-    const page = await listEvents({ clubId, limit: PAGE, cursor });
-    setItems((prev) => [...(prev ?? []), ...page.items]);
-    setCursor(page.nextCursor);
+    append(await listEvents({ clubId, limit: PAGE, cursor }));
   }
 
   useEffect(() => {
@@ -197,11 +195,7 @@ export function EventsManager({
         </Table>
       )}
 
-      {cursor ? (
-        <Button variant="outline" onClick={loadMore} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={loadMore} />
     </div>
   );
 }

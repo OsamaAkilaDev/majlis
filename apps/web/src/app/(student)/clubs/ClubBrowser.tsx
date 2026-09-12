@@ -4,12 +4,13 @@ import type { ClubPage, ClubSummary, Department } from '@majlis/contracts';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
-import { Button } from '@/components/ui/button';
+import { LoadMore } from '@/components/LoadMore';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs, listDepartments } from '@/lib/clubs';
 import { PAGE } from '@/lib/page-size';
+import { useCursorPage } from '@/lib/use-cursor-page';
 
 const ANY_DEPARTMENT = 'any';
 
@@ -39,8 +40,7 @@ export function ClubBrowser({
   const [departments, setDepartments] = useState<Department[]>(initialDepartments ?? []);
   const [departmentId, setDepartmentId] = useState(ANY_DEPARTMENT);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<ClubSummary[] | null>(initialClubs?.items ?? null);
-  const [cursor, setCursor] = useState<string | null>(initialClubs?.nextCursor ?? null);
+  const { items, cursor, show, append } = useCursorPage(initialClubs);
   const [loadingMore, setLoadingMore] = useState(false);
   // The server rendered the unfiltered first page, so the mount run of the
   // filter effect would refetch exactly what is already on screen.
@@ -59,21 +59,19 @@ export function ClubBrowser({
       return;
     }
     let cancelled = false;
-    setItems(null);
+    show(null);
     void listClubs({
       limit: PAGE,
       status: 'ACTIVE',
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
       ...(q.trim() ? { q: q.trim() } : {}),
     }).then((page) => {
-      if (cancelled) return;
-      setItems(page.items);
-      setCursor(page.nextCursor);
+      if (!cancelled) show(page);
     });
     return () => {
       cancelled = true;
     };
-  }, [departmentId, q]);
+  }, [departmentId, q, show]);
 
   async function loadMore() {
     if (!cursor) return;
@@ -85,8 +83,7 @@ export function ClubBrowser({
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
       ...(q.trim() ? { q: q.trim() } : {}),
     });
-    setItems((prev) => [...(prev ?? []), ...page.items]);
-    setCursor(page.nextCursor);
+    append(page);
     setLoadingMore(false);
   }
 
@@ -133,11 +130,7 @@ export function ClubBrowser({
         </ul>
       )}
 
-      {cursor ? (
-        <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="self-center">
-          Load more
-        </Button>
-      ) : null}
+      <LoadMore cursor={cursor} onClick={loadMore} busy={loadingMore} />
     </div>
   );
 }
