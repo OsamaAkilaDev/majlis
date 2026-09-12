@@ -5,7 +5,7 @@ import { API_PREFIX } from '../src/config/api-prefix';
 import { createTestApp } from './app';
 import { loginAsAdmin, loginAsStudent } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { makeActiveLead, makeActiveOfficer, makeClub } from './factories';
+import { makeActiveLead, makeActiveOfficer, makeClub, mkAppointment } from './factories';
 
 const prisma = createTestPrisma();
 let app: INestApplication;
@@ -182,25 +182,29 @@ describe('POST /clubs/:clubId/team', () => {
 });
 
 describe('GET /clubs/:clubId/team', () => {
-  it('lists appointments with user info and computes hasLeftClub from the membership row', async () => {
+  it('computes hasLeftClub from the ClubMembership row, not the appointment role', async () => {
     const club = await makeClub();
-    const lead = await makeActiveLead(app, club.id);
-    await prisma.clubMembership.create({ data: { clubId: club.id, userId: lead.userId, status: 'ACTIVE' } });
-    // No ordinary membership row for this one: an appointment with no
-    // matching ACTIVE membership must report hasLeftClub true.
-    const officer = await makeActiveOfficer(app, club.id, 'OPERATIONS');
+    const viewer = await loginAsStudent(app);
+    const stillMember = await makeActiveOfficer(app, club.id, 'MARKETING');
+    await prisma.clubMembership.create({ data: { clubId: club.id, userId: stillMember.userId, status: 'ACTIVE' } });
+    // Same role as stillMember, no membership row. Varying membership
+    // presence alone, not role, is the point: an implementation that derives
+    // hasLeftClub from the appointment's own role, or anything else
+    // correlated with it, rather than a real ClubMembership lookup, would
+    // produce the same output for both rows and pass.
+    const left = await makeActiveOfficer(app, club.id, 'MARKETING');
 
     const res = await request(app.getHttpServer())
       .get(`${API_PREFIX}/clubs/${club.id}/team`)
-      .set('Cookie', lead.sessionCookie);
+      .set('Cookie', viewer.sessionCookie);
 
     expect(res.status).toBe(200);
     const byUser = new Map<string, { hasLeftClub: boolean; userEmail: string }>(
       res.body.items.map((a: { userId: string; hasLeftClub: boolean; userEmail: string }) => [a.userId, a]),
     );
-    expect(byUser.get(lead.userId)?.hasLeftClub).toBe(false);
-    expect(byUser.get(officer.userId)?.hasLeftClub).toBe(true);
-    expect(byUser.get(officer.userId)?.userEmail).toBeTruthy();
+    expect(byUser.get(stillMember.userId)?.hasLeftClub).toBe(false);
+    expect(byUser.get(left.userId)?.hasLeftClub).toBe(true);
+    expect(byUser.get(left.userId)?.userEmail).toBeTruthy();
   });
 });
 
@@ -269,5 +273,53 @@ describe('DELETE /clubs/:clubId/team/:appointmentId', () => {
 
     const row = await prisma.clubTeamAppointment.findUniqueOrThrow({ where: { id: lead.appointmentId } });
     expect(row.status).toBe('ACTIVE');
+  });
+
+  it('refuses ending an appointment that is still INVITED, leaving it unchanged', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const nominee = await loginAsStudent(app);
+    const invited = await mkAppointment({
+      userId: nominee.userId,
+      clubId: club.id,
+      role: 'MARKETING',
+      status: 'INVITED',
+    });
+
+    const res = await request(app.getHttpServer())
+      .delete(`${API_PREFIX}/clubs/${club.id}/team/${invited.id}`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ reason: 'Rescinding.' });
+
+    expect(res.status).toBe(422);
+    const after = await prisma.clubTeamAppointment.findUniqueOrThrow({ where: { id: invited.id } });
+    expect(after.status).toBe('INVITED');
+  });
+
+  it('refuses ending an appointment that is already ENDED, leaving the first ending intact', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const officer = await makeActiveOfficer(app, club.id, 'MARKETING');
+
+    const first = await request(app.getHttpServer())
+      .delete(`${API_PREFIX}/clubs/${club.id}/team/${officer.appointmentId}`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ reason: 'Term over.' });
+    expect(first.status).toBe(204);
+
+    const afterFirst = await prisma.clubTeamAppointment.findUniqueOrThrow({ where: { id: officer.appointmentId } });
+
+    const second = await request(app.getHttpServer())
+      .delete(`${API_PREFIX}/clubs/${club.id}/team/${officer.appointmentId}`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ reason: 'Overwriting the record.' });
+    expect(second.status).toBe(422);
+
+    // Without the guard, a second end would silently overwrite who ended it
+    // and why: audit history being rewritten, not merely a wasted call.
+    const afterSecond = await prisma.clubTeamAppointment.findUniqueOrThrow({ where: { id: officer.appointmentId } });
+    expect(afterSecond.endedAt).toEqual(afterFirst.endedAt);
+    expect(afterSecond.endedReason).toBe(afterFirst.endedReason);
+    expect(afterSecond.endedReason).toBe('Term over.');
   });
 });
