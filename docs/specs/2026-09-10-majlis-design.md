@@ -585,7 +585,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 3 | ✅ **Done** — Design system & shells | Visual identity, tokens, dark mode, shadcn component layer, the three shells, role routing, PWA manifest, accessibility baseline. Designed in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) |
 | 4 | ✅ **Done** — Clubs, team & membership | Departments, club CRUD + status machine, image upload via signed URL, Lead appointment, in-app team invitations, the four membership policies, requests and decisions, member lists, leaving. Designed in [`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md) |
 | 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
-| 6 | Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue |
+| 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
 | 7 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
 | 8 | Hardening & deploy | Rate limits (all of them, none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
 
@@ -866,6 +866,101 @@ Prisma stores the file's hash, `migrate deploy` ignores it but `migrate dev` ref
 at all and offers to reset the database. Stage 5's first migration hit exactly that. Both
 `majlis_dev` and `majlis_test` have been repaired. **Never edit an applied migration file,
 including its comments.**
+
+### Stage 6 completion note (2026-09-13)
+
+Attendance and certificates, planned in
+[`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md).
+**No migration at all.** Every constraint this stage rests on shipped in Stage 1:
+`attendance_record_registration_id_key`, `certificate_one_active_per_registration`, and the
+unique serial and verification codes.
+
+| | |
+|---|---|
+| Tests | 371 API integration, 165 API unit, 60 contracts, 124 web unit, 160 Playwright/axe. All green |
+| Verified | Double check-in proven by dropping `attendance_record_registration_id_key` and watching two rows appear. 41 further mutations applied and each watched go red |
+
+**Decisions taken in the plan rather than here:** the HMAC token shape; no typed fallback
+credential, because a camera failure falls through to manual check-in keyed by email; six
+scan outcomes as a 200 with a `result` discriminant and only "not authorised" as a 403;
+`NO_SHOW` written in the same transaction as the hop to `COMPLETED`; and issuance gated on
+`endsAt` plus the correction window rather than on `COMPLETED`, since issuing at completion
+would make §7.5's 48 hours for correcting attendance zero.
+
+**The plan was wrong in one place.** It had the lifecycle sweep call `issueForEvent` per
+swept row. That would have issued almost nothing: `sweep()` only selects events in
+`PUBLISHED`, `REGISTRATION_CLOSED` and `ONGOING`, and an event cannot issue until 48 hours
+after it reaches `COMPLETED`, so no row the sweep advances is ever issuable. Certificates
+would only have gone out when somebody happened to open a completed event. `issueDue()`
+selects on the real condition instead, and the sweep reports `certificatesIssued`.
+
+**Certificates now live in their own private bucket.** `majlis-storage` is public, which is
+right for logos, banners and posters, and wrong for a credential document: the object path
+is a pure function of the certificate id, every holder of `registration:read` can list those
+ids, and `/object/public/<path>` answered 200 with no cookie, making the ownership check on
+`GET /certificates/{id}/pdf` decorative. Signing the URL does not fix that on its own; the
+bucket has to refuse the unsigned path. `majlis-certificates` is private, PDFs are handed
+out as 300-second signed URLs, and `pdfUrl` stores the object path as a render marker only.
+**A second bucket is now part of the deployment's setup.**
+
+**What the end-of-stage review earned.** Two reviewers, one security and one correctness,
+found ten issues. The security reviewer found one: manual check-in resolved the submitted
+address before the event gate, so an unknown address answered `NOT_REGISTERED` while a known
+one reached the window check and answered `EVENT_NOT_OPEN`. Since every event is closed for
+all but a few hours of its life, that was the ordinary behaviour of the route, and it made
+the check-in screen an oracle for who holds a Majlis account, probeable with arbitrary
+addresses by any club Operations officer. The code asserted the opposite in a comment
+directly above the bug.
+
+The correctness reviewer found the public-bucket exposure above, that `expected` counted
+ex-waitlisters once an event completed so a perfectly attended event reported 30/40, that
+`correct()` had no status guard and could resurrect a `CANCELLED` registration as
+`CHECKED_IN` and make it certificate-eligible, and that an Admin correcting a `CERTIFIED`
+event's attendance to absent left the certificate `ACTIVE` and publicly verifiable for
+someone the system now recorded as absent.
+
+**Two green tests were worthless, and the question that found them was "name the broken
+implementation this would catch".** The `expected` test asserted the count while the event
+was still `ONGOING`, which is before the transition that breaks it. The QR secret redaction
+test fed a 32-character value that passes `min(32)`, so Zod raised no issue for that field
+and the assertion that the secret was absent from the error had nothing to catch. Both have
+been rewritten to discriminate.
+
+**One review finding was a false positive**, and it is instructive: that every certificate
+download would 500 because the bucket only allows `image/webp`. The reviewer read that from
+[`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md)
+§3.1, which says so. The live bucket accepts `application/pdf`. **The design doc is stale
+and the live service is the authority.** Probe it rather than trusting a document.
+
+**A Stage 5 defect fixed here.** `UserPicker` called `GET /users`, which is Admin-only,
+from the event AssignPanel, `TeamManager` and `MembersManager`. A club Lead got a 403, the
+rejection was unhandled, and the list rendered empty, so a Lead could not assign anybody.
+That made this stage's `EventAssignment` path, the whole reason `attendance:scan` has an
+event column, unreachable through the UI. `GET /users` stays Admin-only; a club-scoped
+`GET /clubs/{id}/user-search?q=` behind a new `user:search` permission backs the pickers.
+
+**`error.tsx` now exists**, closing the gap the Stage 5 handoff named first, but the five
+boundaries alone would never have fired: a promise rejected inside a `load()` effect reaches
+no React error boundary. `lib/use-async-error.ts` rethrows during render and is wired into
+all 17 first-load effects, and `apiFetch` ends the session itself when a 401 survives the
+refresh retry.
+
+**Carried forward:**
+
+- **Stage 7:** `/me/certificates` is ordered oldest-first, because cursor order is by id, so
+  a student's newest document is last.
+- **Stage 8:** `@react-pdf/renderer` and `react` are now API dependencies, and the API's
+  `tsconfig` enables JSX for one file. Worth a look in the bundle-size pass.
+- **Stage 8:** the em dash ban is respected in Stage 6 files but violated across code
+  predating it. A single sweep, not a per-stage chore.
+
+**A process trap, now understood.** A Playwright run against the `node --watch` API server
+produced twelve failures that looked exactly like application bugs, including "Internal
+Server Error" rendered on the sign-in form. The API had restarted six times mid-suite, the
+Next rewrite got `ECONNREFUSED`, and the browser was shown Next's own 500. The API log
+carried zero 500s on `/auth/login`; the evidence was in the *web* server's proxy log. Re-run
+on a stable server: 160 passed, zero restarts. **Before trusting an e2e failure, check
+whether the API restarted during the run.**
 
 ---
 ## 14. Open items
