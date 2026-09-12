@@ -17,5 +17,8 @@ import { RegistrationsService } from './registrations.service';
   imports: [ClubsModule],
   controllers: [EventsController, RegistrationsController, LifecycleSweepController],
   providers: [EventsService, EventLifecycleService, AssignmentsService, RegistrationsService],
+  // AttendanceModule advances an event before every check-in and every
+  // correction, so nobody scans against a status the clock has moved past.
+  exports: [EventLifecycleService],
 })
 export class EventsModule {}

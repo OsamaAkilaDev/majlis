@@ -95,13 +95,30 @@ export class EventLifecycleService {
       });
       if (count === 0) break;
 
+      // Nobody who still held a place when the check-in window shut turned
+      // up. Writing that down in the same transaction as the hop is what
+      // makes the roster truthful after an event, and it is what gives "a
+      // NO_SHOW never receives a certificate" (spec 7.6) something to
+      // assert against rather than the mere absence of an attendance row.
+      // CHECKED_IN and ATTENDED are untouched; so is CANCELLED, which is a
+      // record of someone who withdrew, not of someone who failed to come.
+      const noShow =
+        next === 'COMPLETED'
+          ? (
+              await this.host.tx.eventRegistration.updateMany({
+                where: { eventId: event.id, status: { in: ['CONFIRMED', 'WAITLISTED'] } },
+                data: { status: 'NO_SHOW' },
+              })
+            ).count
+          : 0;
+
       await this.audit.record({
         action: 'event.status_advanced',
         entityType: 'Event',
         entityId: event.id,
         outcome: 'SUCCESS',
         before: { status: current },
-        after: { status: next },
+        after: { status: next, ...(next === 'COMPLETED' ? { noShow } : {}) },
       });
       current = next;
     }

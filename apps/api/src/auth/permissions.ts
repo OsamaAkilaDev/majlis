@@ -115,6 +115,20 @@ export const PERMISSIONS = {
     club: ['LEAD', 'VICE_LEAD'],
     event: ['EVENT_LEAD', 'OPERATIONS'],
   },
+  // Spec 6.1's "Scan QR / check in" row ticks Lead and Operations only.
+  // Vice Lead is absent deliberately, in both of these. The event column is
+  // what makes an EventAssignment grant scan rights for one event without
+  // making anyone a standing officer (spec 5.1).
+  'attendance:scan': {
+    platform: ['ADMIN'],
+    club: ['LEAD', 'OPERATIONS'],
+    event: ['EVENT_LEAD', 'OPERATIONS'],
+  },
+  // "Correct attendance" is club-scoped only: an assignment grants the right
+  // to scan a queue, not to rewrite the record afterwards. The 48-hour
+  // window and the Admin override past it are enforced in the service, not
+  // here — they are a property of the event's clock, not of the actor.
+  'attendance:correct': { platform: ['ADMIN'], club: ['LEAD', 'OPERATIONS'] },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;

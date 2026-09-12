@@ -80,6 +80,12 @@ export const envSchema = z
       .string()
       .min(32, 'must be at least 32 characters')
       .default(EXAMPLE_QR_SIGNING_SECRET),
+    /**
+     * Spec 7.5: Operations and Lead may correct attendance for 48 hours
+     * after an event ends. It is also what gates COMPLETED to CERTIFIED —
+     * issuing the moment an event completes would make this window zero.
+     */
+    ATTENDANCE_CORRECTION_WINDOW_HOURS: z.coerce.number().int().positive().max(8760).default(48),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],
