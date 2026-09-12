@@ -78,9 +78,11 @@ describe('PATCH /departments/:id', () => {
     expect(res.body).toMatchObject({ name: 'Renamed Department', clubCount: 1 });
   });
 
-  it('refuses a STUDENT', async () => {
+  it('refuses a STUDENT, and the write does not happen', async () => {
     // Every happy-path test above passes even with no @RequirePermission at
-    // all; only this one catches that gap.
+    // all; only the status check catches that gap. The read-back after
+    // catches a second, distinct bug: a handler that performs the write and
+    // denies afterward, which the status check alone would miss.
     const student = await loginAsStudent(app);
     const dept = await prisma.department.create({ data: aDepartment() });
 
@@ -90,10 +92,13 @@ describe('PATCH /departments/:id', () => {
       .send({ name: 'Should Not Apply' });
 
     expect(res.status).toBe(403);
+    expect(await prisma.department.findUnique({ where: { id: dept.id } })).toMatchObject({
+      name: dept.name,
+    });
   });
 
   it('returns 404 for a well-formed but unknown id', async () => {
-    // A well-formed UUID that matches no row, not a malformed string —
+    // A well-formed UUID that matches no row, not a malformed string:
     // @prisma/adapter-pg raises P2007 (not P2023) for a malformed UUID, so a
     // malformed id would test that mapping instead. This catches a handler
     // that lets Prisma's P2025 escape as a bare 500.
