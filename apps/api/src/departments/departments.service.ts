@@ -64,7 +64,7 @@ export class DepartmentsService {
         entityId: row.id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
-        after: { name: row.name, code: row.code },
+        after: { name: row.name, code: row.code, description: row.description },
       });
 
       return toDepartment(row, 0);
@@ -111,7 +111,7 @@ export class DepartmentsService {
         entityId: id,
         outcome: 'SUCCESS',
         actorUserId: actor.id,
-        before: { name: before.name, code: before.code },
+        before: { name: before.name, code: before.code, description: before.description },
       });
     });
   }
