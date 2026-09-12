@@ -5,7 +5,7 @@ import { API_PREFIX } from '../src/config/api-prefix';
 import { createTestApp } from './app';
 import { loginAsStudent } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { inviteOfficer, makeClub } from './factories';
+import { inviteOfficer, makeClub, mkAppointment } from './factories';
 
 const prisma = createTestPrisma();
 let app: INestApplication;
@@ -56,6 +56,25 @@ describe('GET /me/invitations', () => {
 
     // Catches a query filtering on status alone. An invitation that expired
     // would stay in the list forever and fail only on acceptance.
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  it('hides a null-expiry invitation rather than crashing on it', async () => {
+    // invite/appointLead always set invitationExpiresAt, but the column is
+    // nullable and mkAppointment (unlike inviteOfficer) leaves it unset.
+    // Pins the choice that an invitation always has an expiry: the WHERE
+    // clause excludes a null-expiry row, so toInvitation's non-null
+    // assertion on invitationExpiresAt never sees one. If the WHERE clause
+    // and the mapper disagree, this is a 500, not a 200 with 0 items.
+    const club = await makeClub();
+    const user = await loginAsStudent(app);
+    await mkAppointment({ userId: user.userId, clubId: club.id, role: 'CTO', status: 'INVITED' });
+
+    const res = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/me/invitations`)
+      .set('Cookie', user.sessionCookie);
+
+    expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(0);
   });
 });

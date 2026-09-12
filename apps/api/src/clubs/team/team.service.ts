@@ -242,13 +242,19 @@ export class TeamService {
    * below is the entire authorization, and expiry is filtered in the WHERE
    * clause (not after the fetch) so a lapsed invitation never surfaces here,
    * matching the main spec's "no queue, the lifecycle is lazy" decision.
+   *
+   * Both write paths (invite, appointLead) always set invitationExpiresAt, so
+   * an invitation always has an expiry; this only matches non-expired ones.
+   * A null-expiry row (unreachable today, but the column is nullable)
+   * therefore never surfaces here rather than reaching toInvitation's
+   * non-null assertion.
    */
   async myInvitations(actor: { id: string }, query: CursorPageQuery): Promise<InvitationPage> {
     const rows = await this.host.tx.clubTeamAppointment.findMany({
       where: {
         userId: actor.id,
         status: 'INVITED',
-        OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gt: new Date() } }],
+        invitationExpiresAt: { gt: new Date() },
       },
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),

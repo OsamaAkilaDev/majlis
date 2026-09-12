@@ -24,7 +24,12 @@ export function assertAcceptsNewActivity(status: ClubStatus): void {
   if (status !== 'ACTIVE') throw new UnprocessableError('That club is not accepting new activity.');
 }
 
-/** Profile edits, team changes, and membership decisions already in flight. */
+/**
+ * Profile edits, team changes, and accepting an invitation (which grants
+ * membership). Declining is exempt: it grants nothing, so an archived club
+ * has no integrity stake in blocking it, and blocking it would only strand a
+ * dead invitation in the invitee's list.
+ */
 export function assertAcceptsEdits(status: ClubStatus): void {
   if (status === 'ARCHIVED') throw new UnprocessableError('That club is archived.');
 }
