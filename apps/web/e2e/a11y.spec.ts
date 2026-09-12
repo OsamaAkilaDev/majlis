@@ -47,6 +47,25 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
+    test('signup has no violations', async ({ page }) => {
+      // The only form carrying a constraint on a label and a segment meter,
+      // both of which sit on the deep auth ground rather than a page surface.
+      await page.goto('/signup');
+      await expect(page.getByText('12+ characters')).toBeVisible();
+      await scan(page);
+    });
+
+    test('a failed sign-in has no violations', async ({ page }) => {
+      // The error colours and the aria wiring were never scanned in either
+      // theme; a scan of the pristine form renders neither.
+      await page.goto('/login');
+      await page.getByLabel('University email').fill('student@uni.ac.ae');
+      await page.getByLabel('Password').fill('wrong-password-here');
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await expect(page.getByText('Email or password is incorrect.')).toBeVisible();
+      await scan(page);
+    });
+
     test('student shell has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
       await scan(page);

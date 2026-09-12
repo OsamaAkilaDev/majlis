@@ -28,9 +28,12 @@ export const emailSchema = z
   .email()
   .transform((v) => v.toLowerCase());
 
+/** Exported so the signup form states the rule from the schema that enforces it. */
+export const PASSWORD_MIN = 12;
+
 export const signupBodySchema = z.object({
   email: emailSchema,
-  password: z.string().min(12, 'Password must be at least 12 characters.'),
+  password: z.string().min(PASSWORD_MIN, `Password must be at least ${PASSWORD_MIN} characters.`),
   fullName: z.string().trim().min(1).max(120),
 });
 
