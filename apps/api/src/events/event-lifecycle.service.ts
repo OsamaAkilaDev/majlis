@@ -48,13 +48,27 @@ export class EventLifecycleService {
    * the refusal would roll the advance back along with itself.
    */
   async advance(eventId: string): Promise<EventStatus> {
+    const now = new Date();
+    const event = await this.host.tx.event.findUnique({
+      where: { id: eventId },
+      select: LIFECYCLE_SELECT,
+    });
+    if (!event) throw new NotFoundError('No such event.');
+
+    // Every read of an event calls this and almost none of them have a hop
+    // due, so the check happens before the transaction opens rather than
+    // inside it: a BEGIN and a COMMIT per event read bought nothing.
+    if (dueStatus(event, now) === event.status) return event.status;
+
     return this.host.run(async () => {
-      const event = await this.host.tx.event.findUnique({
+      // Re-read inside the transaction, so a concurrent advance that landed
+      // between the check above and this BEGIN is seen rather than replayed.
+      const fresh = await this.host.tx.event.findUnique({
         where: { id: eventId },
         select: LIFECYCLE_SELECT,
       });
-      if (!event) throw new NotFoundError('No such event.');
-      return this.advanceRow(event, new Date());
+      if (!fresh) throw new NotFoundError('No such event.');
+      return this.advanceRow(fresh, now);
     });
   }
 

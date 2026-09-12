@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  ClubStatus,
   CursorPageQuery,
   EventStatus,
   MyRegistrationPage,
@@ -24,7 +25,7 @@ import { Prisma, type EventRegistration as RegistrationRow } from '../generated/
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
-import { EVENT_WITH_CLUB, toEventSummary, type EventWithClub } from './events.service';
+import { EVENT_SUMMARY_SELECT, toEventSummary } from './events.service';
 import { promoteFromWaitlist } from './waitlist';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
@@ -36,12 +37,25 @@ const OPEN = { status: { not: 'CANCELLED' } } as const;
 interface Actor {
   id: string;
   platformRole: PlatformRole;
+  fullName: string;
+  email: string;
 }
 
-/** The columns the row lock reads, aliased out of their snake_case names. */
+/** The two person fields a Registration carries beyond the row itself. */
+interface Person {
+  fullName: string;
+  email: string;
+}
+
+/**
+ * The columns the row lock reads, aliased out of their snake_case names.
+ * The club's status rides along on the same statement: it is needed under
+ * the lock, and a second round trip there holds the event row longer.
+ */
 interface LockedEvent {
   id: string;
   clubId: string;
+  clubStatus: ClubStatus;
   status: EventStatus;
   capacity: number;
   confirmedCount: number;
@@ -51,13 +65,13 @@ interface LockedEvent {
   registrationClosesAt: Date;
 }
 
-function toRegistration(row: RegistrationWithUser): Registration {
+function toRegistration(row: RegistrationRow, person: Person): Registration {
   return {
     id: row.id,
     eventId: row.eventId,
     userId: row.userId,
-    userFullName: row.user.fullName,
-    userEmail: row.user.email,
+    userFullName: person.fullName,
+    userEmail: person.email,
     status: row.status,
     waitlistPosition: row.waitlistPosition,
     registeredAt: row.registeredAt.toISOString(),
@@ -95,23 +109,21 @@ export class RegistrationsService {
     // transaction it is thrown in, and the advance must survive that.
     await this.lifecycle.advance(eventId);
 
+    // Nothing that only shapes the RESPONSE happens under the event row
+    // lock: the transaction returns the row, and the attendee's name and
+    // email are resolved after it has committed.
     try {
-      return await this.host.run(async () => {
+      const row = await this.host.run(async () => {
         const event = await this.lockEvent(eventId);
 
         // Registering twice is idempotent (spec 8), so this precedes the
         // window checks: someone who already holds a place gets it back
         // rather than a refusal for a window that has since closed.
         const existing = await this.findOpen(eventId, userId);
-        if (existing) return toRegistration(existing);
+        if (existing) return existing;
 
         this.assertOpenForRegistration(event);
-
-        const club = await this.host.tx.club.findUniqueOrThrow({
-          where: { id: event.clubId },
-          select: { status: true },
-        });
-        assertAcceptsNewActivity(club.status);
+        assertAcceptsNewActivity(event.clubStatus);
 
         // An override skips ONLY eligibility (spec 7.4). It never skips the
         // capacity lock: an Admin cannot conjure a seat that does not exist.
@@ -138,7 +150,6 @@ export class RegistrationsService {
             source: override ? 'ADMIN_OVERRIDE' : 'SELF',
             overrideReason: body.overrideReason ?? null,
           },
-          include: WITH_USER,
         });
 
         if (seatFree) {
@@ -158,8 +169,10 @@ export class RegistrationsService {
           after: { eventId, userId, status: row.status, waitlistPosition: row.waitlistPosition },
         });
 
-        return toRegistration(row);
+        return row;
       });
+
+      return toRegistration(row, await this.person(actor, userId));
     } catch (e) {
       // event_registration_one_open_per_user. The check above already
       // short-circuits under the row lock, so reaching here means the index
@@ -171,10 +184,23 @@ export class RegistrationsService {
         violatedConstraintName(e.meta).includes('one_open_per_user')
       ) {
         const existing = await this.findOpen(eventId, userId);
-        if (existing) return toRegistration(existing);
+        if (existing) return toRegistration(existing, await this.person(actor, userId));
       }
       throw e;
     }
+  }
+
+  /**
+   * The attendee's name and email for the response. Self-registration is the
+   * common case and SessionGuard already loaded that row for this request,
+   * so only an Admin override costs a query.
+   */
+  private async person(actor: Actor, userId: string): Promise<Person> {
+    if (userId === actor.id) return { fullName: actor.fullName, email: actor.email };
+    return this.host.tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { fullName: true, email: true },
+    });
   }
 
   /**
@@ -238,7 +264,7 @@ export class RegistrationsService {
     const items = hasMore ? rows.slice(0, query.limit) : rows;
 
     return {
-      items: items.map(toRegistration),
+      items: items.map((row) => toRegistration(row, row.user)),
       nextCursor: hasMore ? items[items.length - 1]!.id : null,
     };
   }
@@ -254,7 +280,7 @@ export class RegistrationsService {
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       orderBy: { id: 'asc' },
-      include: { event: { include: EVENT_WITH_CLUB } },
+      include: { event: { select: EVENT_SUMMARY_SELECT } },
     });
 
     const hasMore = rows.length > query.limit;
@@ -266,7 +292,7 @@ export class RegistrationsService {
         status: r.status,
         waitlistPosition: r.waitlistPosition,
         registeredAt: r.registeredAt.toISOString(),
-        event: toEventSummary(r.event as EventWithClub),
+        event: toEventSummary(r.event),
       })),
       nextCursor: hasMore ? items[items.length - 1]!.id : null,
     };
@@ -279,17 +305,19 @@ export class RegistrationsService {
    */
   private async lockEvent(eventId: string): Promise<LockedEvent> {
     const rows = await this.host.tx.$queryRaw<LockedEvent[]>`
-      SELECT "id",
-             "club_id" AS "clubId",
-             "status"::text AS "status",
-             "capacity",
-             "confirmed_count" AS "confirmedCount",
-             "waitlist_enabled" AS "waitlistEnabled",
-             "requires_club_membership" AS "requiresClubMembership",
-             "registration_opens_at" AS "registrationOpensAt",
-             "registration_closes_at" AS "registrationClosesAt"
-      FROM "event" WHERE "id" = ${eventId}::uuid
-      FOR UPDATE`;
+      SELECT e."id",
+             e."club_id" AS "clubId",
+             e."status"::text AS "status",
+             e."capacity",
+             e."confirmed_count" AS "confirmedCount",
+             e."waitlist_enabled" AS "waitlistEnabled",
+             e."requires_club_membership" AS "requiresClubMembership",
+             e."registration_opens_at" AS "registrationOpensAt",
+             e."registration_closes_at" AS "registrationClosesAt",
+             c."status"::text AS "clubStatus"
+      FROM "event" e JOIN "club" c ON c."id" = e."club_id"
+      WHERE e."id" = ${eventId}::uuid
+      FOR UPDATE OF e`;
 
     const event = rows[0];
     if (!event) throw new NotFoundError('No such event.');

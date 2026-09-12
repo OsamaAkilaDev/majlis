@@ -33,6 +33,38 @@ import { promoteFromWaitlist } from './waitlist';
 const WITH_CLUB = { club: { select: { name: true, logoUrl: true, status: true } } } as const;
 type EventWithClub = EventRow & { club: { name: string; logoUrl: string; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' } };
 
+/**
+ * Exactly the columns `toSummary` reads. A list page is the hottest read in
+ * the product and the full row carries `description` — the longest column on
+ * the table — plus the certificate and check-in fields, none of which a
+ * summary renders.
+ */
+const SUMMARY_SELECT = {
+  id: true,
+  clubId: true,
+  title: true,
+  slug: true,
+  summary: true,
+  eventType: true,
+  audience: true,
+  venue: true,
+  onlineUrl: true,
+  bannerUrl: true,
+  timezone: true,
+  startsAt: true,
+  endsAt: true,
+  registrationOpensAt: true,
+  registrationClosesAt: true,
+  capacity: true,
+  confirmedCount: true,
+  waitlistEnabled: true,
+  requiresClubMembership: true,
+  status: true,
+  club: { select: { name: true, logoUrl: true } },
+} as const;
+
+type EventSummaryRow = Prisma.EventGetPayload<{ select: typeof SUMMARY_SELECT }>;
+
 /** Only what a service reads off the signed-in user. */
 interface Actor {
   id: string;
@@ -82,7 +114,7 @@ function assertWindows(w: Windows): void {
   }
 }
 
-function toSummary(row: EventWithClub): EventSummary {
+function toSummary(row: EventSummaryRow): EventSummary {
   return {
     id: row.id,
     clubId: row.clubId,
@@ -109,7 +141,12 @@ function toSummary(row: EventWithClub): EventSummary {
   };
 }
 
-export { toSummary as toEventSummary, WITH_CLUB as EVENT_WITH_CLUB, type EventWithClub };
+export {
+  toSummary as toEventSummary,
+  WITH_CLUB as EVENT_WITH_CLUB,
+  SUMMARY_SELECT as EVENT_SUMMARY_SELECT,
+  type EventWithClub,
+};
 
 /**
  * `event_club_id_slug_key` is the only unique index on `event`, and the slug
@@ -269,7 +306,7 @@ export class EventsService {
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       orderBy: { id: 'asc' },
-      include: WITH_CLUB,
+      select: SUMMARY_SELECT,
     });
 
     const hasMore = rows.length > query.limit;
@@ -288,15 +325,26 @@ export class EventsService {
   }
 
   private async readDetail(actor: Actor, eventId: string): Promise<EventDetail> {
-    const visible = await this.visibilityFilter(actor);
-    const row = await this.host.tx.event.findFirst({
-      where: visible ? { AND: [{ id: eventId }, visible] } : { id: eventId },
-      include: WITH_CLUB,
-    });
+    const row = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
+    if (!row) throw new NotFoundError('No such event.');
+
+    // toDetail resolves the viewer's roles in this club and assignments on
+    // this event anyway, and those are exactly what visibilityFilter asks
+    // the database for a second time — so the draft gate reads them off the
+    // built detail instead of issuing its own two queries.
+    const detail = await this.toDetail(actor, row);
+
     // A draft the viewer is not on the team of is a 404, not a 403: telling
     // them it exists is itself the leak.
-    if (!row) throw new NotFoundError('No such event.');
-    return this.toDetail(actor, row);
+    if (
+      row.status === 'DRAFT' &&
+      actor.platformRole !== 'ADMIN' &&
+      detail.viewerClubRoles.length === 0 &&
+      detail.viewerResponsibilities.length === 0
+    ) {
+      throw new NotFoundError('No such event.');
+    }
+    return detail;
   }
 
   /**
