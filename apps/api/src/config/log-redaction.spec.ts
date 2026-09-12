@@ -13,6 +13,8 @@ describe('LOG_REDACT_PATHS', () => {
       'req.query.token',
       'req.query.code',
       'res.headers["set-cookie"]',
+      '*.headers.cookie',
+      '*.headers.authorization',
     ]);
   });
 
@@ -46,6 +48,30 @@ describe('LOG_REDACT_PATHS', () => {
 
     const output = lines.join('');
     expect(output).toContain('request completed');
+    expect(output).not.toContain('LEAKED');
+  });
+
+  it('strips a nested err.headers.cookie, not only req/res', () => {
+    // Catches redact paths rooted only at req.*/res.*: ProblemExceptionFilter
+    // logs `{ err }` on 5xx, and an error carrying an attached request (e.g.
+    // an http client error) would otherwise serialize its headers unredacted.
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+
+    logger.error(
+      { err: { headers: { cookie: 'majlis_session=LEAKED', authorization: 'Bearer LEAKED' } } },
+      'Unhandled exception',
+    );
+
+    const output = lines.join('');
+    expect(output).toContain('Unhandled exception');
     expect(output).not.toContain('LEAKED');
   });
 });

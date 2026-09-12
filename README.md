@@ -44,7 +44,7 @@ at <http://localhost:3001/api/v1/docs>.
 | `pnpm lint` | Lint every package |
 | `pnpm test` | Unit tests |
 | `pnpm --filter @majlis/api test:integration` | Integration tests against `majlis_test` |
-| `pnpm build` | Build every package |
+| `pnpm build` | Build every package. Needs `API_ORIGIN` set: a production web build refuses to bake in the localhost default |
 | `pnpm --filter @majlis/api start:dev` | Run the API in watch mode |
 | `pnpm --filter @majlis/api db:seed` | Seed development data (idempotent; refuses when `NODE_ENV=production`, and refuses any non-local database unless `ALLOW_REMOTE_SEED=yes`) |
 

@@ -423,6 +423,8 @@ Recorded here and in `2026-09-10-majlis-design.md` §13.
 | 2 | `(public)` route group | Public discovery lives in the student shell | No landing page and no anonymous browsing, so every viewer is signed in. `/verify/[code]` remains genuinely public and shell-less. |
 | 3 | `majlis_refresh` at `Path=/api/v1/auth` | `Path=/` | Middleware cannot otherwise see it; a valid 30-day session is bounced to `/login` after 15 idle minutes. §4.1. Security review before it lands. |
 | 4 | TanStack Query for interactive surfaces | Not installed | Stage 3 has no interactive surface. Arrives in Stage 5 with registration. |
+| 5 | `verify/[code]/` public route (§3) | Not built, deferred to Stage 7 | No certificate exists to verify until Stage 7 issues one, so the route could only ever 404. `decideRedirect` already leaves `/verify` ungated and is tested for it, so the gap is the page alone. |
+| 6 | Console switcher "at the top of the sidebar" (§3.2) | In the header user menu instead | One switcher, reachable from every shell including the student one, which has no sidebar. A sidebar-only switcher is unreachable below 1024px until the drawer is opened, and the destinations belong beside the identity they are derived from. |
 
 ## 11. Open items
 

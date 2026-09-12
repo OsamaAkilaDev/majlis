@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { API_PREFIX } from '../config/api-prefix';
 import {
   REFRESH_COOKIE_PATH,
   refreshCookieOptions,
@@ -53,8 +52,8 @@ describe('sessionCookieOptions', () => {
 });
 
 describe('refreshCookieOptions', () => {
-  it('scopes the refresh cookie to the auth routes only', () => {
-    expect(refreshCookieOptions(true).path).toBe('/api/v1/auth');
+  it('scopes the refresh cookie to the site root, so middleware sees it on page navigations', () => {
+    expect(refreshCookieOptions(true).path).toBe('/');
   });
 
   it('is httpOnly and SameSite=Lax in both modes', () => {
@@ -71,11 +70,13 @@ describe('refreshCookieOptions', () => {
 });
 
 describe('REFRESH_COOKIE_PATH', () => {
-  it('builds the refresh path from API_PREFIX rather than a literal', () => {
-    // Catches a hardcoded '/api/v1/auth' that silently stops matching when
-    // the prefix changes, at which point the browser stops sending the
-    // refresh cookie and every session dies after 15 minutes.
-    expect(REFRESH_COOKIE_PATH.startsWith(API_PREFIX)).toBe(true);
-    expect(REFRESH_COOKIE_PATH).toBe('/api/v1/auth');
+  // Widened from `${API_PREFIX}/auth` to '/' in Stage 3. A path-scoped refresh
+  // cookie is not sent on a page navigation, so Next.js middleware cannot see
+  // it and redirects a user with a valid 30-day session to /login after the
+  // 15-minute session cookie expires. This test pins the widening so a later
+  // "tighten the cookie path" cleanup fails loudly instead of silently
+  // breaking navigation for every signed-in user.
+  it('is the site root so middleware receives it on page navigations', () => {
+    expect(REFRESH_COOKIE_PATH).toBe('/');
   });
 });

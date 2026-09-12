@@ -4,9 +4,10 @@ import { ARGON2_OPTIONS } from '../src/auth/auth.service';
 import { PrismaClient } from '../src/generated/prisma/client';
 
 /**
- * Development data. Idempotent by construction: every write is an upsert keyed
- * on a natural unique column, so re-running is a no-op rather than a
- * constraint violation. Prisma 7 no longer runs this automatically.
+ * Development data. Every write is an upsert keyed on a natural unique
+ * column, so re-running restores each seeded row to its declared state
+ * (including the password hash) rather than only guaranteeing row count.
+ * Prisma 7 no longer runs this automatically.
  */
 
 // Every seeded persona shares this password (see README.md). Hashed with the
@@ -31,7 +32,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   for (const person of people) {
     const user = await prisma.user.upsert({
       where: { email: person.email },
-      update: { fullName: person.fullName, platformRole: person.platformRole },
+      update: { fullName: person.fullName, platformRole: person.platformRole, passwordHash },
       create: { ...person, passwordHash },
     });
     users[person.email] = user.id;
@@ -98,29 +99,35 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     }
   }
 
+  // Declared once and used for both branches: Stage 5's concurrency tests turn
+  // on capacity being what this says, and an empty `update` never restores it.
+  const event = {
+    title: 'Introduction to ROS 2',
+    summary: 'A hands-on first session with the Robot Operating System.',
+    description: 'Bring a laptop. No prior robotics experience required.',
+    eventType: 'WORKSHOP',
+    audience: 'ALL_STUDENTS',
+    venue: 'Engineering Building, Lab 2.14',
+    startsAt: hours(48),
+    endsAt: hours(51),
+    registrationOpensAt: hours(-24),
+    registrationClosesAt: hours(46),
+    checkInOpensAt: hours(47),
+    checkInClosesAt: hours(51.5),
+    capacity: 30,
+    waitlistEnabled: true,
+    certificateEnabled: true,
+    certificateTitle: 'Certificate of Attendance: Introduction to ROS 2',
+    status: 'PUBLISHED',
+  } as const;
+
   await prisma.event.upsert({
     where: { clubId_slug: { clubId: club.id, slug: 'intro-to-ros' } },
-    update: {},
+    update: event,
     create: {
+      ...event,
       clubId: club.id,
-      title: 'Introduction to ROS 2',
       slug: 'intro-to-ros',
-      summary: 'A hands-on first session with the Robot Operating System.',
-      description: 'Bring a laptop. No prior robotics experience required.',
-      eventType: 'WORKSHOP',
-      audience: 'ALL_STUDENTS',
-      venue: 'Engineering Building, Lab 2.14',
-      startsAt: hours(48),
-      endsAt: hours(51),
-      registrationOpensAt: hours(-24),
-      registrationClosesAt: hours(46),
-      checkInOpensAt: hours(47),
-      checkInClosesAt: hours(51.5),
-      capacity: 30,
-      waitlistEnabled: true,
-      certificateEnabled: true,
-      certificateTitle: 'Certificate of Attendance — Introduction to ROS 2',
-      status: 'PUBLISHED',
       createdById: users['lead@uni.ac.ae']!,
     },
   });
