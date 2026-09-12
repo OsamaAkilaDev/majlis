@@ -59,6 +59,36 @@ export class StorageService {
   }
 
   /**
+   * A short-lived, read-only URL for one object. The counterpart to
+   * `publicUrlFor`, and what a certificate PDF has to be handed out through:
+   * its path is a pure function of the certificate id, and every holder of
+   * `registration:read` can list those ids, so a public URL is a credential
+   * document readable with no cookie at all.
+   */
+  async createSignedDownloadUrl(
+    path: string,
+    expiresInSeconds: number,
+    bucket: string = STORAGE_BUCKET,
+  ): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/storage/v1/object/sign/${bucket}/${path}`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'content-type': 'application/json' },
+      body: JSON.stringify({ expiresIn: expiresInSeconds }),
+    });
+
+    // Only the status, as above: the body may echo the key back.
+    if (!res.ok) throw new Error(`Storage refused to sign a download URL: ${res.status}`);
+
+    const body = (await res.json()) as { signedURL?: string };
+    if (!body.signedURL) throw new Error('Storage returned no signed URL.');
+
+    // Verified live 2026-09-13: `signedURL` is relative to /storage/v1, e.g.
+    // "/object/sign/<bucket>/<path>?token=...", the same convention as
+    // `createSignedUploadUrl`'s `url`. A tampered token answers 400.
+    return body.signedURL.startsWith('http') ? body.signedURL : `${this.baseUrl}/storage/v1${body.signedURL}`;
+  }
+
+  /**
    * Size and content type of an uploaded object, or null if it is not there.
    * This is what lets a handler refuse to store a URL for an upload that
    * never happened, which matters because the API never sees the bytes.
@@ -87,6 +117,31 @@ export class StorageService {
     };
   }
 
+  /**
+   * Uploads bytes the API produced itself, which is the opposite direction
+   * from `createSignedUploadUrl`: a certificate PDF is rendered server-side
+   * and must never be something a browser can put there.
+   *
+   * `x-upsert` so a reissued certificate's render replaces the previous
+   * object at the same deterministic path instead of failing on it.
+   */
+  async putObject(
+    path: string,
+    body: Buffer,
+    contentType: string,
+    bucket: string = STORAGE_BUCKET,
+  ): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/storage/v1/object/${bucket}/${path}`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'content-type': contentType, 'x-upsert': 'true' },
+      body: new Uint8Array(body),
+    });
+
+    // Only the status. The body may echo the service role key back.
+    if (!res.ok) throw new Error(`Storage refused an upload: ${res.status}`);
+  }
+
+  /** For objects that are genuinely public: club logos, banners, posters. */
   publicUrlFor(path: string, version: number): string {
     return publicUrl(this.baseUrl, path, version);
   }

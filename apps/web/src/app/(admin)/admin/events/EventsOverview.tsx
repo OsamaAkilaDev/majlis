@@ -1,6 +1,6 @@
 'use client';
 
-import type { ClubSummary, EventPage, EventStatus, EventSummary, UserListItem } from '@majlis/contracts';
+import type { ClubSummary, EventPage, EventStatus, EventSummary, UserSearchItem } from '@majlis/contracts';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
@@ -27,6 +27,7 @@ import { formatMoment } from '@/lib/event-time';
 import { listEvents, register } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
+import { useAsyncError } from '@/lib/use-async-error';
 
 const ALL = 'all';
 
@@ -54,7 +55,7 @@ function OverrideDialog({
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
-  const [picked, setPicked] = useState<UserListItem | null>(null);
+  const [picked, setPicked] = useState<UserSearchItem | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -126,9 +127,13 @@ export function EventsOverview({
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialEvents !== null);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
     if (initialClubs) return;
-    void listClubs({ limit: 100 }).then((page) => setClubs(page.items));
+    listClubs({ limit: 100 })
+      .then((page) => setClubs(page.items))
+      .catch(fail);
   }, [initialClubs]);
 
   async function load(reset: boolean, from?: string | null) {
@@ -150,7 +155,7 @@ export function EventsOverview({
       return;
     }
     setItems(null);
-    void load(true);
+    load(true).catch(fail);
   }, [clubId, status, q]);
 
   return (

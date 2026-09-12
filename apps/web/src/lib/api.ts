@@ -4,6 +4,13 @@ export const API_BASE = '/api/v1';
 
 const REFRESH_PATH = '/auth/refresh';
 
+/**
+ * Paths where a 401 is an answer the caller renders rather than a dead
+ * session: a wrong password, a probe for the current viewer, the refresh
+ * itself.
+ */
+const OWN_401 = ['/auth/login', '/auth/signup', '/auth/me', REFRESH_PATH];
+
 export class ProblemError extends Error {
   readonly status: number;
   readonly title: string;
@@ -67,6 +74,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (res.status === 401 && path !== REFRESH_PATH) {
     const refreshed = await send(REFRESH_PATH, { method: 'POST' });
     if (refreshed.ok) res = await send(path, init);
+  }
+
+  // The refresh token is gone or revoked, and nothing on the screen can
+  // recover from that. Ending the session here rather than in each caller is
+  // what stops a revoked session from leaving every screen on its skeleton.
+  if (res.status === 401 && !OWN_401.includes(path) && typeof window !== 'undefined') {
+    window.location.assign('/login');
   }
 
   if (!res.ok) throw await toProblem(res);

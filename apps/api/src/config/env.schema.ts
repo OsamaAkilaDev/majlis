@@ -47,6 +47,14 @@ export const EXAMPLE_SESSION_SECRET = 'dev-only-session-secret-change-me!!';
 export const EXAMPLE_LIFECYCLE_SWEEP_SECRET = 'dev-only-lifecycle-sweep-secret';
 
 /**
+ * Same bargain again, and the most expensive one to get wrong: this key
+ * signs every QR pass in the product, so a deployment running on the
+ * published example value lets anyone mint a pass for any user id they can
+ * guess.
+ */
+export const EXAMPLE_QR_SIGNING_SECRET = 'dev-only-qr-signing-secret-change-me!!';
+
+/**
  * The process refuses to start if any of this is wrong. A server that boots
  * with a broken configuration and fails on the first request is worse than
  * one that never boots.
@@ -68,6 +76,23 @@ export const envSchema = z
       .string()
       .min(16, 'must be at least 16 characters')
       .default(EXAMPLE_LIFECYCLE_SWEEP_SECRET),
+    QR_SIGNING_SECRET: z
+      .string()
+      .min(32, 'must be at least 32 characters')
+      .default(EXAMPLE_QR_SIGNING_SECRET),
+    /**
+     * Spec 7.5: Operations and Lead may correct attendance for 48 hours
+     * after an event ends. It is also what gates COMPLETED to CERTIFIED —
+     * issuing the moment an event completes would make this window zero.
+     */
+    ATTENDANCE_CORRECTION_WINDOW_HOURS: z.coerce.number().int().positive().max(8760).default(48),
+    /**
+     * Where the QR printed on a certificate points. The API is reached
+     * through the web app's rewrite rather than directly, so it has no other
+     * reason to know its own public origin — and a certificate carrying a
+     * QR nobody can scan is a QR that may as well not be there.
+     */
+    PUBLIC_WEB_ORIGIN: z.url().default('http://localhost:3000'),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],
@@ -76,6 +101,10 @@ export const envSchema = z
   .refine(
     (env) => env.NODE_ENV !== 'production' || env.LIFECYCLE_SWEEP_SECRET !== EXAMPLE_LIFECYCLE_SWEEP_SECRET,
     { path: ['LIFECYCLE_SWEEP_SECRET'], message: 'must not be the example secret in production' },
-  );
+  )
+  .refine((env) => env.NODE_ENV !== 'production' || env.QR_SIGNING_SECRET !== EXAMPLE_QR_SIGNING_SECRET, {
+    path: ['QR_SIGNING_SECRET'],
+    message: 'must not be the example secret in production',
+  });
 
 export type Env = z.infer<typeof envSchema>;

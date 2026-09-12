@@ -20,6 +20,7 @@ import { needsOverrideReason } from '@/lib/override';
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { createEvent, listEvents, mintEventPosterUpload } from '@/lib/events';
+import { useAsyncError } from '@/lib/use-async-error';
 import {
   EMPTY_EVENT,
   EventFields,
@@ -132,8 +133,10 @@ export function EventsManager({
     append(await listEvents({ clubId, limit: PAGE, cursor }));
   }
 
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!seeded) void load();
+    if (!seeded) load().catch(fail);
   }, [seeded, load]);
 
   if (roles === null || items === null) return <Skeleton className="h-64 w-full" />;

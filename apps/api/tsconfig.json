@@ -4,8 +4,11 @@
     "rootDir": ".",
     "outDir": "./dist",
     "baseUrl": ".",
-    "types": ["node"]
+    "types": ["node"],
+    // certificate-pdf.tsx. @react-pdf/renderer is React with a PDF
+    // reconciler, so the API compiles JSX for exactly one file.
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "prisma/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "prisma/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

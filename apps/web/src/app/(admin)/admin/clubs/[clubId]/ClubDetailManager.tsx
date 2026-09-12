@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProblemError } from '@/lib/api';
 import { appointLead, getClub, listTeam, updateClubStatus } from '@/lib/clubs';
 import { useViewerZone } from '@/lib/use-viewer-zone';
+import { useAsyncError } from '@/lib/use-async-error';
 
 /** Mirrors club-status.ts's ALLOWED table: ARCHIVED is terminal. */
 const NEXT_STATUSES: Record<ClubStatus, ClubStatus[]> = {
@@ -154,10 +155,12 @@ export function ClubDetailManager({
   // See MembersManager: a locale-formatted date cannot be server-rendered.
   const mounted = useViewerZone() !== undefined;
   const seeded = initialClub !== null && initialTeam !== null;
+  const fail = useAsyncError();
+
   useEffect(() => {
     if (seeded) return;
-    getClub(clubId).then(setClub);
-    loadTeam();
+    getClub(clubId).then(setClub).catch(fail);
+    loadTeam().catch(fail);
   }, [clubId, seeded]);
 
   if (!club) return <Skeleton className="h-64 w-full" />;

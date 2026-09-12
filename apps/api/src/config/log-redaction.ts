@@ -30,6 +30,12 @@ export const LOG_REDACT_PATHS = [
   'req.headers.authorization',
   'req.query.token',
   'req.query.code',
+  // The QR pass token travels in a POST body, which pino-http never
+  // serializes (see above) — so this is defensive rather than load-bearing
+  // today. It is here because a later change that moves the token into a
+  // query string (a prefetched image URL, a deep link) would otherwise put
+  // a live credential into every log line silently.
+  'req.query.pass',
   'res.headers["set-cookie"]',
   // ProblemExceptionFilter logs `{ err }` on every 5xx; an error carrying an
   // attached request (e.g. an axios/http client error) would serialize that

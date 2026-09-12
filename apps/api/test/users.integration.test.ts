@@ -12,7 +12,7 @@ import {
   suspendAsAdmin,
 } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { mkUser } from './factories';
+import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent, mkUser } from './factories';
 
 const ME_PATH = `${API_PREFIX}/me`;
 const USERS_PATH = `${API_PREFIX}/users`;
@@ -269,5 +269,107 @@ describe('PATCH /users/{id}/status', () => {
       'x',
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /clubs/:clubId/user-search', () => {
+  function search(cookie: string, clubId: string, q: string): request.Test {
+    return request(app.getHttpServer())
+      .get(`${API_PREFIX}/clubs/${clubId}/user-search`)
+      .query({ q })
+      .set('Cookie', cookie);
+  }
+
+  it('lets a club Lead find somebody by name, and returns three columns', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const target = await mkUser({ fullName: 'Mariam Al Zaabi' });
+
+    const res = await search(lead.sessionCookie, club.id, 'zaabi');
+
+    expect(res.status).toBe(200);
+    const found = res.body.items.find((u: { id: string }) => u.id === target.id);
+    expect(found).toBeDefined();
+    // A club Lead has no business reading platform role, account status or
+    // creation date for every account in the university. GET /users returns
+    // all three and stays Admin-only; this route is why it can.
+    expect(Object.keys(found).sort()).toEqual(['email', 'fullName', 'id']);
+  });
+
+  it('matches on email too, which is how an officer with an address finds a person', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const target = await mkUser({ email: 'findme.by.address@uni.ac.ae', fullName: 'Nothing Like It' });
+    await mkUser({ fullName: 'Another Person' });
+
+    const res = await search(lead.sessionCookie, club.id, 'findme.by.address');
+
+    expect(res.status).toBe(200);
+    // Exactly the one match, not the whole directory: a search that ignored
+    // `q` and returned everyone would satisfy a "contains the target" test.
+    expect(res.body.items.map((u: { id: string }) => u.id)).toEqual([target.id]);
+  });
+
+  it('refuses a club Marketing officer, who holds no user:search rule', async () => {
+    const club = await makeClub();
+    const marketing = await makeActiveOfficer(app, club.id, 'MARKETING');
+    await mkUser({ fullName: 'Mariam Al Zaabi' });
+
+    const res = await search(marketing.sessionCookie, club.id, 'zaabi');
+
+    expect(res.status).toBe(403);
+    expect(res.body.detail).toBe('You do not have permission to do that.');
+  });
+
+  it('refuses an officer of a DIFFERENT club, since the rule is club-scoped', async () => {
+    // Catches a rule that reached the platform column only, or a guard
+    // resolving roles against something other than the clubId in the path:
+    // a Lead anywhere would then search from any club's id.
+    const club = await makeClub();
+    const elsewhere = await makeClub();
+    const lead = await makeActiveLead(app, elsewhere.id);
+
+    const res = await search(lead.sessionCookie, club.id, 'zaabi');
+
+    expect(res.status).toBe(403);
+    expect(res.body.detail).toBe('You do not have permission to do that.');
+  });
+
+  it('refuses a one-character query rather than dumping the directory', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+
+    expect((await search(lead.sessionCookie, club.id, 'z')).status).toBe(400);
+    expect(
+      (await request(app.getHttpServer())
+        .get(`${API_PREFIX}/clubs/${club.id}/user-search`)
+        .set('Cookie', lead.sessionCookie)).status,
+    ).toBe(400);
+  });
+
+  it('carries a club Lead all the way through an event assignment', async () => {
+    // The flow this route exists for. Before it, the picker called
+    // GET /users, a Lead got a 403, the list rendered empty and nobody
+    // could be assigned — which put Stage 6's whole EventAssignment scan
+    // path out of reach of everyone but an Admin.
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const operator = await mkUser({ fullName: 'Yousef Operations' });
+    const event = await mkEvent(club.id, lead.userId, { status: 'PUBLISHED' });
+
+    const found = await search(lead.sessionCookie, club.id, 'Yousef');
+    expect(found.status).toBe(200);
+    const picked = found.body.items.find((u: { id: string }) => u.id === operator.id);
+    expect(picked).toBeDefined();
+
+    const assigned = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/events/${event.id}/assignments`)
+      .set('Cookie', lead.sessionCookie)
+      .send({ userId: picked.id, responsibility: 'OPERATIONS' });
+
+    expect(assigned.status).toBe(201);
+    expect(
+      await prisma.eventAssignment.count({ where: { eventId: event.id, userId: operator.id } }),
+    ).toBe(1);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXAMPLE_SESSION_SECRET, envSchema } from './env.schema';
+import { EXAMPLE_QR_SIGNING_SECRET, EXAMPLE_SESSION_SECRET, envSchema } from './env.schema';
 
 const valid = {
   DATABASE_URL: 'postgresql://majlis:majlis@localhost:5432/majlis_dev?schema=public',
@@ -122,5 +122,29 @@ describe('SUPABASE_STORAGE_URL', () => {
   it('rejects an http Supabase URL, which would send the service key in clear', () => {
     const r = envSchema.safeParse({ ...base, SUPABASE_STORAGE_URL: 'http://example.supabase.co' });
     expect(r.success).toBe(false);
+  });
+});
+
+describe('QR_SIGNING_SECRET', () => {
+  it('rejects a secret shorter than 32 characters', () => {
+    // This key signs every QR pass. A short one is brute-forceable offline
+    // from a single scanned image, and every pass in the product is then
+    // forgeable.
+    const r = envSchema.safeParse({ ...base, QR_SIGNING_SECRET: 'x'.repeat(31) });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects the example secret when NODE_ENV=production', () => {
+    const r = envSchema.safeParse({
+      ...base,
+      NODE_ENV: 'production',
+      QR_SIGNING_SECRET: EXAMPLE_QR_SIGNING_SECRET,
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.some((i) => i.path[0] === 'QR_SIGNING_SECRET')).toBe(true);
+  });
+
+  it('defaults to the example secret in development, so the repo clones and runs', () => {
+    expect(envSchema.parse(base).QR_SIGNING_SECRET).toBe(EXAMPLE_QR_SIGNING_SECRET);
   });
 });

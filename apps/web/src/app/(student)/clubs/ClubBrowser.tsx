@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs, listDepartments } from '@/lib/clubs';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
+import { useAsyncError } from '@/lib/use-async-error';
 
 const ANY_DEPARTMENT = 'any';
 
@@ -46,9 +47,13 @@ export function ClubBrowser({
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialClubs !== null);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
     if (initialDepartments) return;
-    void listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
+    listDepartments({ limit: 100 })
+      .then((page) => setDepartments(page.items))
+      .catch(fail);
   }, [initialDepartments]);
 
   // Refetches from the first page whenever a filter changes, so a stale
@@ -60,14 +65,16 @@ export function ClubBrowser({
     }
     let cancelled = false;
     show(null);
-    void listClubs({
+    listClubs({
       limit: PAGE,
       status: 'ACTIVE',
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
       ...(q.trim() ? { q: q.trim() } : {}),
-    }).then((page) => {
-      if (!cancelled) show(page);
-    });
+    })
+      .then((page) => {
+        if (!cancelled) show(page);
+      })
+      .catch(fail);
     return () => {
       cancelled = true;
     };

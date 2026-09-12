@@ -10,6 +10,8 @@ import { UnauthorizedError } from '../common/problem/domain-error';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
 import type { Env } from '../config/env.schema';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { CertificatesService } from '../certificates/certificates.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
 
 export { SWEEP_SECRET_HEADER } from '../config/sweep-header';
@@ -37,14 +39,20 @@ export class LifecycleSweepController {
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly lifecycle: EventLifecycleService,
+    private readonly certificates: CertificatesService,
   ) {}
 
   @Public()
   @Post('lifecycle-sweep')
   @HttpCode(200)
   @ApiResponse({ status: 401, description: 'That sweep secret is not valid.', type: ProblemDetailsDto })
-  sweep(@Headers(SWEEP_SECRET_HEADER) presented: string | undefined): Promise<SweepResult> {
+  async sweep(@Headers(SWEEP_SECRET_HEADER) presented: string | undefined): Promise<SweepResult> {
     assertSweepSecret(presented, this.config.get('LIFECYCLE_SWEEP_SECRET', { infer: true }));
-    return this.lifecycle.sweep();
+    const swept = await this.lifecycle.sweep();
+    // After the advances, not before. An event that reached COMPLETED on
+    // this very call has its 48-hour correction window still ahead of it and
+    // issues nothing today; one that completed two days ago is due now, and
+    // this is the only path that will ever notice.
+    return { ...swept, certificatesIssued: await this.certificates.issueDue() };
   }
 }

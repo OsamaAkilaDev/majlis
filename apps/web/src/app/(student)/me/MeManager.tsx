@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations } from '@/lib/clubs';
 import { enumLabel } from '@/lib/enum-label';
 import { PAGE } from '@/lib/page-size';
+import { useAsyncError } from '@/lib/use-async-error';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -39,8 +40,10 @@ export function MeManager({
     setInvitations(i.items);
   }, []);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!seeded) void load();
+    if (!seeded) load().catch(fail);
   }, [seeded, load]);
 
   async function act(id: string, fn: () => Promise<unknown>) {
@@ -56,9 +59,23 @@ export function MeManager({
   }
 
   return (
-    // Two independent lists, so they sit side by side once there is room for
-    // both rather than making the viewer scroll past one to reach the other.
-    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
+    <div className="flex flex-col gap-6">
+      {/* The tab bar has five destinations and these are not two of them, so
+          without this row /me/registrations and /me/certificates are routes
+          nothing in the product links to. */}
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline">
+          <Link href="/me/registrations">My registrations</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/me/certificates">My certificates</Link>
+        </Button>
+      </div>
+
+      {/* Two independent lists, so they sit side by side once there is room
+          for both rather than making the viewer scroll past one to reach the
+          other. */}
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
       <Section title="Invitations">
         {invitations === null ? (
           <Skeleton className="h-16" />
@@ -140,7 +157,8 @@ export function MeManager({
             ))}
           </ul>
         )}
-      </Section>
+        </Section>
+      </div>
     </div>
   );
 }

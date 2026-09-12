@@ -95,13 +95,35 @@ export class EventLifecycleService {
       });
       if (count === 0) break;
 
+      // Nobody who still held a place when the check-in window shut turned
+      // up. Writing that down in the same transaction as the hop is what
+      // makes the roster truthful after an event, and it is what gives "a
+      // NO_SHOW never receives a certificate" (spec 7.6) something to
+      // assert against rather than the mere absence of an attendance row.
+      //
+      // CONFIRMED only. CHECKED_IN and ATTENDED are untouched; so is
+      // CANCELLED, which records someone who withdrew rather than someone
+      // who failed to come. WAITLISTED stays WAITLISTED: that student never
+      // held a seat, so they were never expected in the room, and turning
+      // them into a NO_SHOW would inflate the roster's `expected`
+      // denominator the moment the event completed.
+      const noShow =
+        next === 'COMPLETED'
+          ? (
+              await this.host.tx.eventRegistration.updateMany({
+                where: { eventId: event.id, status: 'CONFIRMED' },
+                data: { status: 'NO_SHOW' },
+              })
+            ).count
+          : 0;
+
       await this.audit.record({
         action: 'event.status_advanced',
         entityType: 'Event',
         entityId: event.id,
         outcome: 'SUCCESS',
         before: { status: current },
-        after: { status: next },
+        after: { status: next, ...(next === 'COMPLETED' ? { noShow } : {}) },
       });
       current = next;
     }
@@ -117,7 +139,7 @@ export class EventLifecycleService {
    * Each event advances in its own transaction rather than one transaction
    * for the whole sweep, so one unexpected row cannot roll back the rest.
    */
-  async sweep(now = new Date()): Promise<SweepResult> {
+  async sweep(now = new Date()): Promise<Omit<SweepResult, 'certificatesIssued'>> {
     const rows = await this.host.tx.event.findMany({
       where: {
         status: { in: ['PUBLISHED', 'REGISTRATION_CLOSED', 'ONGOING'] },

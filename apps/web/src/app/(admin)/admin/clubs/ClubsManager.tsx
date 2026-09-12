@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { listClubs, listDepartments } from '@/lib/clubs';
 import { PAGE } from '@/lib/page-size';
+import { useAsyncError } from '@/lib/use-async-error';
 import { useCursorPage } from '@/lib/use-cursor-page';
 
 const STATUSES: ClubStatus[] = ['ACTIVE', 'SUSPENDED', 'ARCHIVED'];
@@ -38,9 +39,13 @@ export function ClubsManager({
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialClubs !== null);
 
+  const fail = useAsyncError();
+
   useEffect(() => {
     if (initialDepartments) return;
-    listDepartments({ limit: 100 }).then((page) => setDepartments(page.items));
+    listDepartments({ limit: 100 })
+      .then((page) => setDepartments(page.items))
+      .catch(fail);
   }, [initialDepartments]);
 
   async function load(reset: boolean) {
@@ -59,7 +64,7 @@ export function ClubsManager({
       return;
     }
     setItems(null);
-    load(true);
+    load(true).catch(fail);
   }, [departmentId, status]);
 
   return (

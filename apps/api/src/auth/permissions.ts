@@ -88,6 +88,17 @@ export interface PermissionRule {
 
 export const PERMISSIONS = {
   'user:list': { platform: ['ADMIN'] },
+  // The narrow club-scoped directory lookup behind every "pick a person"
+  // control an officer has: inviting to the team, adding a member,
+  // assigning an event responsibility. `user:list` is not widened for it,
+  // because that route returns platform role, status and creation date for
+  // every account in the university. This one returns a name and an
+  // address, and only to somebody who already leads a club.
+  //
+  // Club-scoped, so it must only ever be required on a route carrying a
+  // clubId: a club rule cannot authorize a bare unscoped route, which is
+  // why the route is nested under /clubs/:clubId.
+  'user:search': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
   'user:suspend': { platform: ['ADMIN'] },
   'department:manage': { platform: ['ADMIN'] },
   'club:create': { platform: ['ADMIN'] },
@@ -115,6 +126,25 @@ export const PERMISSIONS = {
     club: ['LEAD', 'VICE_LEAD'],
     event: ['EVENT_LEAD', 'OPERATIONS'],
   },
+  // Spec 6.1's "Scan QR / check in" row ticks Lead and Operations only.
+  // Vice Lead is absent deliberately, in both of these. The event column is
+  // what makes an EventAssignment grant scan rights for one event without
+  // making anyone a standing officer (spec 5.1).
+  'attendance:scan': {
+    platform: ['ADMIN'],
+    club: ['LEAD', 'OPERATIONS'],
+    event: ['EVENT_LEAD', 'OPERATIONS'],
+  },
+  // "Correct attendance" is club-scoped only: an assignment grants the right
+  // to scan a queue, not to rewrite the record afterwards. The 48-hour
+  // window and the Admin override past it are enforced in the service, not
+  // here — they are a property of the event's clock, not of the actor.
+  'attendance:correct': { platform: ['ADMIN'], club: ['LEAD', 'OPERATIONS'] },
+  // Spec 6.1's "Issue / revoke certificate" row reads "Admin / system" and
+  // ticks no club role at all. A Lead cannot issue their own club's
+  // certificates, which is what keeps a certificate an institutional record
+  // rather than a thing a club hands out.
+  'certificate:manage': { platform: ['ADMIN'] },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CertificatesModule } from '../certificates/certificates.module';
 import { ClubsModule } from '../clubs/clubs.module';
 import { AssignmentsService } from './assignments.service';
 import { EventLifecycleService } from './event-lifecycle.service';
@@ -14,8 +15,11 @@ import { RegistrationsService } from './registrations.service';
  * URL is derived. Clubs does not import events, so there is no cycle.
  */
 @Module({
-  imports: [ClubsModule],
+  imports: [ClubsModule, CertificatesModule],
   controllers: [EventsController, RegistrationsController, LifecycleSweepController],
   providers: [EventsService, EventLifecycleService, AssignmentsService, RegistrationsService],
+  // AttendanceModule advances an event before every check-in and every
+  // correction, so nobody scans against a status the clock has moved past.
+  exports: [EventLifecycleService],
 })
 export class EventsModule {}

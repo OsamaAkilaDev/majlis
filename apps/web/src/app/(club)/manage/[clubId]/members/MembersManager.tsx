@@ -13,6 +13,7 @@ import { addMember, decideMembership, getClub, listMembers, removeMember } from 
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
+import { useAsyncError } from '@/lib/use-async-error';
 
 function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => void }) {
   return (
@@ -20,6 +21,7 @@ function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => v
       trigger={<Button>Add member</Button>}
       title="Add a member"
       confirmLabel="Add"
+      clubId={clubId}
       onSubmit={async (user) => {
         await addMember(clubId, { userId: user.id });
         onAdded();
@@ -79,8 +81,10 @@ export function MembersManager({
   }
 
   const seeded = initialClub !== null && initialPending !== null && initialActive !== null;
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!seeded) load();
+    if (!seeded) load().catch(fail);
   }, [clubId, seeded]);
 
   if (!club || pending === null || active === null) return <Skeleton className="h-64 w-full" />;

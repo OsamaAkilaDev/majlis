@@ -1,35 +1,70 @@
 'use client';
 
-import type { UserListItem } from '@majlis/contracts';
+import type { UserSearchItem } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
 import { Field } from '@/components/Field';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/cn';
-import { listUsers } from '@/lib/clubs';
+import { listUsers, searchClubUsers } from '@/lib/clubs';
+import { useAsyncError } from '@/lib/use-async-error';
+
+/** Below this, the club-scoped route refuses the query outright. */
+const MIN_QUERY = 2;
 
 /**
- * GET /users has no server-side search param, so the first page (bounded at
- * 100, not unbounded) loads once and filtering is client-side. Fine at this
- * stage's user count; a growing directory needs a real search endpoint.
+ * Two sources, one list. With a `clubId` the search runs server-side behind
+ * `user:search`, which is what a club officer holds; without one it is an
+ * Admin screen and loads the first page of `GET /users`, behind `user:list`,
+ * which only an Admin holds. Pointing an officer's screen at the Admin route
+ * is what made every club Lead's picker render empty on a 403.
  */
 export function UserPicker({
   value,
   onChange,
   exclude = [],
+  clubId,
 }: {
-  value: UserListItem | null;
-  onChange: (user: UserListItem) => void;
+  value: UserSearchItem | null;
+  onChange: (user: UserSearchItem) => void;
   exclude?: string[];
+  clubId?: string;
 }) {
-  const [users, setUsers] = useState<UserListItem[]>([]);
+  const [users, setUsers] = useState<UserSearchItem[]>([]);
   const [q, setQ] = useState('');
+  const fail = useAsyncError();
 
   useEffect(() => {
-    listUsers({ limit: 100 }).then((page) => setUsers(page.items));
-  }, []);
+    if (clubId) return;
+    listUsers({ limit: 100 }).then((page) => setUsers(page.items)).catch(fail);
+  }, [clubId, fail]);
+
+  useEffect(() => {
+    if (!clubId) return;
+    const needle = q.trim();
+    if (needle.length < MIN_QUERY) {
+      setUsers([]);
+      return;
+    }
+    // Debounced, and the result of a query the officer has already typed
+    // past is dropped rather than rendered over the newer one.
+    let live = true;
+    const timer = setTimeout(() => {
+      searchClubUsers(clubId, needle)
+        .then((page) => {
+          if (live) setUsers(page.items);
+        })
+        .catch(fail);
+    }, 200);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [clubId, q, fail]);
 
   const needle = q.trim().toLowerCase();
   const candidates = users.filter((u) => !exclude.includes(u.id));
+  // Harmless on the club path, where the server matched the same way; on the
+  // Admin path it is the only filtering there is.
   const filtered = needle
     ? candidates.filter(
         (u) => u.fullName.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle),

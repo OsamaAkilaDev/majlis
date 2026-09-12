@@ -17,6 +17,7 @@ import { enumLabel } from '@/lib/enum-label';
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
+import { useAsyncError } from '@/lib/use-async-error';
 
 type InvitableRole = 'VICE_LEAD' | 'MARKETING' | 'CTO' | 'OPERATIONS';
 const INVITABLE_ROLES: ClubRole[] = ['VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'];
@@ -31,6 +32,7 @@ function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => 
       trigger={<Button>Invite</Button>}
       title="Invite a team member"
       confirmLabel="Send invitation"
+      clubId={clubId}
       onSubmit={async (user) => {
         await inviteTeamMember(clubId, { userId: user.id, role: role as InvitableRole });
         onInvited();
@@ -82,8 +84,10 @@ export function TeamManager({
   }
 
   const seeded = initialClub !== null && initialTeam !== null;
+  const fail = useAsyncError();
+
   useEffect(() => {
-    if (!seeded) load();
+    if (!seeded) load().catch(fail);
   }, [clubId, seeded]);
 
   if (!club || items === null) return <Skeleton className="h-64 w-full" />;

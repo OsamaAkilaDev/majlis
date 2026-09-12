@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CERTIFICATE_BUCKET, STORAGE_BUCKET } from './image-kinds';
 import { StorageService } from './storage.service';
 
 const KEY = 'service-role-key-value';
@@ -56,6 +57,92 @@ describe('createSignedUploadUrl', () => {
 
     await expect(svc.createSignedUploadUrl('clubs/a/logo.webp')).rejects.toThrow(
       /refused to sign an upload url: 401/i,
+    );
+  });
+});
+
+describe('createSignedDownloadUrl', () => {
+  it('posts the expiry and absolutises the relative signedURL it gets back', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const { svc } = serviceWith((async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(
+        JSON.stringify({
+          signedURL: '/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=tok',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch);
+
+    const out = await svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300);
+
+    // Verified live 2026-09-13: the response key is `signedURL` (not `url`,
+    // which is what the upload endpoint returns) and it is relative to
+    // /storage/v1. Returning it straight through sends the browser to the
+    // web app's own origin.
+    expect(out).toBe(
+      'https://example.supabase.co/storage/v1/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=tok',
+    );
+    expect(calls[0]!.url).toBe(
+      'https://example.supabase.co/storage/v1/object/sign/majlis-storage/certificates/c1/certificate.pdf',
+    );
+    expect(calls[0]!.init.method).toBe('POST');
+    // Both headers, and the expiry in the body. The live service answers
+    // "Invalid Compact JWS" without `apikey` alongside the bearer token.
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(headers.apikey).toBe(KEY);
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ expiresIn: 300 });
+  });
+
+  it('signs and uploads a certificate into the private bucket, not the public one', async () => {
+    // The whole point of the second bucket. Signing a URL in the PUBLIC
+    // bucket closes nothing: the object path is a pure function of the
+    // certificate id, every holder of registration:read can list those ids,
+    // and /object/public/<path> answers 200 with no cookie. Only a bucket
+    // that refuses the unsigned path fixes it, so this pins which bucket the
+    // bytes actually land in and which one the URL is signed against.
+    const calls: string[] = [];
+    const { svc } = serviceWith((async (url: string) => {
+      calls.push(url);
+      return new Response(
+        JSON.stringify({
+          signedURL: '/object/sign/majlis-certificates/certificates/c1/certificate.pdf?token=tok',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch);
+
+    await svc.putObject(
+      'certificates/c1/certificate.pdf',
+      Buffer.from('%PDF-1.4'),
+      'application/pdf',
+      CERTIFICATE_BUCKET,
+    );
+    await svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300, CERTIFICATE_BUCKET);
+
+    expect(CERTIFICATE_BUCKET).not.toBe(STORAGE_BUCKET);
+    for (const url of calls) {
+      expect(url).toContain(`/${CERTIFICATE_BUCKET}/`);
+      expect(url).not.toContain(`/${STORAGE_BUCKET}/`);
+    }
+  });
+
+  it('throws rather than returning a broken URL when Supabase refuses', async () => {
+    // Same shape as the upload test above: a plausible signedURL alongside
+    // the error, so only the status check can stop a 401 producing a URL
+    // that 400s in the holder's browser.
+    const { svc } = serviceWith((async () =>
+      new Response(
+        JSON.stringify({
+          error: 'Unauthorized',
+          signedURL: '/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=bogus',
+        }),
+        { status: 401 },
+      )) as unknown as typeof fetch);
+
+    await expect(svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300)).rejects.toThrow(
+      /refused to sign a download url: 401/i,
     );
   });
 });
