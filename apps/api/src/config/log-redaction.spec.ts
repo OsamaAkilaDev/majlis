@@ -2,6 +2,7 @@ import pino from 'pino';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { LOG_REDACT_PATHS, redactedReqSerializer } from './log-redaction';
+import { SWEEP_SECRET_HEADER } from './sweep-header';
 
 describe('LOG_REDACT_PATHS', () => {
   it('covers every path a secret is known to travel', () => {
@@ -15,7 +16,31 @@ describe('LOG_REDACT_PATHS', () => {
       'res.headers["set-cookie"]',
       '*.headers.cookie',
       '*.headers.authorization',
+      'req.headers["x-lifecycle-sweep-secret"]',
+      '*.headers["x-lifecycle-sweep-secret"]',
     ]);
+  });
+
+  it('strips the sweep secret from a request log line', () => {
+    // Spec 11 lists the sweep secret with session secrets and signing keys as
+    // something that never reaches a log. autoLogging serializes the whole
+    // headers object, so before these paths existed every call to the sweep
+    // endpoint, failed guesses included, logged it verbatim.
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+    logger.info({
+      req: { headers: { [SWEEP_SECRET_HEADER]: 'SUPERSECRETVALUE' } },
+      err: { headers: { [SWEEP_SECRET_HEADER]: 'SUPERSECRETVALUE' } },
+    });
+
+    expect(lines.join('')).not.toContain('SUPERSECRETVALUE');
   });
 
   it('actually strips those values from an emitted log line', () => {

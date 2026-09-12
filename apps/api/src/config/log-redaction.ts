@@ -1,4 +1,5 @@
 import { stdSerializers, type SerializedRequest } from 'pino';
+import { SWEEP_SECRET_HEADER } from './sweep-header';
 
 /**
  * Paths stripped from every log line. A missing entry here means a secret in
@@ -36,6 +37,12 @@ export const LOG_REDACT_PATHS = [
   // and do not reach err.*. The wildcard covers err at any nesting depth.
   '*.headers.cookie',
   '*.headers.authorization',
+  // Spec 11 names the sweep secret alongside session secrets and signing keys
+  // as something that never reaches a log. autoLogging serializes the whole
+  // headers object, so every call to the sweep endpoint, failed guesses
+  // included, wrote it verbatim without these.
+  `req.headers["${SWEEP_SECRET_HEADER}"]`,
+  `*.headers["${SWEEP_SECRET_HEADER}"]`,
 ] as const;
 
 /**
