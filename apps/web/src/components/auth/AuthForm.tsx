@@ -16,8 +16,11 @@ import { landingFor } from '@/lib/routing';
 const SEGMENTS = 4;
 const NO_RESPONSE = 'Could not reach the server. Check your connection and try again.';
 
-/** The one rule that is invisible until submit, shown on the label instead. */
-function PasswordRule({ length }: { length: number }) {
+/**
+ * The one rule that is invisible until submit, shown on the label instead.
+ * Exported for the reset form, which sets a new password under the same rule.
+ */
+export function PasswordRule({ length }: { length: number }) {
   const met = length >= PASSWORD_MIN;
   const filled = Math.min(Math.ceil((length / PASSWORD_MIN) * SEGMENTS), SEGMENTS);
 
@@ -114,12 +117,19 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
         {signup ? 'Create account' : 'Sign in'}
       </Button>
 
-      <Link
-        href={signup ? '/login' : '/signup'}
-        className="self-start text-sm text-primary underline underline-offset-4"
-      >
-        {signup ? 'Sign in' : 'Create account'}
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href={signup ? '/login' : '/signup'}
+          className="text-sm text-primary underline underline-offset-4"
+        >
+          {signup ? 'Sign in' : 'Create account'}
+        </Link>
+        {signup ? null : (
+          <Link href="/forgot-password" className="text-sm text-ink-2 underline underline-offset-4">
+            Forgot password
+          </Link>
+        )}
+      </div>
     </form>
   );
 }
