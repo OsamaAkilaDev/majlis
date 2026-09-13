@@ -54,3 +54,16 @@ export type NotificationType = z.infer<typeof notificationTypeSchema>;
 export type Notification = z.infer<typeof notificationSchema>;
 export type NotificationPage = z.infer<typeof notificationPageSchema>;
 export type NotificationListQuery = z.infer<typeof notificationListQuerySchema>;
+
+/**
+ * What POST /internal/notification-sweep reports. Every PENDING row it
+ * picked up lands in exactly one of the three counters, so the sum is the
+ * size of the batch.
+ */
+export const notificationSweepResultSchema = z.object({
+  sent: z.number().int(),
+  failed: z.number().int(),
+  skipped: z.number().int(),
+});
+
+export type NotificationSweepResult = z.infer<typeof notificationSweepResultSchema>;

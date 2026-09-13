@@ -54,6 +54,9 @@ export const EXAMPLE_LIFECYCLE_SWEEP_SECRET = 'dev-only-lifecycle-sweep-secret';
  */
 export const EXAMPLE_QR_SIGNING_SECRET = 'dev-only-qr-signing-secret-change-me!!';
 
+/** Same bargain again, for POST /internal/notification-sweep. */
+export const EXAMPLE_NOTIFICATION_SWEEP_SECRET = 'dev-only-notification-sweep-secret';
+
 /**
  * The process refuses to start if any of this is wrong. A server that boots
  * with a broken configuration and fails on the first request is worse than
@@ -93,6 +96,20 @@ export const envSchema = z
      * QR nobody can scan is a QR that may as well not be there.
      */
     PUBLIC_WEB_ORIGIN: z.url().default('http://localhost:3000'),
+    NOTIFICATION_SWEEP_SECRET: z
+      .string()
+      .min(16, 'must be at least 16 characters')
+      .default(EXAMPLE_NOTIFICATION_SWEEP_SECRET),
+    /**
+     * Optional by design (decided 2026-09-13): Resend ships unwired. With no
+     * key the channel marks every notification SKIPPED and the in-app inbox
+     * works completely; pasting a key in turns email on with no code change.
+     *
+     * No message here interpolates the value, so a validation failure names
+     * the rule that was broken and never the credential that broke it.
+     */
+    RESEND_API_KEY: z.string().min(1, 'must not be empty').optional(),
+    RESEND_FROM: z.string().min(3).default('Majlis <notifications@majlis.invalid>'),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],
@@ -105,6 +122,11 @@ export const envSchema = z
   .refine((env) => env.NODE_ENV !== 'production' || env.QR_SIGNING_SECRET !== EXAMPLE_QR_SIGNING_SECRET, {
     path: ['QR_SIGNING_SECRET'],
     message: 'must not be the example secret in production',
-  });
+  })
+  .refine(
+    (env) =>
+      env.NODE_ENV !== 'production' || env.NOTIFICATION_SWEEP_SECRET !== EXAMPLE_NOTIFICATION_SWEEP_SECRET,
+    { path: ['NOTIFICATION_SWEEP_SECRET'], message: 'must not be the example secret in production' },
+  );
 
 export type Env = z.infer<typeof envSchema>;

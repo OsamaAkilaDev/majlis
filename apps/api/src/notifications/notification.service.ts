@@ -1,11 +1,24 @@
-import { Injectable } from '@nestjs/common';
-import type { Notification, NotificationListQuery, NotificationPage } from '@majlis/contracts';
+import { Inject, Injectable } from '@nestjs/common';
+import type {
+  Notification,
+  NotificationListQuery,
+  NotificationPage,
+  NotificationSweepResult,
+} from '@majlis/contracts';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError } from '../common/problem/domain-error';
 import type { Prisma, Notification as NotificationRow } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
+import {
+  NOTIFICATION_CHANNEL,
+  type DeliveryOutcome,
+  type NotificationChannel,
+} from './notification-channel';
 import { PASSWORD_RESET_TYPE, dedupeKeyFor, type NotificationEntry } from './notification-types';
+
+/** A sweep that found more than this has a bigger problem than a slow run. */
+const DELIVERY_SWEEP_LIMIT = 500;
 
 function toNotification(row: NotificationRow): Notification {
   return {
@@ -34,7 +47,10 @@ function toNotification(row: NotificationRow): Notification {
  */
 @Injectable()
 export class NotificationService {
-  constructor(private readonly host: TransactionHost) {}
+  constructor(
+    private readonly host: TransactionHost,
+    @Inject(NOTIFICATION_CHANNEL) private readonly channel: NotificationChannel,
+  ) {}
 
   record(entry: NotificationEntry): Promise<number> {
     return this.recordMany([entry]);
@@ -107,5 +123,70 @@ export class NotificationService {
       data: { readAt: new Date() },
     });
     return toNotification(read);
+  }
+
+  /**
+   * POST /internal/notification-sweep. Delivery is a sweep rather than a
+   * fire-and-forget after each commit: the same three lines would otherwise
+   * be scattered across ten call sites, and every notification whose process
+   * died between commit and send would be lost. This is the pattern the
+   * event lifecycle and certificate issuance already use, and it is
+   * recoverable by construction. The cost is latency, accepted.
+   *
+   * PENDING is the only state picked up, so a FAILED row is attempted once
+   * and never retried forever. No transaction wraps the batch: a send cannot
+   * be rolled back, so holding one open across an HTTP call to Resend would
+   * pin a pooled connection for the length of the whole batch and buy
+   * nothing.
+   */
+  async deliverPending(limit = DELIVERY_SWEEP_LIMIT): Promise<NotificationSweepResult> {
+    const rows = await this.host.tx.notification.findMany({
+      where: { emailStatus: 'PENDING' },
+      orderBy: { id: 'asc' },
+      take: limit,
+      include: { user: { select: { email: true, fullName: true } } },
+    });
+
+    const result: NotificationSweepResult = { sent: 0, failed: 0, skipped: 0 };
+
+    for (const row of rows) {
+      const outcome = await this.attempt(row);
+      if (outcome.status === 'SENT') result.sent += 1;
+      else if (outcome.status === 'SKIPPED') result.skipped += 1;
+      else result.failed += 1;
+
+      await this.host.tx.notification.update({
+        where: { id: row.id },
+        data: {
+          emailStatus: outcome.status,
+          emailError: outcome.status === 'FAILED' ? outcome.error : null,
+        },
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * One delivery attempt, which never throws. A refused address, a rate
+   * limit and an outage are ordinary outcomes of sending mail, and one of
+   * them must not stop the rest of the batch.
+   */
+  private async attempt(
+    row: NotificationRow & { user: { email: string; fullName: string } },
+  ): Promise<DeliveryOutcome> {
+    try {
+      return await this.channel.deliver({
+        id: row.id,
+        type: row.type as Notification['type'],
+        payload: (row.payload ?? {}) as Record<string, unknown>,
+        recipientEmail: row.user.email,
+        recipientName: row.user.fullName,
+      });
+    } catch (e) {
+      // The message only. An Error's stack can carry a request object, and
+      // this string is stored on the row and shown to an Admin.
+      return { status: 'FAILED', error: e instanceof Error ? e.message : String(e) };
+    }
   }
 }

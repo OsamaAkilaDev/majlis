@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { EXAMPLE_QR_SIGNING_SECRET, EXAMPLE_SESSION_SECRET, envSchema } from './env.schema';
+import {
+  EXAMPLE_NOTIFICATION_SWEEP_SECRET,
+  EXAMPLE_QR_SIGNING_SECRET,
+  EXAMPLE_SESSION_SECRET,
+  envSchema,
+} from './env.schema';
 
 const valid = {
   DATABASE_URL: 'postgresql://majlis:majlis@localhost:5432/majlis_dev?schema=public',
@@ -146,5 +151,47 @@ describe('QR_SIGNING_SECRET', () => {
 
   it('defaults to the example secret in development, so the repo clones and runs', () => {
     expect(envSchema.parse(base).QR_SIGNING_SECRET).toBe(EXAMPLE_QR_SIGNING_SECRET);
+  });
+});
+
+describe('NOTIFICATION_SWEEP_SECRET', () => {
+  it('rejects the example secret when NODE_ENV=production', () => {
+    const r = envSchema.safeParse({
+      ...base,
+      NODE_ENV: 'production',
+      SESSION_SECRET: 'y'.repeat(40),
+      NOTIFICATION_SWEEP_SECRET: EXAMPLE_NOTIFICATION_SWEEP_SECRET,
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.some((i) => i.path[0] === 'NOTIFICATION_SWEEP_SECRET')).toBe(true);
+  });
+
+  it('defaults to the example secret in development, so the repo clones and runs', () => {
+    expect(envSchema.parse(base).NOTIFICATION_SWEEP_SECRET).toBe(EXAMPLE_NOTIFICATION_SWEEP_SECRET);
+  });
+
+  it('rejects a secret shorter than 16 characters', () => {
+    const r = envSchema.safeParse({ ...base, NOTIFICATION_SWEEP_SECRET: 'x'.repeat(15) });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('RESEND_API_KEY', () => {
+  it('is absent by default, which is what makes the channel skip', () => {
+    // Resend ships unwired. If this ever gained a default the factory in
+    // NotificationsModule would construct a real ResendChannel at boot with
+    // a bogus key, and every notification would land on FAILED instead of
+    // SKIPPED.
+    expect(envSchema.parse(base).RESEND_API_KEY).toBeUndefined();
+  });
+
+  it('rejects an empty string rather than treating it as configured', () => {
+    // An empty RESEND_API_KEY in a .env is the shape a half-finished
+    // deployment takes. Accepting it would be indistinguishable from absent
+    // here but not in the factory, which only checks for falsiness, so the
+    // refusal belongs at boot where it is visible.
+    const r = envSchema.safeParse({ ...base, RESEND_API_KEY: '' });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.some((i) => i.path[0] === 'RESEND_API_KEY')).toBe(true);
   });
 });

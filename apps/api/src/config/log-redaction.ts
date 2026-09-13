@@ -1,5 +1,5 @@
 import { stdSerializers, type SerializedRequest } from 'pino';
-import { SWEEP_SECRET_HEADER } from './sweep-header';
+import { NOTIFICATION_SWEEP_SECRET_HEADER, SWEEP_SECRET_HEADER } from './sweep-header';
 
 /**
  * Paths stripped from every log line. A missing entry here means a secret in
@@ -49,6 +49,20 @@ export const LOG_REDACT_PATHS = [
   // included, wrote it verbatim without these.
   `req.headers["${SWEEP_SECRET_HEADER}"]`,
   `*.headers["${SWEEP_SECRET_HEADER}"]`,
+  // The notification delivery sweep's own secret, added in the same commit
+  // that introduced it. Stage 5 shipped a sweep secret without this pair and
+  // it landed verbatim in every request log, successful and failed alike.
+  `req.headers["${NOTIFICATION_SWEEP_SECRET_HEADER}"]`,
+  `*.headers["${NOTIFICATION_SWEEP_SECRET_HEADER}"]`,
+  // Spec 11 names the Resend key alongside the signing keys as something
+  // that never reaches a log. Unlike the two sweep secrets it does not
+  // travel in a request header, so no req.headers path would ever see it:
+  // the shape that puts it in a line is an object carrying configuration,
+  // which is what a bootstrap dump and an error with `process.env` attached
+  // both are. The bare key covers a top-level one, the wildcard covers it
+  // at any nesting depth.
+  'RESEND_API_KEY',
+  '*.RESEND_API_KEY',
 ] as const;
 
 /**
