@@ -23,9 +23,11 @@ export const notificationTypeSchema = z.enum([
 
 /**
  * The payload is JSONB carrying only ids and display strings the inbox
- * needs. No email address and nothing a log would have to redact, with the
- * single exception of `auth.password_reset`, which is never returned by
- * GET /me/notifications at all (see NotificationsService.list).
+ * needs. No email address, no token and nothing a log would have to redact:
+ * `auth.password_reset` stores `{ expiresInMinutes }` and nothing more, its
+ * raw token living only on the stack of the call that sends the email. That
+ * type is still absent from GET /me/notifications, because a reset request
+ * is not an inbox item (see NotificationService.list).
  */
 export const notificationSchema = z.object({
   id: z.uuid(),

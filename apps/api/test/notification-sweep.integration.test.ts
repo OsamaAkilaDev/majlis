@@ -11,8 +11,9 @@ import {
   type DeliveryOutcome,
 } from '../src/notifications/notification-channel';
 import { createTestApp } from './app';
+import { loginAsStudent } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { mkUser } from './factories';
+import { makeActiveLead, makeClub, mkEvent, mkUser } from './factories';
 
 const prisma = createTestPrisma();
 
@@ -200,24 +201,32 @@ describe('delivery', () => {
     expect(failed.emailError).toBe('that address does not exist');
   });
 
-  it('leaves a notification a real trigger wrote delivered end to end', async () => {
-    // The sweep against a row the product itself produced, not one this
-    // file inserted: it proves the trigger writes a row the sweep can
-    // actually resolve a recipient for.
-    const user = await mkUser();
-    await prisma.notification.create({
-      data: {
-        userId: user.id,
-        type: 'certificate.issued',
-        dedupeKey: 'certificate.issued:1',
-        payload: { eventTitle: 'Line Follower Sprint', serialNumber: 'MJL-1' },
-      },
-    });
+  it('delivers a notification a real trigger wrote, end to end', async () => {
+    // The one test here whose row the product wrote rather than this file:
+    // a registration through the real route, swept through the real
+    // endpoint. It is what catches a trigger that writes a row the sweep
+    // cannot resolve a recipient for, or writes it already delivered.
+    const club = await makeClub();
+    const lead = await makeActiveLead(appWithChannel, club.id);
+    const event = await mkEvent(club.id, lead.userId);
+    const student = await loginAsStudent(appWithChannel);
+
+    await request(appWithChannel.getHttpServer())
+      .post(`${API_PREFIX}/events/${event.id}/registrations`)
+      .set('Cookie', student.sessionCookie)
+      .send({})
+      .expect(201);
+
+    const row = await prisma.notification.findFirstOrThrow({ where: { userId: student.userId } });
+    expect(row.type).toBe('registration.confirmed');
+    expect(row.emailStatus).toBe('PENDING');
 
     await sweep(appWithChannel, EXAMPLE_NOTIFICATION_SWEEP_SECRET).expect(200);
 
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: student.userId } });
     expect(attempted).toEqual([user.email]);
-    const row = await prisma.notification.findFirstOrThrow();
-    expect(row.emailStatus).toBe('SENT');
+    expect(
+      (await prisma.notification.findUniqueOrThrow({ where: { id: row.id } })).emailStatus,
+    ).toBe('SENT');
   });
 });

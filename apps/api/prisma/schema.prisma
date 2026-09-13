@@ -86,9 +86,10 @@ model RefreshToken {
 }
 
 /// A single-use password reset. Only the sha256 of the raw token is stored,
-/// exactly as RefreshToken does: the raw value exists in the notification's
-/// payload and in the email, and nowhere else. A successful reset marks the
-/// row used and revokes every refresh token the account holds.
+/// exactly as RefreshToken does: the raw value exists on the stack of the
+/// call that mints it, long enough to compose one email, and nowhere else.
+/// The notification row carries only how long the link lasts. A successful
+/// reset marks the row used and revokes every refresh token the account holds.
 model PasswordResetToken {
   id        String    @id @default(uuid(7)) @db.Uuid
   userId    String    @map("user_id") @db.Uuid
