@@ -56,8 +56,9 @@ describe('report:read', () => {
     // One of each status that behaves differently. The WAITLISTED row is
     // what catches `status: { not: 'CANCELLED' }` standing in for EXPECTED,
     // and the CHECKED_IN row catches an `attended` that counts only
-    // 'ATTENDED' — the two defects the constants in reporting.service exist
-    // to prevent, and both pass an ATTENDED-plus-NO_SHOW fixture.
+    // 'ATTENDED'. Those are the two defects the constants in
+    // reporting.service exist to prevent, and both pass an
+    // ATTENDED-plus-NO_SHOW fixture.
     const a = await mkUser();
     const b = await mkUser();
     const c = await mkUser();

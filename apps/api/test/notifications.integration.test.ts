@@ -167,8 +167,8 @@ describe('GET /me/notifications', () => {
   it('lists newest first and continues across a page boundary', async () => {
     // The inbox reads backwards, so the cursor seek has to read backwards
     // with it. Ordered desc with an ascending seek, page two either repeats
-    // page one or skips past it — and the tab-bar badge, which counts a
-    // single page of unread rows, sticks on whatever the oldest ten say.
+    // page one or skips past it, and the tab-bar badge, which counts a single
+    // page of unread rows, sticks on whatever the oldest ten say.
     const mine = await loginAsStudent(app);
     for (let i = 0; i < 5; i += 1) {
       await prisma.notification.create({
