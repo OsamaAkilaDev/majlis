@@ -9,7 +9,17 @@ const REFRESH_PATH = '/auth/refresh';
  * session: a wrong password, a probe for the current viewer, the refresh
  * itself.
  */
-const OWN_401 = ['/auth/login', '/auth/signup', '/auth/me', REFRESH_PATH];
+const OWN_401 = [
+  '/auth/login',
+  '/auth/signup',
+  '/auth/me',
+  // An expired or already-used reset link answers 401, and it is the one
+  // thing that screen exists to report. Redirecting to /login instead throws
+  // away the message and leaves the visitor, who by definition cannot sign
+  // in, on the form they came from.
+  '/auth/reset-password',
+  REFRESH_PATH,
+];
 
 export class ProblemError extends Error {
   readonly status: number;
@@ -65,7 +75,12 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * One request, with the refresh retry and the dead-session exit. Everything
+ * that talks to the API goes through here; only the decoding differs, which
+ * is why the CSV exports are not a second copy of this logic.
+ */
+async function request(path: string, init?: RequestInit): Promise<Response> {
   let res = await send(path, init);
 
   // The refresh token does not rotate, so concurrent refreshes are harmless
@@ -84,8 +99,22 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (!res.ok) throw await toProblem(res);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return res;
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await request(path, init);
+  // Read as text and parse only what is there. `res.json()` on an empty body
+  // throws SyntaxError, which is not a ProblemError and so reaches the form
+  // as "could not reach the server" — on a request that succeeded. A 204 is
+  // not the only bodyless success: /auth/forgot-password answers 202.
+  const body = await res.text();
+  return (body ? JSON.parse(body) : undefined) as T;
+}
+
+/** The exports, which answer `text/csv` and are read back for the cap trailer. */
+export async function apiText(path: string): Promise<string> {
+  return (await request(path)).text();
 }
 
 /** A JSON body, for the POST/PATCH/DELETE bodies every client module sends. */

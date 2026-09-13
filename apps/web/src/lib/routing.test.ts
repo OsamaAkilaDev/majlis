@@ -87,6 +87,14 @@ describe('decideRedirect', () => {
     expect(decideRedirect({ pathname: '/login', ...anon })).toBeNull();
   });
 
+  it('never gates the password reset routes', () => {
+    // Somebody asking for a reset link cannot sign in by definition. Gating
+    // these sends exactly the visitor who needs them to the form they are
+    // locked out of, and the reset flow is then unreachable in production.
+    expect(decideRedirect({ pathname: '/forgot-password', ...anon })).toBeNull();
+    expect(decideRedirect({ pathname: '/reset-password', ...anon })).toBeNull();
+  });
+
   it('never gates public certificate verification', () => {
     // Catches a prefix match that gates everything not explicitly allowed.
     // /verify is opened by an employer who has no account at all.

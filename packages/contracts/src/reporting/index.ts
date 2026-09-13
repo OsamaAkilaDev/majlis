@@ -53,6 +53,21 @@ export const auditListQuerySchema = cursorPageQuerySchema.extend({
   actorUserId: z.uuid().optional(),
 });
 
+/**
+ * Spec 8 forbids an unbounded list anywhere, and an export is inherently a
+ * bulk read. Both halves need these: the API writes the trailer row, and the
+ * screen that triggered the download reads it back to report the cap. Two
+ * copies of the sentence would drift the moment either side reworded it.
+ */
+export const EXPORT_ROW_CAP = 10_000;
+
+export const EXPORT_CAP_NOTICE = `Truncated at ${EXPORT_ROW_CAP} rows. Narrow the export and try again.`;
+
+/** True when an export ended in the cap trailer rather than a data row. */
+export function isCapped(csv: string): boolean {
+  return csv.trimEnd().endsWith(EXPORT_CAP_NOTICE);
+}
+
 /** The one query parameter every per-event export requires. */
 export const eventExportQuerySchema = z.object({ eventId: z.uuid() });
 

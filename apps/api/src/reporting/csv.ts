@@ -1,11 +1,17 @@
+import { EXPORT_CAP_NOTICE, EXPORT_ROW_CAP } from '@majlis/contracts';
+
 /**
  * Spec 8 forbids an unbounded list anywhere, and an export is inherently a
  * bulk read. Every export stops here and says so in a trailer row rather
  * than silently handing back a truncated file.
+ *
+ * The cap and its sentence live in the contracts package because the screen
+ * that triggered the download reads the trailer back to report it, and two
+ * copies of that sentence would drift.
  */
-export const EXPORT_ROW_CAP = 10_000;
+export { EXPORT_ROW_CAP };
 
-export const CAP_NOTICE = `Truncated at ${EXPORT_ROW_CAP} rows. Narrow the export and try again.`;
+export const CAP_NOTICE = EXPORT_CAP_NOTICE;
 
 /**
  * One CSV field.

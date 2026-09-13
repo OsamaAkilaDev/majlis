@@ -6,8 +6,16 @@ export const REFRESH_COOKIE = 'majlis_refresh';
 /** Routes reachable with no account at all. */
 const PUBLIC_PREFIXES = ['/verify'];
 
-/** Routes that exist to sign in, and must bounce an already-signed-in visitor. */
-const AUTH_ROUTES = ['/login', '/signup'];
+/**
+ * Routes that exist to sign in, and must bounce an already-signed-in visitor.
+ *
+ * The two reset routes belong here, not among the protected ones: somebody
+ * asking for a reset link cannot sign in by definition, so gating them sends
+ * exactly the visitor who needs them to the form they are locked out of.
+ * (auth)/layout.tsx still bounces a visitor who turns out to hold a live
+ * session, using a session it validated.
+ */
+const AUTH_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password'];
 
 export function landingFor(user: SessionUser): string {
   if (user.platformRole === 'ADMIN') return '/admin';

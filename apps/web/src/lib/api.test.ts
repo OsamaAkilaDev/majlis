@@ -126,4 +126,13 @@ describe('apiFetch', () => {
     mockFetch([() => new Response(null, { status: 204 })]);
     await expect(apiFetch('/auth/logout', { method: 'POST' })).resolves.toBeUndefined();
   });
+
+  it('returns undefined for a bodyless 202, not a parse error', async () => {
+    // /auth/forgot-password answers 202 with no body. A 204-only special case
+    // let res.json() throw SyntaxError here, which is not a ProblemError, so
+    // the form reported "could not reach the server" on a request that had
+    // just succeeded.
+    mockFetch([() => new Response(null, { status: 202 })]);
+    await expect(apiFetch('/auth/forgot-password', { method: 'POST' })).resolves.toBeUndefined();
+  });
 });
