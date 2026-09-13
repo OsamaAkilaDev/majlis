@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import type { LoginBody, SessionUser, SignupBody } from '@majlis/contracts';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: see below.
+import { ConfigService } from '@nestjs/config';
+import type {
+  ForgotPasswordBody,
+  LoginBody,
+  ResetPasswordBody,
+  SessionUser,
+  SignupBody,
+} from '@majlis/contracts';
 import { Algorithm, hash, verify, type Options } from '@node-rs/argon2';
 import { v7 as uuidv7 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
@@ -12,6 +20,23 @@ import { Prisma, type User } from '../generated/prisma/client';
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as RequestContext above.
 import { TokensService } from './tokens.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as RequestContext above.
+import { NotificationService } from '../notifications/notification.service';
+import type { Env } from '../config/env.schema';
+
+/**
+ * Short on purpose. A reset link is a bearer credential sitting in an inbox,
+ * and thirty minutes is long enough to walk to a laptop and short enough
+ * that a mailbox read months later is worthless.
+ */
+export const PASSWORD_RESET_TTL_MINUTES = 30;
+
+/**
+ * Expired, already used, unknown, and belonging to a suspended account all
+ * answer with this exact string. Distinguishing them would tell a caller
+ * holding a guessed token which half of the guess was right.
+ */
+export const RESET_LINK_INVALID = 'That password reset link is no longer valid.';
 
 /**
  * Every refresh failure path — expiry, an unknown token, a suspended
@@ -45,6 +70,9 @@ export interface AuthResult {
 
 @Injectable()
 export class AuthService {
+  /** PUBLIC_WEB_ORIGIN, trailing slash stripped. Where a reset link points. */
+  private readonly webOrigin: string;
+
   /**
    * A fixed argon2id hash of a throwaway string — generated once with
    * ARGON2_OPTIONS, pasted here as a literal — verified against on every
@@ -64,7 +92,11 @@ export class AuthService {
     private readonly tokens: TokensService,
     private readonly context: RequestContext,
     private readonly audit: AuditService,
-  ) {}
+    private readonly notifications: NotificationService,
+    config: ConfigService<Env, true>,
+  ) {
+    this.webOrigin = config.get('PUBLIC_WEB_ORIGIN', { infer: true }).replace(/\/+$/, '');
+  }
 
   /**
    * `input.email` was already normalised by `signupBodySchema` at the
@@ -201,6 +233,96 @@ export class AuthService {
       await this.host.tx.refreshToken.updateMany({
         where: { familyId: row.familyId, revokedAt: null },
         data: { revokedAt: new Date() },
+      });
+    });
+  }
+
+  /**
+   * POST /auth/forgot-password. Always succeeds, and always with the same
+   * empty answer: an unknown address, a suspended account and a real one are
+   * indistinguishable to the caller, or this endpoint is an
+   * account-existence oracle.
+   *
+   * The raw token exists in exactly two places: this function's stack, and
+   * the notification payload the email is rendered from. The row stores only
+   * its sha256, like RefreshToken.
+   */
+  async forgotPassword(input: ForgotPasswordBody): Promise<void> {
+    const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
+    if (!user || user.status !== 'ACTIVE') return;
+
+    const { raw, hash: tokenHash } = this.tokens.mintOpaqueToken();
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+
+    await this.host.run(async () => {
+      await this.host.tx.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+
+      await this.notifications.record({
+        userId: user.id,
+        type: 'auth.password_reset',
+        // The token, not the user: a second request must issue a second
+        // link rather than being absorbed as a repeat of the first.
+        subject: tokenHash,
+        payload: {
+          resetUrl: `${this.webOrigin}/reset-password?token=${raw}`,
+          expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+        },
+      });
+
+      // No actorUserId: nobody authenticated here. Whoever typed the address
+      // has not proven they are the account holder, and recording them as
+      // the actor would put a claim in the trail that nothing verified.
+      await this.audit.record({
+        action: 'auth.password_reset_requested',
+        entityType: 'User',
+        entityId: user.id,
+        outcome: 'SUCCESS',
+      });
+    });
+  }
+
+  /**
+   * POST /auth/reset-password. Single use, enforced by a conditional UPDATE
+   * rather than a read-then-write: two requests carrying the same token race
+   * on the same row, and only the one whose UPDATE matched proceeds.
+   *
+   * Revoking every refresh token in the same transaction is the point. A
+   * reset that leaves the account's other sessions able to renew themselves
+   * for thirty days is not a reset.
+   */
+  async resetPassword(input: ResetPasswordBody): Promise<void> {
+    const tokenHash = this.tokens.hashOpaqueToken(input.token);
+    // Outside the transaction, like signup's: ~100ms of argon2 must not hold
+    // a pooled connection open.
+    const passwordHash = await hash(input.password, ARGON2_OPTIONS);
+
+    await this.host.run(async () => {
+      const now = new Date();
+      const { count } = await this.host.tx.passwordResetToken.updateMany({
+        where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+        data: { usedAt: now },
+      });
+      if (count === 0) throw new UnauthorizedError(RESET_LINK_INVALID);
+
+      const row = await this.host.tx.passwordResetToken.findUniqueOrThrow({ where: { tokenHash } });
+      const user = await this.host.tx.user.findUniqueOrThrow({ where: { id: row.userId } });
+      // Suspended after the link was sent. Same answer as an expired token:
+      // the caller learns nothing about the account from either.
+      if (user.status !== 'ACTIVE') throw new UnauthorizedError(RESET_LINK_INVALID);
+
+      await this.host.tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+      const { count: revoked } = await this.host.tx.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+
+      await this.audit.record({
+        action: 'auth.password_reset',
+        entityType: 'User',
+        entityId: user.id,
+        outcome: 'SUCCESS',
+        actorUserId: user.id,
+        after: { refreshTokensRevoked: revoked },
       });
     });
   }

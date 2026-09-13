@@ -45,6 +45,7 @@ model User {
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   memberships   ClubMembership[]
   appointments  ClubTeamAppointment[]
   registrations    EventRegistration[]
@@ -76,6 +77,24 @@ model RefreshToken {
   @@index([userId])
   @@index([familyId])
   @@map("refresh_token")
+}
+
+/// A single-use password reset. Only the sha256 of the raw token is stored,
+/// exactly as RefreshToken does: the raw value exists in the notification's
+/// payload and in the email, and nowhere else. A successful reset marks the
+/// row used and revokes every refresh token the account holds.
+model PasswordResetToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_token")
 }
 
 enum ClubStatus {
