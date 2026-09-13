@@ -53,16 +53,67 @@ describe('report:read', () => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId);
+    // One of each status that behaves differently. The WAITLISTED row is
+    // what catches `status: { not: 'CANCELLED' }` standing in for EXPECTED,
+    // and the CHECKED_IN row catches an `attended` that counts only
+    // 'ATTENDED' — the two defects the constants in reporting.service exist
+    // to prevent, and both pass an ATTENDED-plus-NO_SHOW fixture.
     const a = await mkUser();
     const b = await mkUser();
+    const c = await mkUser();
+    const d = await mkUser();
     await mkRegistration(event.id, a.id, 'ATTENDED');
     await mkRegistration(event.id, b.id, 'NO_SHOW');
+    await mkRegistration(event.id, c.id, 'WAITLISTED');
+    await mkRegistration(event.id, d.id, 'CHECKED_IN');
 
     const res = await get(`/clubs/${club.id}/reports`, lead.sessionCookie).expect(200);
     expect(res.body.events).toBe(1);
-    expect(res.body.expected).toBe(2);
-    expect(res.body.attended).toBe(1);
-    expect(res.body.attendanceRate).toBe(0.5);
+    // Four registrations, of which the waitlisted one was never expected.
+    expect(res.body.registrations).toBe(4);
+    expect(res.body.expected).toBe(3);
+    expect(res.body.attended).toBe(2);
+    expect(res.body.attendanceRate).toBeCloseTo(2 / 3);
+  });
+
+  it('keeps a revoked certificate in the issued count, on both reports', async () => {
+    const admin = await loginAsAdmin(app);
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId);
+    const student = await mkUser();
+    const registration = await mkRegistration(event.id, student.id, 'ATTENDED');
+    const certificate = await prisma.certificate.create({
+      data: {
+        registrationId: registration.id,
+        eventId: event.id,
+        userId: student.id,
+        serialNumber: 'MJL-2026-TEST-1',
+        verificationCode: 'verification-code-for-the-report-test',
+        holderNameSnapshot: student.fullName,
+        eventTitleSnapshot: event.title,
+        clubNameSnapshot: club.name,
+        clubLogoSnapshotUrl: club.logoUrl,
+      },
+    });
+
+    const overviewBefore = await get('/reports/overview', admin.sessionCookie).expect(200);
+    const clubBefore = await get(`/clubs/${club.id}/reports`, admin.sessionCookie).expect(200);
+    expect(overviewBefore.body.certificatesIssued).toBe(1);
+    expect(clubBefore.body.certificatesIssued).toBe(1);
+
+    await request(app.getHttpServer())
+      .post(`${API_PREFIX}/certificates/${certificate.id}/revoke`)
+      .set('Cookie', admin.sessionCookie)
+      .send({ reason: 'Issued against a corrected attendance record' })
+      .expect(200);
+
+    // Still one. A revoked certificate was issued, and a number labelled
+    // "Certificates issued" that falls is reporting something else.
+    expect((await get('/reports/overview', admin.sessionCookie)).body.certificatesIssued).toBe(1);
+    expect(
+      (await get(`/clubs/${club.id}/reports`, admin.sessionCookie)).body.certificatesIssued,
+    ).toBe(1);
   });
 
   it('refuses a club Marketing officer the club report', async () => {

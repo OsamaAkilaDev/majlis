@@ -31,7 +31,10 @@ export class ReportingService {
       this.host.tx.event.groupBy({ by: ['status'], _count: true }),
       this.host.tx.user.count(),
       this.host.tx.clubMembership.count({ where: { status: 'ACTIVE' } }),
-      this.host.tx.certificate.count({ where: { status: 'ACTIVE' } }),
+      // Every row, revoked ones included: a revoked certificate was still
+      // issued, and filtering to ACTIVE made the number fall when one was
+      // revoked.
+      this.host.tx.certificate.count(),
     ]);
 
     return {
@@ -54,7 +57,8 @@ export class ReportingService {
       this.host.tx.eventRegistration.count({ where: { ...inClub, status: { not: 'CANCELLED' } } }),
       this.host.tx.eventRegistration.count({ where: { ...inClub, status: { in: [...EXPECTED] } } }),
       this.host.tx.eventRegistration.count({ where: { ...inClub, status: { in: [...ATTENDED] } } }),
-      this.host.tx.certificate.count({ where: { ...inClub, status: 'ACTIVE' } }),
+      // Every row, as in the overview above.
+      this.host.tx.certificate.count({ where: inClub }),
     ]);
 
     return {
