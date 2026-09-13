@@ -145,6 +145,14 @@ export const PERMISSIONS = {
   // certificates, which is what keeps a certificate an institutional record
   // rather than a thing a club hands out.
   'certificate:manage': { platform: ['ADMIN'] },
+  // Spec 6.1 has no reporting row of its own. A club's own numbers are the
+  // same data its Lead and Vice already read one screen at a time, so they
+  // hold it club-scoped; the platform totals at /reports/overview are
+  // unscoped, which is what leaves them to Admin alone.
+  'report:read': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
+  // Spec 6.1's "Read audit log" row: Admin, and Lead scoped to their own
+  // club. Vice Lead is absent deliberately, as it is in the matrix.
+  'audit:read': { platform: ['ADMIN'], club: ['LEAD'] },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;
