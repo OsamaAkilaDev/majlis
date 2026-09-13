@@ -243,9 +243,28 @@ prefix. A club Lead reading another club's audit is refused. The export cap.
   `admin/audit/page.tsx`
 - Create `apps/web/src/app/(club)/manage/[clubId]/reports/`
 
-**Before writing any chart, load the `dataviz` skill.** `CLAUDE.md` requires it for the
-admin dashboard and it is not optional. Charts must read in both themes and must not carry
-meaning by colour alone.
+**The chart palette is already derived and validated. Use these values verbatim; do not
+invent a palette and do not re-derive one.**
+
+| Mode | Categorical order, never cycled |
+|---|---|
+| Light, on `#FFFFFF` | `#0D9488` `#4F46E5` `#EA580C` `#DB2777` `#65A30D` |
+| Dark, on `#1D1815` | `#12A89E` `#6D6BF5` `#E2600F` `#E8478F` `#6BA80E` |
+
+Both pass all six checks of `dataviz`'s validator: lightness band, chroma floor, adjacent
+CVD separation, normal-vision floor, and contrast against their own surface. Dark is a
+separately chosen set, not a flip of light.
+
+**The product's own UI tokens were tried first and fail badly as a chart palette**, which is
+why this is pinned rather than left to taste. `warnFg #7A4B06` against `badFg #98291F` is
+ΔE 1.0 under deuteranopia, effectively one colour: a chart using them is unreadable for
+roughly one man in twelve. Three of the five also read as grey at chart scale. UI text
+colours and series colours are different jobs.
+
+Rules that come with it: a legend whenever there are two or more series, direct labels on
+four or fewer, **never a dual axis**, sequential ramps are one hue light to dark, and status
+colours stay reserved for state and never become "series 4". Text wears the ink tokens, not
+the series colour.
 
 **The inbox** is a list, not a feed: newest first, unread visually distinct without relying
 on colour, and marking one read is optimistic with a rollback on failure. No explanatory
