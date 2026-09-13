@@ -1,5 +1,8 @@
+import type { NotificationPage } from '@majlis/contracts';
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { UNREAD_CAP } from '@/lib/page-size';
+import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
 import { ShellBrand } from './ShellBrand';
 import { StudentSideNav, TabBar } from './TabBar';
@@ -7,7 +10,14 @@ import { UserMenu } from './UserMenu';
 
 export async function StudentShell({ title, children }: { title: string; children: ReactNode }) {
   // Memoised by getSessionUser, so this shares the layout's /auth/me call.
-  const user = await requireUser();
+  // The unread page is read here rather than in the tab bar so the badge is
+  // right on first paint and refreshes with the route: the inbox calls
+  // router.refresh() after marking one read, which re-renders this.
+  const [user, unread] = await Promise.all([
+    requireUser(),
+    serverFetch<NotificationPage>(`/me/notifications?unread=true&limit=${UNREAD_CAP}`),
+  ]);
+  const unreadCount = unread?.items.length ?? 0;
 
   return (
     <div className="flex h-dvh overflow-hidden bg-bg">
@@ -15,7 +25,7 @@ export async function StudentShell({ title, children }: { title: string; childre
           a desktop screen. Same destinations, same order. */}
       <aside className="hidden w-56 shrink-0 flex-col gap-3 border-r border-border bg-surface-2 p-3 pt-[calc(0.75rem+var(--safe-t))] lg:flex">
         <ShellBrand />
-        <StudentSideNav />
+        <StudentSideNav unread={unreadCount} />
       </aside>
 
       <div className="grid min-w-0 flex-1 grid-rows-[auto_1fr_auto] overflow-hidden">
@@ -29,7 +39,7 @@ export async function StudentShell({ title, children }: { title: string; childre
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
 
-        <TabBar />
+        <TabBar unread={unreadCount} />
       </div>
     </div>
   );
