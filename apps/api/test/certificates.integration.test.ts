@@ -425,6 +425,31 @@ describe('POST /certificates/:id/reissue', () => {
     // And the old row's snapshot still says what it always said.
     expect((await verify(old.verificationCode)).body.holderName).toBe('Amina Hassan');
   });
+
+  it('tells the holder about the replacement, not only about the revocation', async () => {
+    // Spec 7.7's trigger is "certificate issued or revoked", and a reissue is
+    // both. An inbox that says only "revoked" during a name correction tells
+    // the holder the opposite of what happened.
+    const { event, attendee } = await aCertifiableEvent();
+    const admin = await loginAsAdmin(app);
+    await issue(admin.sessionCookie, event.id);
+    const old = await prisma.certificate.findFirstOrThrow({ where: { eventId: event.id } });
+
+    const res = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/certificates/${old.id}/reissue`)
+      .set('Cookie', admin.sessionCookie)
+      .send({ reason: 'Holder name corrected in the registry' });
+    expect(res.status).toBe(200);
+
+    const rows = await prisma.notification.findMany({ where: { userId: attendee.userId } });
+    expect(rows.filter((r) => r.type === 'certificate.revoked')).toHaveLength(1);
+    // Two issued rows, the first from the original issuance: the dedupe key
+    // is per certificate id, so the replacement is a notification of its own
+    // rather than one the first press absorbs.
+    const issued = rows.filter((r) => r.type === 'certificate.issued');
+    expect(issued).toHaveLength(2);
+    expect(issued.map((r) => r.dedupeKey)).toContain(`certificate.issued:${res.body.id}`);
+  });
 });
 
 describe('snapshots', () => {

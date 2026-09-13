@@ -320,11 +320,16 @@ export class CertificatesService {
     return { items: items.map(toCertificate), nextCursor };
   }
 
-  /** GET /me/certificates. Self-scoped by `userId`; no permission key. */
+  /**
+   * GET /me/certificates. Self-scoped by `userId`; no permission key.
+   *
+   * Newest first: the document a holder came for is the one just issued, and
+   * an oldest-first list puts it behind every page of their history.
+   */
   async mine(actor: Actor, query: CertificateListQuery): Promise<CertificatePage> {
     const rows = await this.host.tx.certificate.findMany({
       where: { userId: actor.id },
-      ...cursorArgs(query),
+      ...cursorArgs(query, 'desc'),
     });
     const { items, nextCursor } = cursorPage(rows, query.limit);
     return { items: items.map(toCertificate), nextCursor };
@@ -495,6 +500,22 @@ export class CertificatesService {
 
       const fresh = await this.host.tx.certificate.create({
         data: this.newRow(event, old.registrationId, old.userId, user.fullName),
+      });
+
+      // Both halves of spec 7.7's trigger fire on a reissue. `revokeRow`
+      // already told the holder their document was revoked; without this the
+      // inbox says only that, which during a name correction is the opposite
+      // of what happened.
+      await this.notifications.record({
+        userId: fresh.userId,
+        type: 'certificate.issued',
+        subject: fresh.id,
+        payload: {
+          certificateId: fresh.id,
+          eventId: fresh.eventId,
+          eventTitle: fresh.eventTitleSnapshot,
+          serialNumber: fresh.serialNumber,
+        },
       });
 
       await this.audit.record({
