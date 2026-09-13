@@ -3,7 +3,19 @@ import { cn } from "@/lib/cn"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div className="w-full overflow-x-auto rounded-card border border-border">
+    // tabIndex and the group role are what make the horizontal scroll reachable
+    // from a keyboard. Without them a phone-width table is operable by touch and
+    // by nothing else, which is WCAG 2.1.1, and axe reports it as
+    // scrollable-region-focusable. It only fires once there are enough rows to
+    // overflow, so it stayed latent through Stage 6 and surfaced the moment
+    // Stage 7's data filled the roster. aria-label rather than a bare tabIndex:
+    // a focus stop that announces nothing is its own failure.
+    <div
+      role="group"
+      aria-label="Table, scrollable"
+      tabIndex={0}
+      className="w-full overflow-x-auto rounded-card border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
       {/* min-w-max, or the table squeezes into a phone and every date wraps to
           four lines while the wrapper's overflow-x never engages. */}
       <table
