@@ -215,6 +215,12 @@ export const eventListQuerySchema = cursorPageQuerySchema.extend({
   q: z.string().trim().min(1).max(160).optional(),
   /** Only events that have not ended yet. */
   upcoming: z.stringbool().optional(),
+  /**
+   * Which end of creation order the page starts from. `desc` is for a picker
+   * that has to reach the event somebody just made; the default reads
+   * forwards like every other list.
+   */
+  direction: z.enum(['asc', 'desc']).optional(),
 });
 
 export const assignmentSchema = z.object({

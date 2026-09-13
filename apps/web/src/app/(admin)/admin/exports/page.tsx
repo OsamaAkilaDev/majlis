@@ -8,7 +8,7 @@ import { ExportsBoard } from './ExportsBoard';
 export const metadata: Metadata = { title: 'Exports' };
 
 export default async function ExportsPage() {
-  const events = await serverFetch<EventPage>('/events?limit=100');
+  const events = await serverFetch<EventPage>('/events?limit=100&direction=desc');
 
   return (
     <ConsoleShell items={ADMIN_NAV} title="Exports" context={null}>

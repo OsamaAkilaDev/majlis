@@ -164,6 +164,43 @@ describe('GET /me/notifications', () => {
     expect(res.body.items[0].type).toBe('event.published');
   });
 
+  it('lists newest first and continues across a page boundary', async () => {
+    // The inbox reads backwards, so the cursor seek has to read backwards
+    // with it. Ordered desc with an ascending seek, page two either repeats
+    // page one or skips past it — and the tab-bar badge, which counts a
+    // single page of unread rows, sticks on whatever the oldest ten say.
+    const mine = await loginAsStudent(app);
+    for (let i = 0; i < 5; i += 1) {
+      await prisma.notification.create({
+        data: { userId: mine.userId, type: 'event.published', dedupeKey: `k${i}`, payload: {} },
+      });
+    }
+    // Read back rather than assumed from insertion order: what the endpoint
+    // owes the reader is the reverse of id order, whatever order that is.
+    const newest = (
+      await prisma.notification.findMany({ where: { userId: mine.userId }, orderBy: { id: 'desc' } })
+    ).map((r) => r.id);
+
+    const ids = (res: { body: { items: { id: string }[] } }) => res.body.items.map((i) => i.id);
+
+    const one = await get('/me/notifications?limit=2', mine.sessionCookie).expect(200);
+    expect(ids(one)).toEqual(newest.slice(0, 2));
+    expect(one.body.nextCursor).toBe(newest[1]);
+
+    const two = await get(
+      `/me/notifications?limit=2&cursor=${one.body.nextCursor}`,
+      mine.sessionCookie,
+    ).expect(200);
+    expect(ids(two)).toEqual(newest.slice(2, 4));
+
+    const three = await get(
+      `/me/notifications?limit=2&cursor=${two.body.nextCursor}`,
+      mine.sessionCookie,
+    ).expect(200);
+    expect(ids(three)).toEqual(newest.slice(4));
+    expect(three.body.nextCursor).toBeNull();
+  });
+
   it('filters to unread rows with ?unread=true', async () => {
     const mine = await loginAsStudent(app);
     await prisma.notification.createMany({
@@ -177,7 +214,11 @@ describe('GET /me/notifications', () => {
     expect(res.body.items.map((i: { type: string }) => i.type)).toEqual(['event.cancelled']);
   });
 
-  it('never returns an auth.password_reset row, whose payload carries a live link', async () => {
+  it('never returns an auth.password_reset row, which records a request rather than inbox content', async () => {
+    // The real row's payload is `{ expiresInMinutes }`; the raw token never
+    // leaves forgotPassword's call stack. This fixture is deliberately worse
+    // than anything the product writes, so the assertion fails on a filter
+    // that leaks the row rather than only on one that leaks a link.
     const mine = await loginAsStudent(app);
     await prisma.notification.create({
       data: {

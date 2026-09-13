@@ -42,7 +42,7 @@ export function ExportsBoard({ initialEvents }: { initialEvents: EventSummary[] 
 
   useEffect(() => {
     if (initialEvents) return;
-    listEvents({ limit: 100 })
+    listEvents({ limit: 100, direction: 'desc' })
       .then((page) => setEvents(page.items))
       .catch(fail);
   }, [initialEvents, fail]);

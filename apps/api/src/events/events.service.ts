@@ -341,7 +341,7 @@ export class EventsService {
 
     const rows = await this.host.tx.event.findMany({
       where: visible ? { AND: [filters, visible] } : filters,
-      ...cursorArgs(query),
+      ...cursorArgs(query, query.direction),
       select: SUMMARY_SELECT,
     });
 

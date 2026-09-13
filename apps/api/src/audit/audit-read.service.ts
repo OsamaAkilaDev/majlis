@@ -6,6 +6,9 @@ import type { Prisma, AuditLog } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
 
+/** A club with more events than this has outgrown the id-list scope below. */
+const CLUB_EVENT_SCAN = 500;
+
 function toEntry(row: AuditLog): AuditEntry {
   return {
     id: row.id,
@@ -44,13 +47,22 @@ export class AuditReadService {
    * GET /clubs/:clubId/audit. The club row and its own events, and no
    * further: AuditLog has no foreign keys by design (spec 3), so there is no
    * join to walk, and resolving registrations or attendance rows would mean
-   * a second unbounded id list. Recorded as a limit and shown in the screen.
+   * a second id list. Recorded as a limit and shown in the screen.
    */
   async forClub(clubId: string, query: AuditListQuery): Promise<AuditPage> {
     const club = await this.host.tx.club.findUnique({ where: { id: clubId }, select: { id: true } });
     if (!club) throw new NotFoundError('No such club.');
 
-    const events = await this.host.tx.event.findMany({ where: { clubId }, select: { id: true } });
+    // ponytail: the newest CLUB_EVENT_SCAN events only, so this IN (...) has a
+    // ceiling (spec 8, "no unbounded list, anywhere"). A club past that many
+    // events loses the oldest from its audit scope; when one gets there, give
+    // AuditLog a club_id column written at record time and drop this list.
+    const events = await this.host.tx.event.findMany({
+      where: { clubId },
+      select: { id: true },
+      orderBy: { id: 'desc' },
+      take: CLUB_EVENT_SCAN,
+    });
 
     return this.page({
       entityId: { in: [clubId, ...events.map((e) => e.id)] },
@@ -60,7 +72,7 @@ export class AuditReadService {
   }
 
   private async page(where: Prisma.AuditLogWhereInput, query: AuditListQuery): Promise<AuditPage> {
-    const rows = await this.host.tx.auditLog.findMany({ where, ...cursorArgs(query) });
+    const rows = await this.host.tx.auditLog.findMany({ where, ...cursorArgs(query, 'desc') });
     const { items, nextCursor } = cursorPage(rows, query.limit);
     return { items: items.map(toEntry), nextCursor };
   }

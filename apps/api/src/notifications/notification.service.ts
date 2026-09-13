@@ -90,11 +90,11 @@ export class NotificationService {
    * GET /me/notifications. Self-scoped by `userId`; there is no route that
    * lists another user's.
    *
-   * `auth.password_reset` is excluded. Its payload carries a live reset link
-   * (Task 3: there is no other way to reach it with email unwired), so it
-   * is an email-only notification and not an inbox item. Leaving it in would
-   * put a working credential into a JSON response that a browser caches, a
-   * devtools network log keeps, and a screen share shows.
+   * `auth.password_reset` is excluded because it is not inbox material, not
+   * because it is dangerous: its payload is `{ expiresInMinutes }` and the
+   * raw token never reaches any row, existing only on `forgotPassword`'s
+   * call stack. The row records that a reset was asked for, which is an
+   * email and an audit entry, not something to read and mark read.
    */
   async list(actor: { id: string }, query: NotificationListQuery): Promise<NotificationPage> {
     const rows = await this.host.tx.notification.findMany({
@@ -103,7 +103,7 @@ export class NotificationService {
         type: { not: PASSWORD_RESET_TYPE },
         ...(query.unread === undefined ? {} : query.unread ? { readAt: null } : { readAt: { not: null } }),
       },
-      ...cursorArgs(query),
+      ...cursorArgs(query, 'desc'),
     });
 
     const { items, nextCursor } = cursorPage(rows, query.limit);
