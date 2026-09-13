@@ -33,18 +33,21 @@ Agreed with the user 2026-09-13, before an unattended run. Do not re-litigate.
   triggers and the React Email templates, tested against a fake transport. With no API key
   the channel records `email_status = 'SKIPPED'` and the in-app inbox works completely.
   Pasting a key later turns email on with no code change.
-- **Stage 8 is deployment-ready, not deployed.** Write and commit the GitHub Actions
-  workflow, `vercel.json`, build and env configuration, the production env inventory and the
-  runbook. Pushing to a remote and deploying stay manual. Do not claim it is deployed.
+- **Stage 8 is security, optimisation and performance, the README and the handbook. That is
+  all.** Revised 2026-09-13, replacing the earlier "deployment-ready" scope. Deployment,
+  `vercel.json`, the production env inventory and CI are deferred and will be done with the
+  product owner directly. Nothing in Stage 8 writes deployment configuration.
+- **There is no rate limiting anywhere, and none is coming.** Dropped entirely 2026-09-13,
+  replacing the earlier decision that named per-route limits. Do not add it back without
+  asking. The one consequence to carry: `POST /auth/forgot-password` is unauthenticated,
+  sends mail to a caller-chosen address, and always answers 202, so **anyone turning on
+  `RESEND_API_KEY` should limit that route in the same change.**
 - **Password reset yes, email verification no.** A single-use hashed token, short expiry,
   and revocation of every refresh token on a successful reset. Email verification is out
   permanently: one university, the email is the identity key, and an unverified signup can
   already do nothing until an officer or admin acts.
 - **`__Host-` cookie prefix in production only.** It requires `Secure`, which requires
   HTTPS, and both the dev loop and Playwright run over HTTP.
-- **Rate limiting is in-process**, with the ceiling written into the runbook: on Vercel's
-  serverless model it bounds a single instance only. Login 5 per 15 min per IP and email,
-  signup 3 per hour per IP, scan 60 per minute per operator, `/verify` 30 per minute per IP.
 - **`pg_trgm` gets added**, fixing the `GET /events?q=` sequential scan.
 - **When something is genuinely ambiguous, decide, record it in §13, and keep going.**
 
@@ -163,10 +166,14 @@ in `apps/api/src/storage/image-kinds.ts`, not variables.
 
 1. **No password reset.** Decided for Stage 7, above. Blocking for a real deployment.
 2. **`__Host-` cookie prefix**, Stage 8. Decision taken, above.
-3. **No rate limiting anywhere.** Stage 8. Set `trust proxy` first, and never
-   `trust proxy: true`.
-4. **CI has never run.** No remote exists. One green run is still the only real evidence,
-   and after six stages of green local suites it is the largest untested assumption here.
+3. **CI has never run, and Stage 8 no longer covers it.** No remote exists. One green run is
+   still the only real evidence, and after seven stages of green local suites on a single
+   Windows machine it is the largest untested assumption in the project. Path casing, line
+   endings and the Playwright browser install each break exactly once, on the first run.
+   Goes with the deployment session.
+4. **Both storage buckets are created by hand**, `majlis-storage` public and
+   `majlis-certificates` private. Nothing in the repository creates or verifies them, so a
+   fresh environment silently 500s on the first certificate download.
 5. **`GET /events?q=` is a sequential scan.** `pg_trgm`, decided for Stage 8.
 6. **Orphaned uploads accumulate**, and no image can be deleted at all.
 7. **OpenAPI has no success-response schemas.**

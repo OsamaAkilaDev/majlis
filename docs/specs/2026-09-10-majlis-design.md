@@ -587,7 +587,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
 | 7 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
-| 8 | Hardening & deploy | Rate limits (all of them, none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
+| 8 | Hardening | Security review and hardening, optimisation and performance (Core Web Vitals, bundle, the scan path), README, and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13 — see below |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
 
@@ -969,3 +969,36 @@ whether the API restarted during the run.**
 - The check-in/out and minimum-duration attendance policies are a later additive stage. `event.attendance_policy` is an enum with room to grow, and adding check-out is a nullable column plus a new branch in the eligibility function — no restructuring. **No unused columns are added now.**
 - This spec covers nine stages and will therefore produce **one implementation plan per stage**, not a single monolithic plan. Stage 1's plan is written first; each subsequent stage is planned when the previous one is done, so later plans can absorb what earlier stages taught us.
 - Vercel Hobby's non-commercial terms must be revisited before Majlis serves a paying customer.
+
+### Rate limiting is dropped from the build (2026-09-13)
+
+§11 called for rate limiting on login, signup, scan and `/verify/{code}`, deferred to the
+final stage. **It is now dropped entirely**, by the product owner's decision, and Stage 8 is
+security, optimisation and performance, the README and the handbook.
+
+The options were laid out before the decision: the four routes §11 names, plus the six
+unauthenticated routes Stages 6 and 7 added that it could not have anticipated, plus the two
+shared-secret sweep endpoints. Recorded here so a later reader does not mistake the absence
+for an oversight.
+
+**The one consequence worth carrying:** `POST /auth/forgot-password` is unauthenticated and
+sends mail to an address the caller chooses, and always answers 202, so nothing slows a
+caller down. Unlimited, it can be pointed at any student's inbox and will burn the Resend
+quota. It costs nothing while no `RESEND_API_KEY` is set, which is the state today. **Anyone
+turning email on should limit that route in the same change**, and the handbook says so.
+
+### Deployment is not part of Stage 8 (2026-09-13)
+
+Vercel deployment, `vercel.json`, the production env inventory and CI are all deferred and
+will be done with the product owner directly, not by an agent. Nothing in Stage 8 writes
+deployment configuration.
+
+This leaves **CI still never having run**, which remains the largest untested assumption in
+the project: eight stages of green local suites on one Windows machine is not the same claim
+as green on a clean Linux runner with a `postgres:18` service container. Path casing, line
+endings and the Playwright browser install each break exactly once, on the first CI run.
+
+It also leaves the **storage buckets created by hand**: `majlis-storage` (public) and
+`majlis-certificates` (private, added in Stage 6). Nothing in the repository creates or
+verifies them, so a fresh environment silently 500s on the first certificate download. The
+handbook must carry this.
