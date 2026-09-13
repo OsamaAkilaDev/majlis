@@ -1,0 +1,174 @@
+import { expect, test, type Page } from '@playwright/test';
+
+const PASSWORD = 'Passw0rd!';
+const LONG_PASSWORD = 'a-long-enough-password';
+
+/**
+ * Serial, and one project. The student half signs up an account and registers
+ * it for a seeded event; run twice at two viewports at once, the two runs
+ * answer each other's questions and the failures read as flake.
+ */
+test.describe.configure({ mode: 'serial' });
+
+// Playwright reads the fixture names out of this destructuring pattern, so
+// the first parameter cannot be a plain identifier however unused it is.
+// eslint-disable-next-line no-empty-pattern
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'This walk mutates seeded state; once is enough.');
+});
+
+async function signIn(page: Page, email: string) {
+  // Cleared first: (auth)/layout bounces a signed-in visitor to their own
+  // landing, so switching persona mid-test otherwise never reaches the form.
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await page.getByLabel('University email').fill(email);
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'));
+}
+
+test('a registration reaches the inbox, badges the nav, and marking it read clears both', async ({
+  page,
+}) => {
+  // A fresh account, not student@: this registers for a seeded event, and
+  // taking a seat from the account the accessibility suite reads would change
+  // what that suite sees.
+  await page.context().clearCookies();
+  await page.goto('/signup');
+  await page.getByLabel('Full name').fill('Inbox Student');
+  await page.getByLabel('University email').fill(`inbox-${Date.now()}@uni.ac.ae`);
+  await page.getByLabel('Password').fill(LONG_PASSWORD);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/home$/);
+
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+  await expect(nav.getByText(/unread/)).toHaveCount(0);
+
+  await page.goto('/events');
+  await page.getByRole('link', { name: /Introduction to ROS 2/ }).click();
+  await page.getByRole('button', { name: 'Register', exact: true }).click();
+  await expect(page.getByText('Confirmed')).toBeVisible();
+
+  // The notification row is written in the same transaction as the seat, so
+  // it is there the moment the registration is, with no sweep in between.
+  await page.goto('/me/notifications');
+  const row = page.getByRole('listitem').filter({ hasText: 'Introduction to ROS 2' });
+  await expect(row).toHaveText(/Registration confirmed/);
+  // Unread is carried by more than a colour: the row announces it.
+  await expect(row.getByText('Unread.')).toBeVisible();
+  await expect(nav.getByText('1 unread')).toBeVisible();
+
+  // The optimistic update's other half first. Without the rollback the row
+  // stays looking read forever and nothing tells the reader it did not save.
+  await page.route('**/api/v1/me/notifications/*/read', (route) => route.abort('failed'));
+  await row.getByRole('button', { name: /Mark .* read/ }).click();
+  // By text, not by role: Next's route announcer is also role="alert".
+  await expect(page.getByText('That did not save.')).toBeVisible();
+  await expect(row.getByRole('button', { name: /Mark .* read/ })).toBeVisible();
+  await expect(row.getByText('Unread.')).toBeVisible();
+
+  await page.unroute('**/api/v1/me/notifications/*/read');
+  await row.getByRole('button', { name: /Mark .* read/ }).click();
+
+  // The control goes, and the badge follows, which only happens if the server
+  // actually took it.
+  await expect(row.getByRole('button', { name: /Mark .* read/ })).toHaveCount(0);
+  await expect(nav.getByText(/unread/)).toHaveCount(0);
+
+  await page.reload();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: 'Introduction to ROS 2' }).getByText('Unread.'),
+  ).toHaveCount(0);
+});
+
+test('an admin reads the metrics charts, exports a CSV and reads the audit log', async ({
+  page,
+}) => {
+  await signIn(page, 'admin@uni.ac.ae');
+  await expect(page).toHaveURL(/\/admin\/metrics$/);
+
+  // A chart, not a table of the same numbers: the accessible name carries the
+  // series, so this fails against an empty <svg> as well as against no chart.
+  const clubs = page.getByRole('img', { name: /Clubs by status/ });
+  await expect(clubs).toBeVisible();
+  await expect(clubs).toHaveAttribute('aria-label', /Active \d+/);
+  await expect(page.getByRole('img', { name: /Events by status/ })).toBeVisible();
+  await expect(page.getByText('Active memberships')).toBeVisible();
+
+  await page.goto('/admin/exports');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Events' }).click();
+  expect((await download).suggestedFilename()).toBe('events.csv');
+
+  await page.goto('/admin/audit');
+  await expect(page.getByRole('columnheader', { name: 'When (UTC)' })).toBeVisible();
+  const rows = page.getByRole('row');
+  expect(await rows.count()).toBeGreaterThan(1);
+
+  // The filter goes to the server, not to the rendered page: an entity type
+  // no row on screen carries must still come back with its own rows.
+  await page.getByLabel('Filter by entity type').click();
+  await page.getByRole('option', { name: 'EventRegistration', exact: true }).click();
+
+  const entityCells = page.locator('tbody tr td:nth-child(3)');
+  await expect(entityCells.first()).toBeVisible();
+  for (const text of await entityCells.allTextContents()) {
+    // The entity type followed by the row's short id, and nothing else. A
+    // substring match would pass against every other type sharing a prefix,
+    // which is exactly what a filter dropped on the floor would return.
+    expect(text).toMatch(/^EventRegistration[0-9a-f]{8}$/);
+  }
+});
+
+test('a club lead reads their own club report', async ({ page }) => {
+  await signIn(page, 'lead@uni.ac.ae');
+  const clubId = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/manage/${clubId}/reports`);
+
+  await expect(page.getByRole('img', { name: /Attendance/ })).toBeVisible();
+  await expect(page.getByText('Registrations')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Audit: this club/ })).toBeVisible();
+});
+
+test('forgot-password answers the same for a real address and an unknown one', async ({ page }) => {
+  // The account-existence oracle. Two addresses, one of them seeded, and the
+  // screen has to be indistinguishable between them.
+  const said: string[] = [];
+  for (const email of ['student@uni.ac.ae', `nobody-${Date.now()}@uni.ac.ae`]) {
+    await page.context().clearCookies();
+    await page.goto('/forgot-password');
+    await page.getByLabel('University email').fill(email);
+    await page.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+    said.push((await page.getByRole('status').textContent()) ?? '');
+  }
+  expect(said[0]).toBe(said[1]);
+  expect(said[0]).toContain('If that address has an account');
+});
+
+test('a reset link that is no longer valid reports on the token, in the API words', async ({
+  page,
+}) => {
+  // The 401 this form answers must not be mistaken for a dead session: the
+  // visitor cannot sign in, and being sent to /login throws away the only
+  // message that explains why.
+  await page.context().clearCookies();
+  await page.goto('/reset-password?token=not-a-real-token');
+  await expect(page.getByLabel('Reset token')).toHaveValue('not-a-real-token');
+
+  await page.getByLabel('New password').fill(LONG_PASSWORD);
+  await page.getByRole('button', { name: 'Set password' }).click();
+
+  await expect(page.getByText('That password reset link is no longer valid.')).toBeVisible();
+  await expect(page.getByLabel('Reset token')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel('New password')).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(page).toHaveURL(/\/reset-password/);
+});
+
+test('the sign-in form reaches the reset flow', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Forgot password' }).click();
+  await expect(page).toHaveURL(/\/forgot-password$/);
+});
