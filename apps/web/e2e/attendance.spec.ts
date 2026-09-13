@@ -23,8 +23,8 @@ test.beforeEach(async ({}, testInfo) => {
 });
 
 async function signIn(page: Page, email: string) {
-  // Cleared first: (auth)/layout bounces a signed-in visitor to their own
-  // landing, so switching persona mid-test otherwise never reaches the form.
+  // Cleared first: /login bounces a signed-in visitor to their own landing,
+  // so switching persona mid-test otherwise never reaches the form.
   await page.context().clearCookies();
   await page.goto('/login');
   await page.getByLabel('University email').fill(email);

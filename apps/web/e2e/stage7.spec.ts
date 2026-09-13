@@ -18,8 +18,8 @@ test.beforeEach(async ({}, testInfo) => {
 });
 
 async function signIn(page: Page, email: string) {
-  // Cleared first: (auth)/layout bounces a signed-in visitor to their own
-  // landing, so switching persona mid-test otherwise never reaches the form.
+  // Cleared first: /login bounces a signed-in visitor to their own landing,
+  // so switching persona mid-test otherwise never reaches the form.
   await page.context().clearCookies();
   await page.goto('/login');
   await page.getByLabel('University email').fill(email);
@@ -164,6 +164,19 @@ test('a reset link that is no longer valid reports on the token, in the API word
   await expect(page.getByLabel('Reset token')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByLabel('New password')).not.toHaveAttribute('aria-invalid', 'true');
   await expect(page).toHaveURL(/\/reset-password/);
+});
+
+test('a signed-in visitor can still use a reset link', async ({ page }) => {
+  // Requested on a phone, opened on the laptop the holder is still signed in
+  // on. Bounced to their landing page, the token is never consumed and there
+  // is no change-password screen anywhere else to reach.
+  await signIn(page, 'student@uni.ac.ae');
+
+  await page.goto('/reset-password?token=a-token-from-another-device');
+
+  await expect(page).toHaveURL(/\/reset-password/);
+  await expect(page.getByLabel('New password')).toBeVisible();
+  await expect(page.getByLabel('Reset token')).toHaveValue('a-token-from-another-device');
 });
 
 test('the sign-in form reaches the reset flow', async ({ page }) => {

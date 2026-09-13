@@ -76,8 +76,8 @@ describe('decideRedirect', () => {
   it('never bounces a visitor off /login, however signed-in their cookies look', () => {
     // Catches ERR_TOO_MANY_REDIRECTS. A cookie the server rejects still makes
     // hasSession true here, so bouncing /login to / meant / redirected back to
-    // /login forever. (auth)/layout.tsx does this bounce against a validated
-    // session instead. Restore `signedIn ? { to: '/' }` and this goes red.
+    // /login forever. /login and /signup do this bounce themselves, against a
+    // validated session. Restore `signedIn ? { to: '/' }` and this goes red.
     expect(decideRedirect({ pathname: '/login', ...live })).toBeNull();
     expect(decideRedirect({ pathname: '/signup', ...live })).toBeNull();
     expect(decideRedirect({ pathname: '/login', ...stale })).toBeNull();
@@ -87,12 +87,17 @@ describe('decideRedirect', () => {
     expect(decideRedirect({ pathname: '/login', ...anon })).toBeNull();
   });
 
-  it('never gates the password reset routes', () => {
+  it('never gates the password reset routes, signed in or not', () => {
     // Somebody asking for a reset link cannot sign in by definition. Gating
     // these sends exactly the visitor who needs them to the form they are
     // locked out of, and the reset flow is then unreachable in production.
     expect(decideRedirect({ pathname: '/forgot-password', ...anon })).toBeNull();
     expect(decideRedirect({ pathname: '/reset-password', ...anon })).toBeNull();
+    // A live session is no reason to bounce either: the reset requested on a
+    // phone is opened on the laptop its holder is still signed in on, and
+    // there is no change-password screen anywhere else to send them to.
+    expect(decideRedirect({ pathname: '/reset-password', ...live })).toBeNull();
+    expect(decideRedirect({ pathname: '/forgot-password', ...live })).toBeNull();
   });
 
   it('never gates public certificate verification', () => {

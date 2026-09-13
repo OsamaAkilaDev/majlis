@@ -12,8 +12,9 @@ const PUBLIC_PREFIXES = ['/verify'];
  * The two reset routes belong here, not among the protected ones: somebody
  * asking for a reset link cannot sign in by definition, so gating them sends
  * exactly the visitor who needs them to the form they are locked out of.
- * (auth)/layout.tsx still bounces a visitor who turns out to hold a live
- * session, using a session it validated.
+ * /login and /signup call `bounceIfSignedIn` themselves, using a session they
+ * validated; the reset routes stay reachable with a live session, because a
+ * visitor signed in on this device may still hold a link for another.
  */
 const AUTH_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password'];
 
@@ -75,8 +76,8 @@ export function decideRedirect(input: {
 
   // An auth route is never bounced from here. A cookie's PRESENCE is not a
   // session: a dead one sent /login to / while the server sent / back to
-  // /login, looping forever. (auth)/layout.tsx already bounces a genuinely
-  // signed-in visitor using a validated session, which is the only copy of
+  // /login, looping forever. /login and /signup bounce a genuinely signed-in
+  // visitor themselves, using a validated session, which is the only copy of
   // this decision that can tell the difference.
   if (AUTH_ROUTES.includes(pathname)) return null;
   return signedIn ? null : { to: '/login' };
