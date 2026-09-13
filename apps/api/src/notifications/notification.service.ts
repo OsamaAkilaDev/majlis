@@ -12,6 +12,7 @@ import type { Prisma, Notification as NotificationRow } from '../generated/prism
 import { TransactionHost } from '../prisma/transaction.host';
 import {
   NOTIFICATION_CHANNEL,
+  type DeliverableNotification,
   type DeliveryOutcome,
   type NotificationChannel,
 } from './notification-channel';
@@ -76,6 +77,9 @@ export class NotificationService {
         type: e.type,
         dedupeKey: dedupeKeyFor(e.type, e.subject),
         payload: e.payload as Prisma.InputJsonValue,
+        ...(e.delivered
+          ? { emailStatus: e.delivered.status, emailError: e.delivered.error ?? null }
+          : {}),
       })),
       skipDuplicates: true,
     });
@@ -150,7 +154,12 @@ export class NotificationService {
     const result: NotificationSweepResult = { sent: 0, failed: 0, skipped: 0 };
 
     for (const row of rows) {
-      const outcome = await this.attempt(row);
+      const outcome = await this.attempt({
+        type: row.type as Notification['type'],
+        payload: (row.payload ?? {}) as Record<string, unknown>,
+        recipientEmail: row.user.email,
+        recipientName: row.user.fullName,
+      });
       if (outcome.status === 'SENT') result.sent += 1;
       else if (outcome.status === 'SKIPPED') result.skipped += 1;
       else result.failed += 1;
@@ -168,21 +177,28 @@ export class NotificationService {
   }
 
   /**
+   * Delivers one notification immediately, from a payload the caller holds
+   * rather than one any row holds, and persists nothing.
+   *
+   * The only caller is the password reset. Its link is a live credential, so
+   * it cannot sit in a JSONB column waiting for the next sweep: the whole
+   * point of storing only the token's sha256 is that reading the database
+   * yields nothing usable, and a URL in `notification.payload` would hand
+   * that straight back, for every pending request at once and for longer
+   * than the token's own expiry.
+   */
+  async deliverNow(notification: DeliverableNotification): Promise<DeliveryOutcome> {
+    return this.attempt(notification);
+  }
+
+  /**
    * One delivery attempt, which never throws. A refused address, a rate
    * limit and an outage are ordinary outcomes of sending mail, and one of
    * them must not stop the rest of the batch.
    */
-  private async attempt(
-    row: NotificationRow & { user: { email: string; fullName: string } },
-  ): Promise<DeliveryOutcome> {
+  private async attempt(notification: DeliverableNotification): Promise<DeliveryOutcome> {
     try {
-      return await this.channel.deliver({
-        id: row.id,
-        type: row.type as Notification['type'],
-        payload: (row.payload ?? {}) as Record<string, unknown>,
-        recipientEmail: row.user.email,
-        recipientName: row.user.fullName,
-      });
+      return await this.channel.deliver(notification);
     } catch (e) {
       // The message only. An Error's stack can carry a request object, and
       // this string is stored on the row and shown to an Admin.

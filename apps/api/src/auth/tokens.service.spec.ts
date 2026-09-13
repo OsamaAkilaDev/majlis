@@ -60,9 +60,13 @@ describe('TokensService', () => {
   });
 
   describe('verifyAccessToken', () => {
-    it('returns the sub of a token it signed', async () => {
+    it('returns the sub and iat of a token it signed', async () => {
       const token = await service.signAccessToken('user-id-2');
-      await expect(service.verifyAccessToken(token)).resolves.toBe('user-id-2');
+      const claims = await service.verifyAccessToken(token);
+      expect(claims.userId).toBe('user-id-2');
+      // SessionGuard compares this against passwordChangedAt, so a missing
+      // or non-numeric iat would silently disable that check.
+      expect(claims.issuedAt).toBeTypeOf('number');
     });
 
     it('rejects a token signed with a different secret', async () => {

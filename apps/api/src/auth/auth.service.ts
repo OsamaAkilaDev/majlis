@@ -243,9 +243,16 @@ export class AuthService {
    * indistinguishable to the caller, or this endpoint is an
    * account-existence oracle.
    *
-   * The raw token exists in exactly two places: this function's stack, and
-   * the notification payload the email is rendered from. The row stores only
-   * its sha256, like RefreshToken.
+   * The raw token exists on this function's stack and nowhere else. It is
+   * handed to the channel in memory and the email is composed from it there;
+   * the row stores only its sha256, like RefreshToken, and the notification
+   * records only THAT a reset was requested.
+   *
+   * This is the one notification delivered inline rather than by the sweep.
+   * A sweep would have to find the link in `notification.payload`, and a
+   * live reset URL sitting in a JSONB column gives back exactly what hashing
+   * the token was for: one read of that table would yield working links for
+   * every pending request, outliving each token's own expiry.
    */
   async forgotPassword(input: ForgotPasswordBody): Promise<void> {
     const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
@@ -254,19 +261,36 @@ export class AuthService {
     const { raw, hash: tokenHash } = this.tokens.mintOpaqueToken();
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
 
+    // Before the transaction, not after it: the outcome is written onto the
+    // row, so the row is never PENDING and the sweep can never pick up a
+    // password reset it has no link for. A send whose transaction then fails
+    // leaves a link that answers exactly like an expired one.
+    const delivered = await this.notifications.deliverNow({
+      type: 'auth.password_reset',
+      // This payload is never any row's payload.
+      payload: {
+        resetUrl: `${this.webOrigin}/reset-password?token=${raw}`,
+        expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+      },
+      recipientEmail: user.email,
+      recipientName: user.fullName,
+    });
+
     await this.host.run(async () => {
-      await this.host.tx.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+      const token = await this.host.tx.passwordResetToken.create({
+        data: { userId: user.id, tokenHash, expiresAt },
+      });
 
       await this.notifications.record({
         userId: user.id,
         type: 'auth.password_reset',
-        // The token, not the user: a second request must issue a second
-        // link rather than being absorbed as a repeat of the first.
-        subject: tokenHash,
-        payload: {
-          resetUrl: `${this.webOrigin}/reset-password?token=${raw}`,
-          expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
-        },
+        // The token row, not the user: a second request must record a second
+        // notification rather than being absorbed as a repeat of the first.
+        subject: token.id,
+        // No token and no URL. This row records that a reset was requested
+        // and when the link stops working, and nothing else.
+        payload: { expiresInMinutes: PASSWORD_RESET_TTL_MINUTES },
+        delivered,
       });
 
       // No actorUserId: nobody authenticated here. Whoever typed the address
@@ -310,7 +334,14 @@ export class AuthService {
       // the caller learns nothing about the account from either.
       if (user.status !== 'ACTIVE') throw new UnauthorizedError(RESET_LINK_INVALID);
 
-      await this.host.tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+      // passwordChangedAt in the same write, not a second one: SessionGuard
+      // refuses every access token issued at or before it, and that is the
+      // only thing that ends a session already in progress. A reset that
+      // leaves a stolen 15 minute JWT working is not a reset.
+      await this.host.tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash, passwordChangedAt: now },
+      });
       const { count: revoked } = await this.host.tx.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },
         data: { revokedAt: now },

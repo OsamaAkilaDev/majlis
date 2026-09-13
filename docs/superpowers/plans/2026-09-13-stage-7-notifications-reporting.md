@@ -166,8 +166,24 @@ with the error and leaves the other rows in the batch delivered. The redaction t
 **Routes**
 
 - `POST /auth/forgot-password` — `{ email }`, always 202, writes a notification of type
-  `auth.password_reset` whose payload carries the reset link
+  `auth.password_reset` **carrying no token and no URL**
 - `POST /auth/reset-password` — `{ token, password }`, single use
+
+**Corrected 2026-09-13, mid-stage.** An earlier version of this plan had the notification
+payload carry the reset link, which undoes the reason `PasswordResetToken` stores only a
+sha256: one read of `notification` would yield working reset links for every pending
+request, and those rows outlive the token's own expiry. The raw token goes to the channel
+in memory instead, and **this one type delivers inline rather than through the sweep**,
+since nothing may persist between the two. The web e2e therefore covers the two forms and
+their error states only; the full round trip is covered by the API integration test, which
+holds the raw token.
+
+**Also corrected: a reset must end live sessions, not just refresh.** The access token is a
+stateless 15-minute JWT, so revoking refresh tokens alone leaves a stolen cookie working for
+up to another 15 minutes. A reset exists precisely because the credential may already be
+compromised. A second migration adds `user.password_changed_at`, set in the reset's
+transaction, and `SessionGuard` rejects a JWT whose `iat` is at or before it. Compared in
+seconds, with same-second tokens treated as older, or a one-second hole remains.
 
 **Invariants**
 

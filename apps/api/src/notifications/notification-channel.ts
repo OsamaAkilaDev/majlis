@@ -5,9 +5,13 @@ import type { NotificationType } from '@majlis/contracts';
  * The recipient's address is read from the user row at delivery time and
  * never stored on the notification: spec 7.7's payload carries ids and
  * display strings only.
+ *
+ * There is deliberately no row id here. The password reset is delivered
+ * inline, from a payload that exists only on the calling stack and is never
+ * the payload any row holds, so a channel that needed an id would have
+ * nothing to give it.
  */
 export interface DeliverableNotification {
-  id: string;
   type: NotificationType;
   payload: Record<string, unknown>;
   recipientEmail: string;

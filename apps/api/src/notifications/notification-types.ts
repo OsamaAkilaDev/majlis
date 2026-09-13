@@ -14,6 +14,12 @@ export interface NotificationEntry {
   type: NotificationType;
   subject: string;
   payload: Record<string, unknown>;
+  /**
+   * Only for a notification already delivered inline, which is the password
+   * reset and nothing else. Left absent, the row starts PENDING and the
+   * sweep picks it up, which is what every other trigger wants.
+   */
+  delivered?: { status: 'SENT' | 'SKIPPED' | 'FAILED'; error?: string };
 }
 
 /**

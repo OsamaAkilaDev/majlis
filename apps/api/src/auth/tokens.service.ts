@@ -40,11 +40,15 @@ export class TokensService {
     return this.jwt.signAsync({}, { subject: userId, expiresIn: this.accessTtl });
   }
 
-  /** Returns the `sub` claim, or throws UnauthorizedError for any failure. */
-  async verifyAccessToken(token: string): Promise<string> {
+  /**
+   * Returns the `sub` and `iat` claims, or throws UnauthorizedError for any
+   * failure. `iat` is UNIX seconds, as JWT defines it, and is what
+   * SessionGuard compares against `user.passwordChangedAt`.
+   */
+  async verifyAccessToken(token: string): Promise<{ userId: string; issuedAt: number }> {
     try {
-      const claims = await this.jwt.verifyAsync<{ sub: string }>(token);
-      return claims.sub;
+      const claims = await this.jwt.verifyAsync<{ sub: string; iat: number }>(token);
+      return { userId: claims.sub, issuedAt: claims.iat };
     } catch {
       throw new UnauthorizedError('Invalid or expired access token');
     }

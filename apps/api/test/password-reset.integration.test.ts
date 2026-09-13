@@ -4,6 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RESET_LINK_INVALID, SESSION_EXPIRED } from '../src/auth/auth.service';
 import { TokensService } from '../src/auth/tokens.service';
 import { API_PREFIX } from '../src/config/api-prefix';
+import {
+  NOTIFICATION_CHANNEL,
+  type DeliverableNotification,
+  type DeliveryOutcome,
+} from '../src/notifications/notification-channel';
 import { createTestApp } from './app';
 import { refresh, refreshCookieOf, signup, signupAndKeepCookies, suspendAsAdmin } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
@@ -15,8 +20,22 @@ let app: INestApplication;
 const PASSWORD = 'correct-horse-battery';
 const NEW_PASSWORD = 'a-completely-different-one';
 
+/**
+ * Everything handed to the channel, in order. The raw reset token reaches
+ * the channel in memory and is persisted nowhere, so this is the only place
+ * a test can get hold of one, exactly as a real inbox would be.
+ */
+const delivered: DeliverableNotification[] = [];
+
+const capturingChannel = {
+  async deliver(notification: DeliverableNotification): Promise<DeliveryOutcome> {
+    delivered.push(notification);
+    return { status: 'SENT' };
+  },
+};
+
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp([], [{ provide: NOTIFICATION_CHANNEL, useValue: capturingChannel }]);
 });
 
 afterAll(async () => {
@@ -25,6 +44,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  delivered.length = 0;
   await truncateAll(prisma);
 });
 
@@ -43,16 +63,14 @@ function login(email: string, password: string) {
 }
 
 /**
- * The raw token, read out of the notification the request wrote. With no
- * RESEND_API_KEY there is no email, and this is the only place the raw value
- * ever exists outside the request that minted it.
+ * The raw token, taken out of what was handed to the channel. It is never
+ * persisted, so this stands in for reading the email, and it is the only way
+ * to get one.
  */
-async function tokenFromNotification(userId: string): Promise<string> {
-  const row = await prisma.notification.findFirstOrThrow({
-    where: { userId, type: 'auth.password_reset' },
-    orderBy: { id: 'desc' },
-  });
-  const { resetUrl } = row.payload as { resetUrl: string };
+function tokenFromEmail(): string {
+  const last = delivered.at(-1)!;
+  expect(last.type).toBe('auth.password_reset');
+  const { resetUrl } = last.payload as { resetUrl: string };
   return new URL(resetUrl).searchParams.get('token')!;
 }
 
@@ -92,7 +110,7 @@ describe('POST /auth/forgot-password', () => {
     const userId = (res.body as { id: string }).id;
 
     await forgot(email).expect(202);
-    const raw = await tokenFromNotification(userId);
+    const raw = tokenFromEmail();
     const row = await prisma.passwordResetToken.findFirstOrThrow({ where: { userId } });
 
     expect(row.tokenHash).not.toBe(raw);
@@ -120,9 +138,9 @@ describe('POST /auth/reset-password', () => {
   }
 
   it('changes the password, so the old one stops working and the new one starts', async () => {
-    const { email, userId } = await requestReset();
+    const { email } = await requestReset();
 
-    await reset(await tokenFromNotification(userId)).expect(204);
+    await reset(tokenFromEmail()).expect(204);
 
     await login(email, PASSWORD).expect(401);
     await login(email, NEW_PASSWORD).expect(200);
@@ -137,7 +155,7 @@ describe('POST /auth/reset-password', () => {
     // reset's doing and not a token that never worked.
     await refresh(app, refreshCookie).expect(200);
 
-    await reset(await tokenFromNotification(userId)).expect(204);
+    await reset(tokenFromEmail()).expect(204);
 
     const after = await refresh(app, refreshCookie).expect(401);
     expect(after.body.detail).toBe(SESSION_EXPIRED);
@@ -146,7 +164,7 @@ describe('POST /auth/reset-password', () => {
 
   it('works once, and refuses the same token the second time', async () => {
     const { userId } = await requestReset();
-    const token = await tokenFromNotification(userId);
+    const token = tokenFromEmail();
 
     await reset(token).expect(204);
     const second = await reset(token, 'yet-another-password').expect(401);
@@ -158,7 +176,7 @@ describe('POST /auth/reset-password', () => {
 
   it('refuses an expired token with the same message as an unknown one', async () => {
     const { userId } = await requestReset();
-    const token = await tokenFromNotification(userId);
+    const token = tokenFromEmail();
     await prisma.passwordResetToken.updateMany({
       where: { userId },
       data: { expiresAt: new Date(Date.now() - 1000) },
@@ -176,7 +194,7 @@ describe('POST /auth/reset-password', () => {
 
   it('refuses a token whose account was suspended after the link was sent', async () => {
     const { userId } = await requestReset();
-    const token = await tokenFromNotification(userId);
+    const token = tokenFromEmail();
     await suspendAsAdmin(app, userId, 'testing');
 
     const res = await reset(token).expect(401);
@@ -188,7 +206,7 @@ describe('POST /auth/reset-password', () => {
 
   it('rejects a password below the minimum length before touching anything', async () => {
     const { userId } = await requestReset();
-    const token = await tokenFromNotification(userId);
+    const token = tokenFromEmail();
 
     await reset(token, 'short').expect(400);
 
@@ -197,7 +215,7 @@ describe('POST /auth/reset-password', () => {
 
   it('audits the reset in the same transaction as the password change', async () => {
     const { userId } = await requestReset();
-    await reset(await tokenFromNotification(userId)).expect(204);
+    await reset(tokenFromEmail()).expect(204);
 
     const rows = await prisma.auditLog.findMany({ where: { entityId: userId } });
     expect(rows.map((r) => r.action)).toContain('auth.password_reset');
@@ -210,7 +228,7 @@ describe('the reset link', () => {
     const email = `${uniq('reset')}@uni.ac.ae`;
     const signedUp = await signupAndKeepCookies(app, { email, password: PASSWORD });
     await forgot(email).expect(202);
-    const raw = await tokenFromNotification(signedUp.userId);
+    const raw = tokenFromEmail();
 
     const res = await request(app.getHttpServer())
       .get(`${API_PREFIX}/me/notifications`)
@@ -225,13 +243,47 @@ describe('the reset link', () => {
     const res = await signup(app, { email, password: PASSWORD }).expect(201);
     const userId = (res.body as { id: string }).id;
     const answer = await forgot(email).expect(202);
-    const raw = await tokenFromNotification(userId);
+    const raw = tokenFromEmail();
 
     // Not in the HTTP response, which is what makes the 202 carry nothing.
     expect(answer.text).not.toContain(raw);
     // And not in the audit trail, which spec 5.1 says never holds a token.
     const audit = await prisma.auditLog.findMany({ where: { entityId: userId } });
     expect(JSON.stringify(audit)).not.toContain(raw);
+  });
+
+  it('is not in the notification row either, which the API exclusion would not help with', async () => {
+    // The whole reason the table stores only a sha256 is that reading it
+    // yields nothing usable. A live URL in notification.payload hands that
+    // straight back: one read of that table would give working links for
+    // every pending request, and the rows outlive each token's expiry.
+    // Excluding them from the API narrows who can read it over HTTP; it does
+    // not remove the row.
+    const email = `${uniq('reset')}@uni.ac.ae`;
+    const res = await signup(app, { email, password: PASSWORD }).expect(201);
+    const userId = (res.body as { id: string }).id;
+
+    await forgot(email).expect(202);
+    const raw = tokenFromEmail();
+
+    const row = await prisma.notification.findFirstOrThrow({
+      where: { userId, type: 'auth.password_reset' },
+    });
+    const serialized = JSON.stringify(row);
+    expect(serialized).not.toContain(raw);
+    expect(serialized).not.toContain('reset-password?token=');
+    expect(row.payload).toEqual({ expiresInMinutes: 30 });
+  });
+
+  it('is delivered inline, so the sweep never has a reset to pick up', async () => {
+    // If the row were left PENDING the sweep would send a second email from
+    // a payload that has no link in it.
+    const email = `${uniq('reset')}@uni.ac.ae`;
+    await signup(app, { email, password: PASSWORD }).expect(201);
+    await forgot(email).expect(202);
+
+    expect(await prisma.notification.count({ where: { emailStatus: 'PENDING' } })).toBe(0);
+    expect(delivered).toHaveLength(1);
   });
 });
 
@@ -240,12 +292,42 @@ describe('cookies issued before a reset', () => {
     const email = `${uniq('reset')}@uni.ac.ae`;
     const signedUp = await signupAndKeepCookies(app, { email, password: PASSWORD });
     await forgot(email).expect(202);
-    await reset(await tokenFromNotification(signedUp.userId)).expect(204);
+    await reset(tokenFromEmail()).expect(204);
 
     const relogin = await login(email, NEW_PASSWORD).expect(200);
     // The new session works, so the refusal above is about the old token
     // rather than about refresh being broken for this account.
     await refresh(app, refreshCookieOf(relogin)).expect(200);
     await refresh(app, signedUp.refreshCookie).expect(401);
+  });
+
+  it('stop working as a SESSION cookie the instant the reset commits', async () => {
+    // A password reset exists because the credential may already be in an
+    // attacker's hands. Revoking refresh tokens only ends the ability to
+    // RENEW; the access token is a stateless 15 minute JWT, so without the
+    // passwordChangedAt comparison in SessionGuard a stolen cookie keeps
+    // working for a quarter of an hour after the victim resets.
+    const email = `${uniq('reset')}@uni.ac.ae`;
+    const signedUp = await signupAndKeepCookies(app, { email, password: PASSWORD });
+
+    // Live before the reset, so the 401 below is the reset's doing.
+    await request(app.getHttpServer())
+      .get(`${API_PREFIX}/auth/me`)
+      .set('Cookie', signedUp.sessionCookie)
+      .expect(200);
+
+    await forgot(email).expect(202);
+    await reset(tokenFromEmail()).expect(204);
+
+    const after = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/auth/me`)
+      .set('Cookie', signedUp.sessionCookie)
+      .expect(401);
+    expect(after.body.detail).toBe('Not signed in.');
+
+    // The account itself is fine: it is the pre-reset token that is dead.
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: signedUp.userId } })).status,
+    ).toBe('ACTIVE');
   });
 });
