@@ -22,6 +22,8 @@ import { TransactionHost } from '../../prisma/transaction.host';
 import { assertCanReadRoster } from '../roster-access';
 import { assertAcceptsEdits } from '../club-status';
 import { loadClub } from '../load-club';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { NotificationService } from '../../notifications/notification.service';
 
 const INVITATION_TTL_DAYS = 14;
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
@@ -92,6 +94,7 @@ export class TeamService {
   constructor(
     private readonly host: TransactionHost,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /** Whether `userId` currently holds no ACTIVE ClubMembership in `clubId`. */
@@ -105,7 +108,7 @@ export class TeamService {
   /** POST /clubs/:clubId/lead. Admin only; the nominee holds no authority until they accept. */
   async appointLead(actor: { id: string }, clubId: string, body: AppointLeadBody): Promise<Appointment> {
     return this.host.run(async () => {
-      await loadClub(this.host, clubId, assertAcceptsEdits);
+      const club = await loadClub(this.host, clubId, assertAcceptsEdits);
       if (body.userId === actor.id) throw new UnprocessableError('You cannot appoint yourself.');
 
       const row = await this.host.tx.clubTeamAppointment
@@ -131,6 +134,16 @@ export class TeamService {
         after: { clubId, userId: row.userId, role: row.role },
       });
 
+      // Spec 7.7, team invitation. Written in this transaction, like the
+      // audit row above it: an invitation that rolls back must not leave a
+      // notification telling somebody they were invited.
+      await this.notifications.record({
+        userId: row.userId,
+        type: 'team.invited',
+        subject: row.id,
+        payload: { appointmentId: row.id, clubId, clubName: club.name, role: row.role },
+      });
+
       return toAppointment(row, await this.hasLeftClub(clubId, row.userId));
     });
   }
@@ -142,7 +155,7 @@ export class TeamService {
     body: InviteTeamMemberBody,
   ): Promise<Appointment> {
     return this.host.run(async () => {
-      await loadClub(this.host, clubId, assertAcceptsEdits);
+      const club = await loadClub(this.host, clubId, assertAcceptsEdits);
       if (body.userId === actor.id) throw new UnprocessableError('You cannot invite yourself.');
       const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
@@ -173,6 +186,16 @@ export class TeamService {
         actorUserId: actor.id,
         ...(reason ? { reason } : {}),
         after: { clubId, userId: row.userId, role: row.role },
+      });
+
+      // Spec 7.7, team invitation. Written in this transaction, like the
+      // audit row above it: an invitation that rolls back must not leave a
+      // notification telling somebody they were invited.
+      await this.notifications.record({
+        userId: row.userId,
+        type: 'team.invited',
+        subject: row.id,
+        payload: { appointmentId: row.id, clubId, clubName: club.name, role: row.role },
       });
 
       return toAppointment(row, await this.hasLeftClub(clubId, row.userId));

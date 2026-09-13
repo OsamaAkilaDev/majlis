@@ -45,6 +45,7 @@ export const listEvents = (query: EventListQuery): Promise<EventPage> =>
       status: query.status,
       q: query.q,
       upcoming: query.upcoming === undefined ? undefined : String(query.upcoming),
+      direction: query.direction,
       cursor: query.cursor,
       limit: String(query.limit),
     })}`,

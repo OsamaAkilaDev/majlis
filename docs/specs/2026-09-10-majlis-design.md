@@ -586,8 +586,8 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 4 | ✅ **Done** — Clubs, team & membership | Departments, club CRUD + status machine, image upload via signed URL, Lead appointment, in-app team invitations, the four membership policies, requests and decisions, member lists, leaving. Designed in [`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md) |
 | 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
-| 7 | Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer |
-| 8 | Hardening & deploy | Rate limits (all of them, none exist yet), security review, Lighthouse and accessibility verification, load sanity check on the scan path, Vercel deployment, runbook |
+| 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
+| 8 | Hardening | Security review and hardening, optimisation and performance (Core Web Vitals, bundle, the scan path), README, and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13 — see below |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
 
@@ -962,6 +962,86 @@ carried zero 500s on `/auth/login`; the evidence was in the *web* server's proxy
 on a stable server: 160 passed, zero restarts. **Before trusting an e2e failure, check
 whether the API restarted during the run.**
 
+### Stage 7 completion note (2026-09-13)
+
+Notifications and reporting, planned in
+[`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md).
+**Two migrations**: `PasswordResetToken`, and `user.password_changed_at`.
+
+| | |
+|---|---|
+| Tests | 432 API integration, 201 API unit, 72 contracts, 135 web unit, 195 Playwright/axe. All green |
+| Verified | Every suite re-run by the orchestrator rather than taken on report, with the API restart count checked at zero during each Playwright run |
+
+**Email delivery is not verified anywhere in this stage, and must not be claimed.** There is
+no `RESEND_API_KEY`. With none set the factory resolves `SkippingChannel` and every
+notification lands `SKIPPED`; `ResendChannel` is exercised only through template render unit
+tests. The abstraction, the ten triggers, the failure handling and the inbox are all real and
+tested. The sending is not.
+
+**Decisions taken in the plan rather than here:** delivery as a sweep rather than
+fire-and-forget, so a failed email can never roll back the action that caused it; the
+material-change field set (`startsAt`, `endsAt`, `venue`, `onlineUrl`, `timezone`), so a
+retitled event notifies nobody; `forgot-password` always answering 202; CSV exports capped at
+10,000 rows; and club-scoped audit covering the club and its events only, because `AuditLog`
+deliberately has no foreign keys to join through.
+
+**The plan shipped a security hole and the implementer caught it.** It had the reset link
+stored in the notification payload so the e2e could read it back. That undoes the entire
+reason `PasswordResetToken` stores only a sha256: one read of `notification` would yield
+working reset links for every pending request, and those rows outlive the token's own expiry.
+Corrected mid-stage. The raw token now exists only in memory on the `forgotPassword` call
+stack, and that one notification type delivers inline rather than through the sweep so
+nothing persists between minting and sending. The web e2e lost its round trip as a result;
+the API integration test covers it instead, where the raw token is legitimately in hand.
+
+**A reset did not end live sessions.** The access token is a stateless 15-minute JWT, so
+revoking refresh tokens left a stolen cookie working for up to another 15 minutes. A reset
+exists precisely because the credential may already be compromised. `user.password_changed_at`
+is now compared against the JWT `iat` in `SessionGuard`, floored to seconds with `<=` so a
+token minted in the same second as the reset is treated as older. The deliberate cost is that
+a user who resets and signs back in within one second is bounced once.
+
+**What the end-of-stage review earned.** Security came back clean, with auditable negatives.
+Correctness found seven, three of them real:
+
+- **Every list in the product was oldest-first.** `cursorArgs` hardcoded `orderBy: { id: 'asc' }`
+  and ids are uuid v7, so the inbox showed a student their oldest notifications with new ones
+  stranded behind "Load more", the audit viewer opened on the oldest rows ever written, and
+  the unread badge fetched the ten oldest unread and stuck. This was also the root cause of
+  the `/me/certificates` ordering defect carried forward from Stage 6 as cosmetic. It was not
+  cosmetic. `cursorArgs` now takes a direction, defaulting to `asc` so no existing caller
+  changed.
+- **A reissue told the holder their certificate was revoked and never that a replacement was
+  issued.** During a name correction the inbox was not merely incomplete, it was misleading.
+- **A signed-in visitor could not use a reset link at all.** `(auth)/layout.tsx` redirected
+  anyone holding a session, so opening the mail on a laptop that is still signed in bounced to
+  `/home`, the token expired unused, and no change-password screen exists anywhere else. That
+  is the case a reset is most needed in. The layout is styling-only now and the bounce lives in
+  the login and signup pages.
+
+**A test asserted the opposite of its own comment**, claiming to prove a row "the product
+itself produced, not one this file inserted" and then inserting the row by hand. And the
+club-report fixture would have passed against two implementations the code's own constants
+exist to prevent. Third stage running that "name the broken implementation this test would
+catch" has found something real.
+
+**An accessibility check passed because the fixture was small.** Two mobile axe scans on the
+event editor went red in this stage against a screen byte-identical to master. Nothing
+regressed: a table wide enough to overflow at phone width was keyboard-unreachable since
+Stage 6, and Stage 6 passed only because its rosters were short enough not to overflow. Fixed
+in `ui/table.tsx`. Worth carrying: a passing a11y scan is evidence about the data as much as
+the markup.
+
+**Carried forward:**
+
+- **Stage 8:** `db:seed`'s guard is `status: { not: 'CANCELLED' }`, so a registration left at
+  `NO_SHOW` by an earlier suite run is never restored. The documented "re-run `db:seed` to
+  refresh the scan window" fixes the window and not the registration, and the attendance walk
+  then fails in a way that looks like a product bug. It cost a session time already.
+- **Stage 8:** `GET /clubs/{id}/audit` scans up to 500 of a club's event ids per page. The
+  upgrade path is a `club_id` column on `AuditLog` written at record time.
+
 ---
 ## 14. Open items
 
@@ -969,3 +1049,36 @@ whether the API restarted during the run.**
 - The check-in/out and minimum-duration attendance policies are a later additive stage. `event.attendance_policy` is an enum with room to grow, and adding check-out is a nullable column plus a new branch in the eligibility function — no restructuring. **No unused columns are added now.**
 - This spec covers nine stages and will therefore produce **one implementation plan per stage**, not a single monolithic plan. Stage 1's plan is written first; each subsequent stage is planned when the previous one is done, so later plans can absorb what earlier stages taught us.
 - Vercel Hobby's non-commercial terms must be revisited before Majlis serves a paying customer.
+
+### Rate limiting is dropped from the build (2026-09-13)
+
+§11 called for rate limiting on login, signup, scan and `/verify/{code}`, deferred to the
+final stage. **It is now dropped entirely**, by the product owner's decision, and Stage 8 is
+security, optimisation and performance, the README and the handbook.
+
+The options were laid out before the decision: the four routes §11 names, plus the six
+unauthenticated routes Stages 6 and 7 added that it could not have anticipated, plus the two
+shared-secret sweep endpoints. Recorded here so a later reader does not mistake the absence
+for an oversight.
+
+**The one consequence worth carrying:** `POST /auth/forgot-password` is unauthenticated and
+sends mail to an address the caller chooses, and always answers 202, so nothing slows a
+caller down. Unlimited, it can be pointed at any student's inbox and will burn the Resend
+quota. It costs nothing while no `RESEND_API_KEY` is set, which is the state today. **Anyone
+turning email on should limit that route in the same change**, and the handbook says so.
+
+### Deployment is not part of Stage 8 (2026-09-13)
+
+Vercel deployment, `vercel.json`, the production env inventory and CI are all deferred and
+will be done with the product owner directly, not by an agent. Nothing in Stage 8 writes
+deployment configuration.
+
+This leaves **CI still never having run**, which remains the largest untested assumption in
+the project: eight stages of green local suites on one Windows machine is not the same claim
+as green on a clean Linux runner with a `postgres:18` service container. Path casing, line
+endings and the Playwright browser install each break exactly once, on the first CI run.
+
+It also leaves the **storage buckets created by hand**: `majlis-storage` (public) and
+`majlis-certificates` (private, added in Stage 6). Nothing in the repository creates or
+verifies them, so a fresh environment silently 500s on the first certificate download. The
+handbook must carry this.

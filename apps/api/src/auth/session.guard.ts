@@ -18,6 +18,32 @@ declare module 'express' {
 }
 
 /**
+ * Whether this access token was minted before the account's password
+ * changed, and so must be refused.
+ *
+ * Revoking refresh tokens ends the ability to RENEW a session; it cannot
+ * touch an access token already issued, which is a stateless 15-minute JWT
+ * carrying only `{ sub, iat, exp }`. This comparison is what actually ends a
+ * session in progress, and a password reset exists precisely because the
+ * credential may already be in someone else's hands.
+ *
+ * `iat` is UNIX SECONDS and the column is milliseconds, so the column is
+ * floored to seconds and the comparison is `<=`, not `<`. A token minted in
+ * the same second as the reset is indistinguishable from one minted just
+ * before it, and must be treated as the older of the two or there is a
+ * one-second hole. The cost is that a token minted within the same second
+ * AFTER a reset is also refused; the holder signs in again, one second later
+ * at worst.
+ *
+ * Exported so the comparison can be exercised directly, without minting a
+ * JWT and waiting a second for its `iat` to move.
+ */
+export function passwordChangedSince(passwordChangedAt: Date | null, issuedAt: number): boolean {
+  if (!passwordChangedAt) return false;
+  return issuedAt <= Math.floor(passwordChangedAt.getTime() / 1000);
+}
+
+/**
  * Registered globally as APP_GUARD (see AuthModule) so every route is
  * protected unless explicitly marked @Public(). Runs before PermissionsGuard
  * (Task 8), which reads `req.actor` set here — that guard must be registered
@@ -42,7 +68,7 @@ export class SessionGuard implements CanActivate {
     const token = req.cookies?.[SESSION_COOKIE] as string | undefined;
     if (!token) throw new UnauthorizedError('Not signed in.');
 
-    const userId = await this.tokens.verifyAccessToken(token);
+    const { userId, issuedAt } = await this.tokens.verifyAccessToken(token);
 
     // Loaded on EVERY request. This is what makes suspension and appointment
     // loss take effect on the next request rather than at token expiry.
@@ -52,6 +78,9 @@ export class SessionGuard implements CanActivate {
     // suspended" wording belongs only on the login response (Task 9), where
     // the caller has already proven the password.
     if (!user || user.status !== 'ACTIVE') throw new UnauthorizedError('Not signed in.');
+    if (passwordChangedSince(user.passwordChangedAt, issuedAt)) {
+      throw new UnauthorizedError('Not signed in.');
+    }
 
     req.actor = user;
     return true;

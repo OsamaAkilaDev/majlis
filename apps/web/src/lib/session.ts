@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { sessionUserSchema, type SessionUser } from '@majlis/contracts';
 import { API_ORIGIN } from '@/lib/api-origin';
+import { landingFor } from '@/lib/routing';
 
 /** Memoised per request: a layout and the shell it renders both need the
  *  viewer, and that must stay one call to /auth/me, not two. */
@@ -34,4 +35,19 @@ export async function requireUser(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) redirect('/login');
   return user;
+}
+
+/**
+ * The inverse: sends a visitor who already holds a live session to their
+ * landing page. Only /login and /signup call it.
+ *
+ * The two reset routes deliberately do not, and the (auth) layout no longer
+ * does it for the whole group: somebody who asks for a reset link on their
+ * phone and opens the mail on a laptop where they are still signed in has to
+ * be able to use it, and there is no change-password screen anywhere else to
+ * send them to.
+ */
+export async function bounceIfSignedIn(): Promise<void> {
+  const user = await getSessionUser();
+  if (user) redirect(landingFor(user));
 }

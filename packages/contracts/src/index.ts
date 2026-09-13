@@ -11,3 +11,5 @@ export * from './membership';
 export * from './events';
 export * from './attendance';
 export * from './certificates';
+export * from './notifications';
+export * from './reporting';

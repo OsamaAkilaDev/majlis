@@ -8,7 +8,7 @@ import { activeNavHref } from '@/lib/routing';
 
 // icon is a rendered element, not a component reference: a bare component type
 // crossing the server-to-client boundary as a prop fails RSC serialization.
-export type NavItem = { href: string; label: string; icon: ReactNode };
+export type NavItem = { href: string; label: string; icon: ReactNode; trailing?: ReactNode };
 
 export function SideNav({ items }: { items: readonly NavItem[] }) {
   const pathname = usePathname();
@@ -18,7 +18,7 @@ export function SideNav({ items }: { items: readonly NavItem[] }) {
 
   return (
     <nav aria-label="Sections" className="flex flex-col gap-0.5">
-      {items.map(({ href, label, icon }) => {
+      {items.map(({ href, label, icon, trailing }) => {
         const active = href === current;
         return (
           <Link
@@ -32,6 +32,7 @@ export function SideNav({ items }: { items: readonly NavItem[] }) {
           >
             {icon}
             {label}
+            {trailing ? <span className="ml-auto">{trailing}</span> : null}
           </Link>
         );
       })}

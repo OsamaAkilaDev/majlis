@@ -28,6 +28,16 @@
   --mute-soft: #EDE7DD;
   --mute-fg: #5B5045;
 
+  /* Chart series, assigned in fixed order and never cycled. Deliberately NOT
+     the UI tokens: warn-fg against bad-fg is deltaE 1.0 under deuteranopia,
+     so a chart wearing them is one colour to roughly one man in twelve. The
+     light set is validated on #FFFFFF, so a chart sits on surface, not bg. */
+  --s1: #0D9488;
+  --s2: #4F46E5;
+  --s3: #EA580C;
+  --s4: #DB2777;
+  --s5: #65A30D;
+
   --shadow-sm: 0 1px 2px rgba(28, 23, 19, .06), 0 1px 1px rgba(28, 23, 19, .04);
   --shadow-md: 0 4px 12px -2px rgba(28, 23, 19, .10), 0 2px 4px -2px rgba(28, 23, 19, .06);
   --shadow-sheet: 0 -8px 32px -8px rgba(28, 23, 19, .18);
@@ -65,6 +75,14 @@
   --info-fg: #A9B8E8;
   --mute-soft: #2A241F;
   --mute-fg: #B6A899;
+
+  /* A separately chosen set, not a flip of the light one, validated on the
+     dark surface #1D1815. */
+  --s1: #12A89E;
+  --s2: #6D6BF5;
+  --s3: #E2600F;
+  --s4: #E8478F;
+  --s5: #6BA80E;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, .55), 0 2px 4px -2px rgba(0, 0, 0, .4);

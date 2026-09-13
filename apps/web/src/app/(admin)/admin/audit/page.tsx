@@ -1,14 +1,19 @@
+import type { AuditPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { EmptyState } from '@/components/EmptyState';
 import { ConsoleShell } from '@/components/shell/ConsoleShell';
+import { CONSOLE_PAGE } from '@/lib/page-size';
+import { serverFetch } from '@/lib/server-api';
 import { ADMIN_NAV } from '../nav';
+import { AdminAudit } from './AdminAudit';
 
 export const metadata: Metadata = { title: 'Audit' };
 
-export default function AuditPage() {
+export default async function AuditPage() {
+  const initial = await serverFetch<AuditPage>(`/audit?limit=${CONSOLE_PAGE}`);
+
   return (
     <ConsoleShell items={ADMIN_NAV} title="Audit" context={null}>
-      <EmptyState title="Nothing here yet" />
+      <AdminAudit initial={initial} />
     </ConsoleShell>
   );
 }

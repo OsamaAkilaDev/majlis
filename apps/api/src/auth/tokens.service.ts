@@ -40,11 +40,15 @@ export class TokensService {
     return this.jwt.signAsync({}, { subject: userId, expiresIn: this.accessTtl });
   }
 
-  /** Returns the `sub` claim, or throws UnauthorizedError for any failure. */
-  async verifyAccessToken(token: string): Promise<string> {
+  /**
+   * Returns the `sub` and `iat` claims, or throws UnauthorizedError for any
+   * failure. `iat` is UNIX seconds, as JWT defines it, and is what
+   * SessionGuard compares against `user.passwordChangedAt`.
+   */
+  async verifyAccessToken(token: string): Promise<{ userId: string; issuedAt: number }> {
     try {
-      const claims = await this.jwt.verifyAsync<{ sub: string }>(token);
-      return claims.sub;
+      const claims = await this.jwt.verifyAsync<{ sub: string; iat: number }>(token);
+      return { userId: claims.sub, issuedAt: claims.iat };
     } catch {
       throw new UnauthorizedError('Invalid or expired access token');
     }
@@ -57,11 +61,26 @@ export class TokensService {
    * would add ~100ms to every refresh. Passwords stay argon2id.
    */
   mintRefreshToken(): { raw: string; hash: string } {
-    const raw = randomBytes(32).toString('base64url');
-    return { raw, hash: this.hashRefreshToken(raw) };
+    return this.mintOpaqueToken();
   }
 
   hashRefreshToken(raw: string): string {
+    return this.hashOpaqueToken(raw);
+  }
+
+  /**
+   * 256 bits of randomness and its sha256. Shared by refresh tokens and
+   * password reset tokens, which are the same credential shape: a long
+   * random string the server stores only a digest of. One implementation, so
+   * the "only the hash is stored" rule cannot hold for one and drift for the
+   * other.
+   */
+  mintOpaqueToken(): { raw: string; hash: string } {
+    const raw = randomBytes(32).toString('base64url');
+    return { raw, hash: this.hashOpaqueToken(raw) };
+  }
+
+  hashOpaqueToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
   }
 

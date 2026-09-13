@@ -41,10 +41,17 @@ model User {
   avatarUrl    String?      @map("avatar_url")
   status       UserStatus   @default(ACTIVE)
   platformRole PlatformRole @default(STUDENT) @map("platform_role")
+  /// When this account's password last changed. Null for an account that has
+  /// never reset one. SessionGuard refuses any access token issued at or
+  /// before it, which is what ends a session already in progress: refresh
+  /// tokens are revocable rows, but the access token is a stateless JWT with
+  /// nothing else to check it against.
+  passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz(3)
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   memberships   ClubMembership[]
   appointments  ClubTeamAppointment[]
   registrations    EventRegistration[]
@@ -76,6 +83,25 @@ model RefreshToken {
   @@index([userId])
   @@index([familyId])
   @@map("refresh_token")
+}
+
+/// A single-use password reset. Only the sha256 of the raw token is stored,
+/// exactly as RefreshToken does: the raw value exists on the stack of the
+/// call that mints it, long enough to compose one email, and nowhere else.
+/// The notification row carries only how long the link lasts. A successful
+/// reset marks the row used and revokes every refresh token the account holds.
+model PasswordResetToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_token")
 }
 
 enum ClubStatus {

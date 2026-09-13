@@ -2,11 +2,17 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
-import { loginBodySchema, signupBodySchema, type SessionUser } from '@majlis/contracts';
+import {
+  forgotPasswordBodySchema,
+  loginBodySchema,
+  resetPasswordBodySchema,
+  signupBodySchema,
+  type SessionUser,
+} from '@majlis/contracts';
 import type { Request, Response } from 'express';
 import { createZodDto } from 'nestjs-zod';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference. AuthResult is a type-only member of the same module, so it rides along here rather than a second import statement.
-import { AuthService, SESSION_EXPIRED, type AuthResult } from './auth.service';
+import { AuthService, RESET_LINK_INVALID, SESSION_EXPIRED, type AuthResult } from './auth.service';
 import {
   refreshCookieOptions,
   secureCookies,
@@ -23,6 +29,8 @@ import type { Env } from '../config/env.schema';
 
 class SignupDto extends createZodDto(signupBodySchema) {}
 class LoginDto extends createZodDto(loginBodySchema) {}
+class ForgotPasswordDto extends createZodDto(forgotPasswordBodySchema) {}
+class ResetPasswordDto extends createZodDto(resetPasswordBodySchema) {}
 
 /**
  * Signup and login — the first endpoints in the product that issue a
@@ -59,6 +67,31 @@ export class AuthController {
     const result = await this.auth.login(body);
     this.setAuthCookies(res, result);
     return result.user;
+  }
+
+  /**
+   * @Public(), and always 202 whether or not the address resolves. A
+   * different answer for a real address would make this an
+   * account-existence oracle, which is precisely the defect Stage 6's review
+   * found on manual check-in.
+   */
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(202)
+  async forgotPassword(@Body() body: ForgotPasswordDto): Promise<void> {
+    await this.auth.forgotPassword(body);
+  }
+
+  /**
+   * @Public(): the whole point is that the caller cannot sign in. Expired,
+   * used and unknown tokens all answer 401 with the same message.
+   */
+  @Public()
+  @Post('reset-password')
+  @HttpCode(204)
+  @ApiResponse({ status: 401, description: RESET_LINK_INVALID, type: ProblemDetailsDto })
+  async resetPassword(@Body() body: ResetPasswordDto): Promise<void> {
+    await this.auth.resetPassword(body);
   }
 
   /**

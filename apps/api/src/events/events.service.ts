@@ -33,6 +33,8 @@ import type { Prisma, Event as EventRow } from '../generated/prisma/client';
 import { TransactionHost } from '../prisma/transaction.host';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
+import { NotificationService } from '../notifications/notification.service';
 import { assertTransition, dueStatus } from './event-status';
 import { promoteFromWaitlist } from './waitlist';
 
@@ -90,6 +92,28 @@ interface Actor {
  * server-side.
  */
 const PATCHABLE = Object.keys(EVENT_FIELDS).filter((k) => k !== 'posterUploaded');
+
+/**
+ * Spec 7.7 names "material event change" without defining it. These five are
+ * the fields that change whether or where a registered student can
+ * physically turn up. A retitled or re-summarised event notifies nobody.
+ */
+const MATERIAL_FIELDS = ['startsAt', 'endsAt', 'venue', 'onlineUrl', 'timezone'] as const;
+
+/**
+ * Which of MATERIAL_FIELDS this patch actually changes. A key present in the
+ * body but equal to what is already stored is not a change: re-saving a form
+ * without touching the date must not tell every attendee the event moved.
+ */
+function materialChanges(before: EventRow, data: Record<string, unknown>): string[] {
+  return MATERIAL_FIELDS.filter((key) => {
+    const next = data[key];
+    if (next === undefined) return false;
+    const prev = before[key];
+    if (prev instanceof Date) return new Date(next as string).getTime() !== prev.getTime();
+    return next !== prev;
+  });
+}
 
 const DEFAULT_CHECK_IN_OPENS_BEFORE_MS = 60 * 60 * 1000;
 const DEFAULT_CHECK_IN_CLOSES_AFTER_MS = 30 * 60 * 1000;
@@ -178,6 +202,7 @@ export class EventsService {
     private readonly lifecycle: EventLifecycleService,
     private readonly clubs: ClubsService,
     private readonly certificates: CertificatesService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -316,7 +341,7 @@ export class EventsService {
 
     const rows = await this.host.tx.event.findMany({
       where: visible ? { AND: [filters, visible] } : filters,
-      ...cursorArgs(query),
+      ...cursorArgs(query, query.direction),
       select: SUMMARY_SELECT,
     });
 
@@ -482,14 +507,22 @@ export class EventsService {
         );
       }
 
-      await this.host.tx.event.update({ where: { id: eventId }, data }).catch(mapWriteError);
+      const updated = await this.host.tx.event
+        .update({ where: { id: eventId }, data })
+        .catch(mapWriteError);
 
       // Raising capacity frees seats, which is the same event as a
       // cancellation freeing one, and takes the same path. The headroom is
       // the NEW capacity minus what is already confirmed, read under the lock
       // taken at the top of this transaction.
       if (body.capacity !== undefined && body.capacity > event.capacity) {
-        await promoteFromWaitlist(this.host, this.audit, eventId, body.capacity - event.confirmedCount);
+        await promoteFromWaitlist(
+          this.host,
+          this.audit,
+          this.notifications,
+          eventId,
+          body.capacity - event.confirmedCount,
+        );
       }
 
       await this.audit.record({
@@ -501,6 +534,24 @@ export class EventsService {
         ...(reason ? { reason } : {}),
         after: data,
       });
+
+      // Spec 7.7, material event change. The dedupe subject carries the
+      // change's own timestamp, so a second, different move of the date
+      // notifies again rather than being absorbed as a repeat of the first.
+      const changed = materialChanges(event, data);
+      if (changed.length > 0) {
+        await this.notifyRegistered(eventId, 'event.changed', `${eventId}:${updated.updatedAt.toISOString()}`, {
+          eventId,
+          eventTitle: updated.title,
+          clubId: event.clubId,
+          changed,
+          startsAt: updated.startsAt.toISOString(),
+          endsAt: updated.endsAt.toISOString(),
+          venue: updated.venue,
+          onlineUrl: updated.onlineUrl,
+          timezone: updated.timezone,
+        });
+      }
 
       return this.readDetail(actor, eventId);
     });
@@ -527,6 +578,29 @@ export class EventsService {
         before: { status: event.status },
         after: { status: 'PUBLISHED' },
       });
+
+      // Spec 7.7, event published: the club's active members. Not every
+      // student in the university, and not the club's officers by virtue of
+      // their appointment — acceptance grants membership too (spec 7.2), so
+      // an officer is already in this set.
+      const members = await this.host.tx.clubMembership.findMany({
+        where: { clubId: event.clubId, status: 'ACTIVE' },
+        select: { userId: true },
+      });
+      await this.notifications.recordMany(
+        members.map((m) => ({
+          userId: m.userId,
+          type: 'event.published' as const,
+          subject: eventId,
+          payload: {
+            eventId,
+            eventTitle: event.title,
+            clubId: event.clubId,
+            clubName: event.club.name,
+            startsAt: event.startsAt.toISOString(),
+          },
+        })),
+      );
     });
 
     // An event published after its registration window already opened and
@@ -560,8 +634,39 @@ export class EventsService {
         before: { status: event.status },
         after: { status: 'CANCELLED' },
       });
+
+      // Spec 7.7, event cancellation.
+      await this.notifyRegistered(eventId, 'event.cancelled', eventId, {
+        eventId,
+        eventTitle: event.title,
+        clubId: event.clubId,
+        reason: body.reason,
+        startsAt: event.startsAt.toISOString(),
+      });
     });
 
     return this.readDetail(actor, eventId);
+  }
+
+  /**
+   * Everyone still holding a place on the event, notified inside the
+   * caller's transaction. CANCELLED registrations are excluded: somebody who
+   * withdrew is not owed news about a venue change. REMOVED rows are kept —
+   * the person was told they are coming and then taken off by an officer,
+   * and a cancellation still concerns them.
+   */
+  private async notifyRegistered(
+    eventId: string,
+    type: 'event.changed' | 'event.cancelled',
+    subject: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const holders = await this.host.tx.eventRegistration.findMany({
+      where: { eventId, status: { not: 'CANCELLED' } },
+      select: { userId: true },
+    });
+    await this.notifications.recordMany(
+      holders.map((r) => ({ userId: r.userId, type, subject, payload })),
+    );
   }
 }

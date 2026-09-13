@@ -10,7 +10,22 @@ export type RoutedProblem = {
 const FIELDS = {
   login: ['email', 'password'],
   signup: ['fullName', 'email', 'password'],
+  forgot: ['email'],
+  reset: ['token', 'password'],
 } as const;
+
+/**
+ * Which control a bare 401 belongs on. On the sign-in form it is the
+ * password; on the reset form it is the link, and putting "This reset link is
+ * no longer valid" under the new password sends the user to change a field
+ * that was never the problem.
+ */
+const UNAUTHORIZED_FIELD: Record<keyof typeof FIELDS, string> = {
+  login: 'password',
+  signup: 'password',
+  forgot: 'email',
+  reset: 'token',
+};
 
 /**
  * Places a failure where the user can act on it, and always in the API's own
@@ -37,7 +52,7 @@ export function routeProblem(
   // A 401 and a 409 carry no errors[], but each still names one control.
   const detail = problem.detail ?? problem.title;
   if (problem.errors.length === 0) {
-    if (problem.status === 401) fields.password = detail;
+    if (problem.status === 401) fields[UNAUTHORIZED_FIELD[mode]] = detail;
     if (problem.status === 409) fields.email = detail;
   }
 

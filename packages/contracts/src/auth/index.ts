@@ -73,3 +73,24 @@ export type SignupBody = z.infer<typeof signupBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type SessionClubRole = z.infer<typeof sessionClubRoleSchema>;
 export type SessionUser = z.infer<typeof sessionUserSchema>;
+
+/**
+ * POST /auth/forgot-password. Always answers 202, whether or not the address
+ * resolves: an endpoint that answers differently is an account-existence
+ * oracle. The timing is not equalised, which is a known and accepted limit;
+ * the protection here is that the answer carries nothing.
+ */
+export const forgotPasswordBodySchema = z.object({ email: emailSchema });
+
+/**
+ * POST /auth/reset-password. The raw token comes back from the email link and
+ * is never stored anywhere: only its sha256 lives in password_reset_token,
+ * exactly as refresh_token already does.
+ */
+export const resetPasswordBodySchema = z.object({
+  token: z.string().min(1, 'A reset token is required.'),
+  password: z.string().min(PASSWORD_MIN, `Password must be at least ${PASSWORD_MIN} characters.`),
+});
+
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;
+export type ResetPasswordBody = z.infer<typeof resetPasswordBodySchema>;

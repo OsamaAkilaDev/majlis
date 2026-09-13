@@ -206,6 +206,55 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByRole('link', { name: 'Introduction to ROS 2' })).toBeVisible();
       await scan(page);
     });
+
+    test('the password reset request form has no violations', async ({ page }) => {
+      await page.goto('/forgot-password');
+      await scan(page);
+    });
+
+    test('the new password form has no violations', async ({ page }) => {
+      // Carries the segment meter on a label, on the deep auth ground.
+      await page.goto('/reset-password?token=whatever');
+      await expect(page.getByText('12+ characters')).toBeVisible();
+      await scan(page);
+    });
+
+    test('the student inbox has no violations', async ({ page }) => {
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/me/notifications');
+      await expect(page.getByRole('button', { name: 'Unread' })).toBeVisible();
+      await scan(page);
+    });
+
+    test('the admin metrics charts have no violations', async ({ page }) => {
+      // An inline SVG chart is where a graphic ends up with no accessible
+      // name at all, which is a 1.1.1 failure a 'renders' test never sees.
+      await signIn(page, 'admin@uni.ac.ae');
+      await page.goto('/admin/metrics');
+      await expect(page.getByRole('img', { name: /Clubs by status/ })).toBeVisible();
+      await scan(page);
+    });
+
+    test('the admin exports screen has no violations', async ({ page }) => {
+      await signIn(page, 'admin@uni.ac.ae');
+      await page.goto('/admin/exports');
+      await expect(page.getByRole('button', { name: 'Events' })).toBeVisible();
+      await scan(page);
+    });
+
+    test('the admin audit log has no violations', async ({ page }) => {
+      await signIn(page, 'admin@uni.ac.ae');
+      await page.goto('/admin/audit');
+      await expect(page.getByRole('columnheader', { name: 'When (UTC)' })).toBeVisible();
+      await scan(page);
+    });
+
+    test('a club report has no violations', async ({ page }) => {
+      await signIn(page, 'lead@uni.ac.ae');
+      await page.goto(`/manage/${await officerClubId(page)}/reports`);
+      await expect(page.getByRole('img', { name: /Attendance/ })).toBeVisible();
+      await scan(page);
+    });
   });
 }
 

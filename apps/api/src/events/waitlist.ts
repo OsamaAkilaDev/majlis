@@ -1,4 +1,5 @@
 import type { AuditService } from '../audit/audit.service';
+import type { NotificationService } from '../notifications/notification.service';
 import type { TransactionHost } from '../prisma/transaction.host';
 
 /**
@@ -21,6 +22,7 @@ import type { TransactionHost } from '../prisma/transaction.host';
 export async function promoteFromWaitlist(
   host: TransactionHost,
   audit: AuditService,
+  notifications: NotificationService,
   eventId: string,
   seats: number,
 ): Promise<number> {
@@ -54,6 +56,21 @@ export async function promoteFromWaitlist(
       after: { status: 'CONFIRMED', userId: row.user_id, eventId },
     });
   }
+
+  // Spec 7.7, waitlist promotion. Same transaction as the promotion itself,
+  // so a rolled-back promotion cannot leave somebody told they have a seat.
+  const { title } = await host.tx.event.findUniqueOrThrow({
+    where: { id: eventId },
+    select: { title: true },
+  });
+  await notifications.recordMany(
+    queued.map((row) => ({
+      userId: row.user_id,
+      type: 'registration.promoted' as const,
+      subject: row.id,
+      payload: { registrationId: row.id, eventId, eventTitle: title, status: 'CONFIRMED' },
+    })),
+  );
 
   await host.tx.event.update({
     where: { id: eventId },

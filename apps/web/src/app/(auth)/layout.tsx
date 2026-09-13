@@ -1,12 +1,6 @@
-import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { landingFor } from '@/lib/routing';
-import { getSessionUser } from '@/lib/session';
 
-export default async function AuthLayout({ children }: { children: ReactNode }) {
-  const user = await getSessionUser();
-  if (user) redirect(landingFor(user));
-
+export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <main
       id="main"

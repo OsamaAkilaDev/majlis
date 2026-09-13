@@ -3,7 +3,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { LOG_REDACT_PATHS, redactedReqSerializer } from './log-redaction';
 import { envSchema } from './env.schema';
-import { SWEEP_SECRET_HEADER } from './sweep-header';
+import { NOTIFICATION_SWEEP_SECRET_HEADER, SWEEP_SECRET_HEADER } from './sweep-header';
 
 describe('LOG_REDACT_PATHS', () => {
   it('covers every path a secret is known to travel', () => {
@@ -20,8 +20,66 @@ describe('LOG_REDACT_PATHS', () => {
       '*.headers.authorization',
       'req.headers["x-lifecycle-sweep-secret"]',
       '*.headers["x-lifecycle-sweep-secret"]',
+      'req.headers["x-notification-sweep-secret"]',
+      '*.headers["x-notification-sweep-secret"]',
+      'RESEND_API_KEY',
+      '*.RESEND_API_KEY',
     ]);
   });
+
+  it('strips the notification sweep secret from a request log line', () => {
+    // The same defect Stage 5 shipped with the lifecycle sweep: autoLogging
+    // serializes the whole headers object, so without these paths every call
+    // to the endpoint, failed guesses included, logs the secret verbatim.
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+    logger.info({
+      req: { headers: { [NOTIFICATION_SWEEP_SECRET_HEADER]: 'SUPERSECRETVALUE' } },
+      err: { headers: { [NOTIFICATION_SWEEP_SECRET_HEADER]: 'SUPERSECRETVALUE' } },
+    });
+
+    expect(lines.join('')).not.toContain('SUPERSECRETVALUE');
+  });
+
+  it('strips RESEND_API_KEY from a logged configuration object, at the top level and one below', () => {
+    // The Resend key never travels in a request header, so no req.headers
+    // path would ever see it. The shape that puts it in a line is an object
+    // carrying configuration: a bootstrap dump, or an error with the
+    // environment attached.
+    //
+    // Both depths, because pino's leading `*` matches exactly ONE level
+    // (verified against pino@10.3.1, not assumed): the bare path covers the
+    // top level and the wildcard covers `env.` / `config.` / `err.`. Neither
+    // covers a third level, which is why the two paths are a pair.
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+    logger.info(
+      {
+        RESEND_API_KEY: 're_SUPERSECRETVALUE',
+        env: { RESEND_API_KEY: 're_SUPERSECRETVALUE' },
+      },
+      'boot',
+    );
+
+    const output = lines.join('');
+    expect(output).toContain('boot');
+    expect(output).not.toContain('SUPERSECRETVALUE');
+  });
+
 
   it('strips the sweep secret from a request log line', () => {
     // Spec 11 lists the sweep secret with session secrets and signing keys as
