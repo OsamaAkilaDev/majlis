@@ -93,14 +93,18 @@ export class ClubsController {
   @Post('clubs/:clubId/logo-upload-url')
   @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
   @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
-  logoUploadUrl(@Param('clubId') clubId: string): Promise<SignedUpload> {
-    return this.clubs.mintEditUpload(clubId, 'club-logo');
+  @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That club is archived.', type: ProblemDetailsDto })
+  logoUploadUrl(@Actor() actor: User, @Param('clubId') clubId: string): Promise<SignedUpload> {
+    return this.clubs.mintClubImageUpload(actor, clubId, 'club-logo');
   }
 
   @Post('clubs/:clubId/banner-upload-url')
   @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
   @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
-  bannerUploadUrl(@Param('clubId') clubId: string): Promise<SignedUpload> {
-    return this.clubs.mintEditUpload(clubId, 'club-banner');
+  @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'That club is archived.', type: ProblemDetailsDto })
+  bannerUploadUrl(@Actor() actor: User, @Param('clubId') clubId: string): Promise<SignedUpload> {
+    return this.clubs.mintClubImageUpload(actor, clubId, 'club-banner');
   }
 }

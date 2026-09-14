@@ -19,7 +19,7 @@ import { conflictOn } from '../../common/prisma-constraint';
 import type { ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
-import { assertCanReadRoster } from '../roster-access';
+import { assertCanReadRoster, canReadRosterEmail, type RosterReader } from '../roster-access';
 import { assertAcceptsEdits } from '../club-status';
 import { loadClub } from '../load-club';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
@@ -59,14 +59,20 @@ function toInvitation(row: InvitationRow): Invitation {
   };
 }
 
-/** Maps a row plus the caller-supplied membership fact onto the wire shape. */
-function toAppointment(row: AppointmentWithUser, hasLeftClub: boolean): Appointment {
+/**
+ * Maps a row plus the caller-supplied membership fact onto the wire shape.
+ *
+ * `withEmail` defaults to true because every caller but the team list is
+ * either an officer-only write path that has already cleared
+ * `club:team-manage`, or the invitee acting on their own appointment.
+ */
+function toAppointment(row: AppointmentWithUser, hasLeftClub: boolean, withEmail = true): Appointment {
   return {
     id: row.id,
     clubId: row.clubId,
     userId: row.userId,
     userFullName: row.user.fullName,
-    userEmail: row.user.email,
+    ...(withEmail ? { userEmail: row.user.email } : {}),
     role: row.role,
     status: row.status,
     invitationExpiresAt: row.invitationExpiresAt?.toISOString() ?? null,
@@ -235,8 +241,11 @@ export class TeamService {
   }
 
   /** GET /clubs/:clubId/team. Same cursor pattern as ClubsService.list. */
-  async list(actor: { id: string; platformRole: string }, clubId: string, query: CursorPageQuery): Promise<AppointmentPage> {
+  async list(actor: RosterReader, clubId: string, query: CursorPageQuery): Promise<AppointmentPage> {
     await assertCanReadRoster(this.host, actor, clubId);
+    // The route carries no @RequirePermission (the list is open to any
+    // signed-in user); this is the whole gate on the addresses in it.
+    const withEmail = await canReadRosterEmail(this.host, actor, clubId, 'club:team-manage');
 
     const rows = await this.host.tx.clubTeamAppointment.findMany({
       where: { clubId },
@@ -255,7 +264,7 @@ export class TeamService {
     const activeUserIds = new Set(activeMemberships.map((m) => m.userId));
 
     return {
-      items: items.map((r) => toAppointment(r, !activeUserIds.has(r.userId))),
+      items: items.map((r) => toAppointment(r, !activeUserIds.has(r.userId), withEmail)),
       nextCursor,
     };
   }

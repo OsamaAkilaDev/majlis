@@ -230,9 +230,23 @@ export class AuthService {
     await this.host.run(async () => {
       const row = await this.host.tx.refreshToken.findUnique({ where: { tokenHash: hash } });
       if (!row) return;
+      const now = new Date();
       await this.host.tx.refreshToken.updateMany({
         where: { familyId: row.familyId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
+      });
+      // Revoking the family ends the ability to RENEW; the access token
+      // already in the cookie is a stateless 15 minute JWT and outlived the
+      // logout without this. Same mechanism a password reset uses, in the
+      // same transaction as the revocation, so a logout cannot half-happen.
+      //
+      // It is account-wide rather than per family, because the stamp is a
+      // single instant on the user. Another device's refresh token survives,
+      // so that device renews itself on its next request rather than being
+      // signed out.
+      await this.host.tx.user.update({
+        where: { id: row.userId },
+        data: { sessionsInvalidatedAt: now },
       });
     });
   }
@@ -334,13 +348,13 @@ export class AuthService {
       // the caller learns nothing about the account from either.
       if (user.status !== 'ACTIVE') throw new UnauthorizedError(RESET_LINK_INVALID);
 
-      // passwordChangedAt in the same write, not a second one: SessionGuard
-      // refuses every access token issued at or before it, and that is the
-      // only thing that ends a session already in progress. A reset that
-      // leaves a stolen 15 minute JWT working is not a reset.
+      // sessionsInvalidatedAt in the same write, not a second one:
+      // SessionGuard refuses every access token issued at or before it, and
+      // that is the only thing that ends a session already in progress. A
+      // reset that leaves a stolen 15 minute JWT working is not a reset.
       await this.host.tx.user.update({
         where: { id: user.id },
-        data: { passwordHash, passwordChangedAt: now },
+        data: { passwordHash, sessionsInvalidatedAt: now },
       });
       const { count: revoked } = await this.host.tx.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },

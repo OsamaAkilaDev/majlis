@@ -41,12 +41,14 @@ model User {
   avatarUrl    String?      @map("avatar_url")
   status       UserStatus   @default(ACTIVE)
   platformRole PlatformRole @default(STUDENT) @map("platform_role")
-  /// When this account's password last changed. Null for an account that has
-  /// never reset one. SessionGuard refuses any access token issued at or
-  /// before it, which is what ends a session already in progress: refresh
-  /// tokens are revocable rows, but the access token is a stateless JWT with
-  /// nothing else to check it against.
-  passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz(3)
+  /// The instant before which every access token for this account is refused.
+  /// Null for an account nothing has ever invalidated. SessionGuard compares
+  /// each token's `iat` against it, which is the only thing that can end a
+  /// session already in progress: refresh tokens are revocable rows, but the
+  /// access token is a stateless JWT with nothing else to check it against.
+  /// Stamped by a password reset and by logout, which is why it is not named
+  /// after either of them.
+  sessionsInvalidatedAt DateTime? @map("sessions_invalidated_at") @db.Timestamptz(3)
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 

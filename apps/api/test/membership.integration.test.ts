@@ -435,6 +435,41 @@ describe('GET /clubs/:clubId/members', () => {
     expect(activeRes.body.items).toHaveLength(1);
     expect(activeRes.body.items[0].clubRoles).toEqual(['MARKETING']);
   });
+
+  /**
+   * The route carries no @RequirePermission, and assertCanReadRoster returns
+   * immediately for any ACTIVE club, so before Stage 8 this handed every
+   * member's address to any signed-in account. Two readers in one test:
+   * asserting only the Lead's copy would pass against a handler that always
+   * sends the address, and asserting only the member's would pass against
+   * one that never does.
+   */
+  it('sends userEmail to a Lead and omits it entirely for a member with no role', async () => {
+    const club = await makeClub({ membershipPolicy: 'OPEN' });
+    const lead = await makeActiveLead(app, club.id);
+    const subject = await loginAsStudent(app);
+    await join(subject.sessionCookie, club.id);
+    const reader = await loginAsStudent(app);
+    await join(reader.sessionCookie, club.id);
+
+    const read = (cookie: string) =>
+      request(app.getHttpServer()).get(`${API_PREFIX}/clubs/${club.id}/members`).set('Cookie', cookie);
+
+    const asLead = await read(lead.sessionCookie);
+    const asMember = await read(reader.sessionCookie);
+
+    expect(asLead.status).toBe(200);
+    expect(asMember.status).toBe(200);
+
+    const rowFor = (res: request.Response) =>
+      res.body.items.find((m: { userId: string }) => m.userId === subject.userId);
+
+    expect(rowFor(asLead).userEmail).toBeTruthy();
+    // The list itself stays open: the other member still sees the roster.
+    expect(rowFor(asMember).userFullName).toBeTruthy();
+    // Omitted, not nulled.
+    expect(rowFor(asMember)).not.toHaveProperty('userEmail');
+  });
 });
 
 describe('GET /me/clubs', () => {

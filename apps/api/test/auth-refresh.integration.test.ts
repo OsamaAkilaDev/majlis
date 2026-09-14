@@ -2,12 +2,16 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX } from '../src/config/api-prefix';
+import { SESSION_COOKIE } from '../src/auth/cookies';
 import { TokensService } from '../src/auth/tokens.service';
 import { allCookiesOf, rawRefreshTokenFrom, refresh, refreshCookieOf, signup } from './auth-helpers';
 import { createTestApp } from './app';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
 const LOGOUT_PATH = `${API_PREFIX}/auth/logout`;
+const ME_PATH = `${API_PREFIX}/auth/me`;
+
+const me = (cookie: string) => request(app.getHttpServer()).get(ME_PATH).set('Cookie', cookie);
 
 const prisma = createTestPrisma();
 
@@ -175,5 +179,28 @@ describe('POST /auth/logout', () => {
     const rows = await prisma.refreshToken.findMany({ where: { userId: s.body.id } });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.revokedAt).not.toBeNull();
+  });
+
+  it('refuses the pre-logout access token, which revocation alone cannot reach', async () => {
+    const s = await signup(app, {});
+    const setCookie = s.headers['set-cookie'] as unknown as string[];
+    const sessionCookie = setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(';')[0]!;
+
+    // Live before, so a 401 afterwards cannot be blamed on the cookie never
+    // having worked.
+    expect((await me(sessionCookie)).status).toBe(200);
+
+    expect(
+      (await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', refreshCookieOf(s))).status,
+    ).toBe(204);
+
+    // Catches a logout that revokes the refresh family and stops there: the
+    // access token is a stateless 15 minute JWT, so the session it belongs
+    // to outlived the logout by up to fifteen minutes.
+    expect((await me(sessionCookie)).status).toBe(401);
+    // SessionGuard 401s a suspended account with the same message, so the
+    // account has to be shown still ACTIVE or this test does not say which
+    // branch refused it.
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: s.body.id } })).status).toBe('ACTIVE');
   });
 });

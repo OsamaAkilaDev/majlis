@@ -1,5 +1,5 @@
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { pgAdapter } from '../src/prisma/pg-adapter';
 
 /**
  * Resolves the test connection string, refusing to run against anything
@@ -33,7 +33,7 @@ function deriveFromDatabaseUrl(): string {
 }
 
 export function createTestPrisma(): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: testDatabaseUrl() }) });
+  return new PrismaClient({ adapter: pgAdapter(testDatabaseUrl()) });
 }
 
 export async function disconnectTestPrisma(prisma: PrismaClient): Promise<void> {

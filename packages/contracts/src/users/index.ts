@@ -16,16 +16,21 @@ export const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
  * every auth response, and `PATCH /users/{id}/status` — i.e. into an admin's
  * browser for the student they just suspended. `new URL(v).protocol` is the
  * platform's own scheme parser, safer here than a hand-rolled regex.
+ *
+ * `https:` only: a `http:` avatar loads over plain transport into an
+ * authenticated page, which every browser reports as mixed content and most
+ * simply block. The length bound is what stops the column from being used as
+ * free storage by a `data:`-length URL that happens to start with https.
  */
-const httpUrlSchema = z.string().trim().refine(
+const httpsUrlSchema = z.string().trim().max(2048).refine(
   (v) => {
     try {
-      return ['http:', 'https:'].includes(new URL(v).protocol);
+      return new URL(v).protocol === 'https:';
     } catch {
       return false;
     }
   },
-  { message: 'must be an http:// or https:// URL' },
+  { message: 'must be an https:// URL' },
 );
 
 /**
@@ -56,7 +61,7 @@ export const meSchema = userProfileSchema;
  */
 export const patchMeBodySchema = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
-  avatarUrl: httpUrlSchema.nullable().optional(),
+  avatarUrl: httpsUrlSchema.nullable().optional(),
 });
 
 /** One row of `GET /users`' admin listing. */

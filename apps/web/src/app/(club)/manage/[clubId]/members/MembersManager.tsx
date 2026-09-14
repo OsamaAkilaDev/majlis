@@ -128,7 +128,7 @@ export function MembersManager({
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium text-ink">{m.userFullName}</span>
-                        <span className="text-label text-ink-2">{m.userEmail}</span>
+                        {m.userEmail ? <span className="text-label text-ink-2">{m.userEmail}</span> : null}
                       </div>
                     </TableCell>
                     <TableCell className="tabular text-ink-2">{mounted ? new Date(m.requestedAt).toLocaleDateString() : ''}</TableCell>
@@ -183,7 +183,7 @@ export function MembersManager({
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium text-ink">{m.userFullName}</span>
-                      <span className="text-label text-ink-2">{m.userEmail}</span>
+                      {m.userEmail ? <span className="text-label text-ink-2">{m.userEmail}</span> : null}
                     </div>
                   </TableCell>
                   <TableCell>

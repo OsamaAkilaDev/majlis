@@ -43,7 +43,7 @@ export class TokensService {
   /**
    * Returns the `sub` and `iat` claims, or throws UnauthorizedError for any
    * failure. `iat` is UNIX seconds, as JWT defines it, and is what
-   * SessionGuard compares against `user.passwordChangedAt`.
+   * SessionGuard compares against `user.sessionsInvalidatedAt`.
    */
   async verifyAccessToken(token: string): Promise<{ userId: string; issuedAt: number }> {
     try {

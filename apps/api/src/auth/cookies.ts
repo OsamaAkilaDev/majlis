@@ -1,7 +1,25 @@
 import type { CookieOptions } from 'express';
 
-export const SESSION_COOKIE = 'majlis_session';
-export const REFRESH_COOKIE = 'majlis_refresh';
+/**
+ * The `__Host-` prefix a browser refuses to accept on any cookie that is not
+ * Secure, Path=/ and free of a Domain attribute. Both cookies already are all
+ * three, and the prefix is what stops a sibling subdomain from overwriting
+ * either of them.
+ *
+ * Production only, because it requires HTTPS and both the dev loop and
+ * Playwright run over plain HTTP, where a prefixed cookie is silently
+ * dropped and nobody can sign in. `apps/web/src/lib/routing.ts` derives the
+ * same two names the same way; the halves must agree or middleware stops
+ * seeing the session.
+ */
+export function hostPrefix(nodeEnv: string | undefined): string {
+  return nodeEnv === 'production' ? '__Host-' : '';
+}
+
+const PREFIX = hostPrefix(process.env.NODE_ENV);
+
+export const SESSION_COOKIE = `${PREFIX}majlis_session`;
+export const REFRESH_COOKIE = `${PREFIX}majlis_refresh`;
 
 /**
  * The site root, not `${API_PREFIX}/auth`. A path-scoped cookie is not sent on

@@ -47,6 +47,14 @@
      its own value rather than following --bg. */
   --auth-ground: #0B4C44;
 
+  /* The focus ring, two colours rather than one. No flat colour clears 3:1
+     against both the paper surfaces and the deep auth ground at once, so the
+     ring is a gold outline with an ink halo filling its offset: whichever
+     ground it lands on, one of the two reads against it. Fixed values, not
+     theme tokens, for the same reason --auth-ground is. */
+  --focus: #F5C24B;
+  --focus-contrast: #1C1713;
+
   color-scheme: light;
 }
 
@@ -119,6 +127,8 @@
   --color-info-fg: var(--info-fg);
   --color-mute-soft: var(--mute-soft);
   --color-mute-fg: var(--mute-fg);
+  --color-focus: var(--focus);
+  --color-focus-contrast: var(--focus-contrast);
 
   --font-sans: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
@@ -194,6 +204,15 @@
 
   /* Figures line up everywhere a count, capacity, time or ID is shown. */
   .tabular { font-variant-numeric: tabular-nums; }
+}
+
+/* For anything that can land on a ground the primary ring cannot be seen
+   against, the skip link above all: it is the first thing a keyboard reaches
+   on /login, where the ground is --auth-ground. */
+@utility focus-ring {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-focus-contrast);
 }
 
 @utility lattice {

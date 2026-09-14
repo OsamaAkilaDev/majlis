@@ -316,6 +316,43 @@ describe('field permissions on the poster upload route', () => {
 
     expect(res.status).toBe(201);
   });
+
+  /**
+   * The mint overwrites the live public object at events/<id>/poster.webp, so
+   * it is an edit and takes PATCH /events/:eventId's status gate. Before
+   * Stage 8 it refused nothing, which made it the one edit path a cancelled
+   * or completed event still accepted, and nothing recorded it.
+   */
+  it('refuses a cancelled event and records the mint it allows', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const cancelled = await mkEvent(club.id, lead.userId, { status: 'CANCELLED' });
+
+    const refused = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/events/${cancelled.id}/poster-upload-url`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(refused.status).toBe(422);
+    expect(refused.body.detail).toBe('A cancelled event can no longer be edited.');
+
+    const live = await mkEvent(club.id, lead.userId);
+    const allowed = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/events/${live.id}/poster-upload-url`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(allowed.status).toBe(201);
+    // The bytes never pass through the API, so this row is the only record
+    // the object was replaced at all.
+    const rows = await prisma.auditLog.findMany({
+      where: { entityId: live.id, action: 'event.upload_url_minted' },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actorUserId).toBe(lead.userId);
+    // Nothing is recorded for the refusal: that transaction rolled back.
+    expect(
+      await prisma.auditLog.count({ where: { entityId: cancelled.id, action: 'event.upload_url_minted' } }),
+    ).toBe(0);
+  });
 });
 
 describe('admin override reason', () => {

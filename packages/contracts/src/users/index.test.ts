@@ -65,8 +65,14 @@ describe('patchMeBodySchema — avatarUrl', () => {
     expect(patchMeBodySchema.safeParse({ avatarUrl: 'https://example.test/me.png' }).success).toBe(true);
   });
 
-  it('accepts an http URL', () => {
-    expect(patchMeBodySchema.safeParse({ avatarUrl: 'http://example.test/me.png' }).success).toBe(true);
+  it('rejects an http URL, and anything past the length bound', () => {
+    // http: was accepted until Stage 8. An avatar served over plain
+    // transport into an authenticated page is mixed content, which most
+    // browsers block outright, so it is a broken image rather than a
+    // working one.
+    expect(patchMeBodySchema.safeParse({ avatarUrl: 'http://example.test/me.png' }).success).toBe(false);
+    const long = `https://example.test/${'a'.repeat(2048)}.png`;
+    expect(patchMeBodySchema.safeParse({ avatarUrl: long }).success).toBe(false);
   });
 
   it('accepts null explicitly, distinct from omitting the field', () => {

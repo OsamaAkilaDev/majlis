@@ -1,9 +1,9 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
 import type { Env } from '../config/env.schema';
+import { pgAdapter } from './pg-adapter';
 
 /**
  * Prisma 7 requires a driver adapter. On Vercel the connection string points
@@ -15,7 +15,7 @@ import type { Env } from '../config/env.schema';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor(config: ConfigService<Env, true>) {
     super({
-      adapter: new PrismaPg({ connectionString: config.get('DATABASE_URL', { infer: true }) }),
+      adapter: pgAdapter(config.get('DATABASE_URL', { infer: true })),
     });
   }
 
