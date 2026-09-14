@@ -335,6 +335,10 @@ model Event {
   @@unique([clubId, slug])
   @@index([status, startsAt])
   @@index([clubId, status])
+  // `?upcoming=true` is `endsAt >= now()` and every list sorts by id, so
+  // without the id column the planner walks the primary key filtering out
+  // every historical event: linear in accumulated history, and growing.
+  @@index([endsAt, id])
   @@map("event")
 }
 
@@ -536,5 +540,12 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorUserId])
   @@index([createdAt])
+  // The id column is what makes these usable. GET /audit orders by id DESC,
+  // so on the single-column actorUserId index alone the planner preferred a
+  // backward primary-key walk and filtered the whole table out of it: the
+  // cost went UP the more selective the filter was. Both composites serve
+  // the filter and the ordering in one scan.
+  @@index([actorUserId, id(sort: Desc)])
+  @@index([entityType, id(sort: Desc)])
   @@map("audit_log")
 }

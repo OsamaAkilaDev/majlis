@@ -351,6 +351,22 @@ export class EventsService {
     const filters: Prisma.EventWhereInput = {
       ...(query.clubId ? { clubId: query.clubId } : {}),
       ...(query.status ? { status: query.status } : {}),
+      // ponytail: `q` and `upcoming` both have an index behind them
+      // (event_title_trgm_idx, event_ends_at_id_idx) and both are only
+      // PARTLY used, for the same reason: this list orders by `id`, and
+      // neither index delivers that order, so the planner keeps choosing a
+      // primary-key walk whenever it estimates enough matches to hit the
+      // page size quickly. Measured on 22,000 events:
+      //
+      //   q, zero or rare match  8.5 ms / 1,016 buffers -> 0.02 ms / 11
+      //   q, common term         9.1 ms / 1,182 buffers -> 8.4 ms / 1,182
+      //   upcoming=true          3.4 ms / 1,295 buffers -> 2.8 ms / 1,295
+      //
+      // The rest is behind the ordering, not the indexes: ordering by
+      // `(ends_at, id)` takes upcoming=true to 0.02 ms / 5 buffers, and a
+      // trigram-similarity order does the same for a common term. Both mean
+      // this endpoint paginates on a different key, which changes the cursor
+      // contract every caller holds. Left for a stage that can carry it.
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
       ...(query.upcoming ? { endsAt: { gte: new Date() } } : {}),
     };

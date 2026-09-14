@@ -732,3 +732,53 @@ describe('GET /events/:eventId/assignments', () => {
     expect(second.body.nextCursor).toBeNull();
   });
 });
+
+describe('GET /events?q=', () => {
+  /**
+   * The trigram GIN index on `event.title` (20260914175400_perf_indexes) is a
+   * pure optimisation, so this asserts the SET of titles the filter matches,
+   * not its speed. An index that changes results is not an optimisation, and
+   * `gin_trgm_ops` has two ways of changing them that a "finds the event"
+   * test would sail past:
+   *
+   * - a term shorter than three characters produces no trigram, so the
+   *   planner must fall back to the sequential ILIKE. A setup that let the
+   *   index answer alone returns nothing for `ni`.
+   * - `%` and `_` are ILIKE wildcards, and the filter wraps the term in `%`
+   *   without escaping it, so `_` still matches any single character. The
+   *   index must not narrow that.
+   */
+  async function titlesFor(cookie: string, q: string): Promise<string[]> {
+    const res = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/events?q=${encodeURIComponent(q)}`)
+      .set('Cookie', cookie);
+    expect(res.status).toBe(200);
+    return (res.body.items as { title: string }[]).map((e) => e.title).sort();
+  }
+
+  it('matches the same titles a sequential ILIKE would', async () => {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    for (const title of ['Robotics Night', 'robotics workshop', 'Night Market', 'Chess Open']) {
+      await mkEvent(club.id, lead.userId, { status: 'PUBLISHED', title });
+    }
+    const student = await loginAsStudent(app);
+    const cookie = student.sessionCookie;
+
+    // Case-insensitive, and a substring that starts mid-word.
+    expect(await titlesFor(cookie, 'robot')).toEqual(['Robotics Night', 'robotics workshop']);
+    expect(await titlesFor(cookie, 'ROBOTICS')).toEqual(['Robotics Night', 'robotics workshop']);
+    expect(await titlesFor(cookie, 'otics')).toEqual(['Robotics Night', 'robotics workshop']);
+
+    // Spans two words, so no single trigram covers it.
+    expect(await titlesFor(cookie, 'Robotics N')).toEqual(['Robotics Night']);
+
+    // Below the three-character trigram floor.
+    expect(await titlesFor(cookie, 'ni')).toEqual(['Night Market', 'Robotics Night']);
+
+    // `_` is still an ILIKE wildcard, matching the space in 'Chess Open'.
+    expect(await titlesFor(cookie, 'chess_open')).toEqual(['Chess Open']);
+
+    expect(await titlesFor(cookie, 'quantum')).toEqual([]);
+  });
+});
