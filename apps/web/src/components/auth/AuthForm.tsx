@@ -1,6 +1,7 @@
 'use client';
 
-import { PASSWORD_MIN, type SessionUser } from '@majlis/contracts';
+import type { SessionUser } from '@majlis/contracts';
+import { PASSWORD_MIN } from '@majlis/contracts/constants';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';

@@ -1,6 +1,7 @@
 'use client';
 
-import { EXPORT_CAP_NOTICE, type EventSummary } from '@majlis/contracts';
+import type { EventSummary } from '@majlis/contracts';
+import { EXPORT_CAP_NOTICE } from '@majlis/contracts/constants';
 import { DownloadSimple } from '@phosphor-icons/react/ssr';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';

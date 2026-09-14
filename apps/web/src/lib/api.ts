@@ -1,4 +1,4 @@
-import { problemDetailsSchema, type ProblemFieldError } from '@majlis/contracts';
+import { problemDetailsSchema, type ProblemFieldError } from '@majlis/contracts/problem';
 
 export const API_BASE = '/api/v1';
 

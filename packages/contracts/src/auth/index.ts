@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { PASSWORD_MIN } from '../constants';
+
+export { PASSWORD_MIN };
 
 /**
  * Lowercased and trimmed at the boundary, and used for BOTH directions:
@@ -27,9 +30,6 @@ export const emailSchema = z
   .trim()
   .email()
   .transform((v) => v.toLowerCase());
-
-/** Exported so the signup form states the rule from the schema that enforces it. */
-export const PASSWORD_MIN = 12;
 
 export const signupBodySchema = z.object({
   email: emailSchema,

@@ -1,10 +1,10 @@
-import {
-  isCapped,
-  type AuditListQuery,
-  type AuditPage,
-  type ClubReport,
-  type OverviewReport,
+import type {
+  AuditListQuery,
+  AuditPage,
+  ClubReport,
+  OverviewReport,
 } from '@majlis/contracts';
+import { isCapped } from '@majlis/contracts/constants';
 import { apiFetch, apiText, qs } from './api';
 
 export const overviewReport = (): Promise<OverviewReport> => apiFetch('/reports/overview');
