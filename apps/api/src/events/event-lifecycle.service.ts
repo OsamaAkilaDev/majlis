@@ -7,16 +7,27 @@ import { NotFoundError } from '../common/problem/domain-error';
 import { TransactionHost } from '../prisma/transaction.host';
 import { CHAIN, assertTransition, dueStatus, type DueStatusInput } from './event-status';
 
-/** Everything `dueStatus` reads, plus the id to write back to. */
+/**
+ * Everything `dueStatus` reads, plus the id to write back to, plus the three
+ * columns `advanceAndRead`'s caller would otherwise read again a moment
+ * later. All four extras are scalars on the same row, so they cost nothing
+ * beyond the bytes: a relation here would be a second statement.
+ */
 const LIFECYCLE_SELECT = {
   id: true,
+  clubId: true,
   status: true,
+  endsAt: true,
   registrationClosesAt: true,
   checkInOpensAt: true,
   checkInClosesAt: true,
 } as const;
 
-type LifecycleRow = DueStatusInput & { id: string };
+export type LifecycleRow = DueStatusInput & {
+  id: string;
+  clubId: string;
+  endsAt: Date;
+};
 
 /** A sweep that found more than this has a bigger problem than a slow run. */
 const SWEEP_LIMIT = 500;
@@ -48,6 +59,20 @@ export class EventLifecycleService {
    * the refusal would roll the advance back along with itself.
    */
   async advance(eventId: string): Promise<EventStatus> {
+    return (await this.advanceAndRead(eventId)).status;
+  }
+
+  /**
+   * `advance()`, and the row it had to read to decide, with `status` already
+   * set to the one the walk left behind. Every caller of `advance()` reads
+   * the same event again straight afterwards; the scan path (spec 7.5) is
+   * the one where that second read costs something worth removing, because
+   * its round trips are what the operator waits on.
+   *
+   * The same warning applies as to `advance()`: call this BEFORE opening
+   * your own transaction, never inside one.
+   */
+  async advanceAndRead(eventId: string): Promise<LifecycleRow> {
     const now = new Date();
     const event = await this.host.tx.event.findUnique({
       where: { id: eventId },
@@ -58,7 +83,7 @@ export class EventLifecycleService {
     // Every read of an event calls this and almost none of them have a hop
     // due, so the check happens before the transaction opens rather than
     // inside it: a BEGIN and a COMMIT per event read bought nothing.
-    if (dueStatus(event, now) === event.status) return event.status;
+    if (dueStatus(event, now) === event.status) return event;
 
     return this.host.run(async () => {
       // Re-read inside the transaction, which skips the walk entirely when a
@@ -70,7 +95,7 @@ export class EventLifecycleService {
         select: LIFECYCLE_SELECT,
       });
       if (!fresh) throw new NotFoundError('No such event.');
-      return this.advanceRow(fresh, now);
+      return { ...fresh, status: await this.advanceRow(fresh, now) };
     });
   }
 

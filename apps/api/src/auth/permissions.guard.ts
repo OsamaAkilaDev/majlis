@@ -36,6 +36,30 @@ export async function resolveClubFacts(
 }
 
 /**
+ * The same ACTIVE-only club appointments as `resolveClubFacts`, for the club
+ * that owns `eventId`, in ONE statement instead of two. It replaces a lookup
+ * of the event's `club_id` followed by a lookup keyed on it: the relation
+ * filter resolves the club through the event, so the WHERE clause is
+ * identical to the pair it stands in for, status filter included.
+ *
+ * An event id that resolves to nothing matches no appointment and so yields
+ * no roles, which is what the two-query version did when the event lookup
+ * came back null. The scan path is where this matters (spec 7.5): one fewer
+ * round trip on the one surface with a latency requirement.
+ */
+export async function resolveEventClubFacts(
+  host: TransactionHost,
+  userId: string,
+  eventId: string,
+): Promise<Pick<ActorFacts, 'clubRoles'>> {
+  const appointments = await host.tx.clubTeamAppointment.findMany({
+    where: { userId, status: 'ACTIVE', club: { events: { some: { id: eventId } } } },
+    select: { role: true },
+  });
+  return { clubRoles: appointments.map((a) => a.role) };
+}
+
+/**
  * Event assignments for `userId` on `eventId`. `EventAssignment` carries no
  * status column — an assignment row is authority the moment it exists — so,
  * unlike the club resolver, there is no status filter to apply here.
@@ -159,13 +183,7 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const { eventResponsibilities } = await resolveEventFacts(this.host, actor.id, scopeId);
-    const event = await this.host.tx.event.findUnique({
-      where: { id: scopeId },
-      select: { clubId: true },
-    });
-    if (!event) return { ...base, eventResponsibilities };
-
-    const { clubRoles } = await resolveClubFacts(this.host, actor.id, event.clubId);
+    const { clubRoles } = await resolveEventClubFacts(this.host, actor.id, scopeId);
     return { ...base, clubRoles, eventResponsibilities };
   }
 }

@@ -19,7 +19,7 @@ import { violatedConstraintName } from '../common/prisma-constraint';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import type { Env } from '../config/env.schema';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
-import { EventLifecycleService } from '../events/event-lifecycle.service';
+import { EventLifecycleService, type LifecycleRow } from '../events/event-lifecycle.service';
 import { Prisma, type AttendanceMethod } from '../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
@@ -169,9 +169,11 @@ export class AttendanceService {
    * the attendance row, the registration's new status and the audit row all
    * commit together or none of them do.
    *
-   * `advance()` runs BEFORE the transaction opens, per the warning in its
+   * The advance runs BEFORE the transaction opens, per the warning in its
    * own docblock: inside one it would join this transaction, and there is no
-   * refusal here that must not roll it back.
+   * refusal here that must not roll it back. It hands back the row it read,
+   * which is the one checkInTx used to read a second time inside the
+   * transaction, for the same event, a millisecond later.
    */
   private async checkIn(
     actor: Actor,
@@ -179,10 +181,10 @@ export class AttendanceService {
     subject: Subject,
     recording: Recording,
   ): Promise<CheckInResult> {
-    await this.lifecycle.advance(eventId);
+    const event = await this.lifecycle.advanceAndRead(eventId);
 
     try {
-      return await this.host.run(() => this.checkInTx(actor, eventId, subject, recording));
+      return await this.host.run(() => this.checkInTx(actor, event, subject, recording));
     } catch (e) {
       // attendance_record_registration_id_key. Two operators scanning the
       // same person at the same instant is an ordinary event in a queue, not
@@ -202,15 +204,11 @@ export class AttendanceService {
 
   private async checkInTx(
     actor: Actor,
-    eventId: string,
+    event: LifecycleRow,
     subject: Subject,
     recording: Recording,
   ): Promise<CheckInResult> {
-    const event = await this.host.tx.event.findUnique({
-      where: { id: eventId },
-      select: EVENT_FOR_CHECK_IN,
-    });
-    if (!event) throw new NotFoundError('No such event.');
+    const eventId = event.id;
 
     const now = new Date();
     if (event.status !== 'ONGOING' || now < event.checkInOpensAt || now > event.checkInClosesAt) {
@@ -218,7 +216,13 @@ export class AttendanceService {
     }
     // A suspended club freezes the event for everybody, so this answer does
     // not vary with who was presented and is safe to give before the lookup.
-    if (event.club.status !== 'ACTIVE') return { result: 'INVALID_PASS' };
+    // Its own statement: the event row arrived from the advance, and pulling
+    // the club through a relation would have been a second query anyway.
+    const club = await this.host.tx.club.findUnique({
+      where: { id: event.clubId },
+      select: { status: true },
+    });
+    if (club?.status !== 'ACTIVE') return { result: 'INVALID_PASS' };
 
     const user = await this.host.tx.user.findUnique({
       where: 'userId' in subject ? { id: subject.userId } : { email: subject.email },
