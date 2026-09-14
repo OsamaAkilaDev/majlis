@@ -29,10 +29,9 @@ class UserSearchQueryDto extends createZodDto(userSearchQuerySchema) {}
  * authorization facts `/auth/me` does, so it isn't nested under the admin
  * listing either). Left blank; each handler spells out its own full path.
  *
- * bucket (see auth.module.ts), no local @UseGuards needed. That guard is
- * denied request (429) before PermissionsGuard gets a chance to deny it
- * running first, a signed-in STUDENT could loop `GET /users` and commit one
- * such row per request, unbounded, into a table with no delete path.
+ * Both global guards apply here (see auth.module.ts), so no local
+ * @UseGuards is needed: SessionGuard authenticates and PermissionsGuard
+ * authorizes, and any route without @Public() is protected by default.
  */
 @Controller()
 export class UsersController {

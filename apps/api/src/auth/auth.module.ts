@@ -22,28 +22,19 @@ import { TokensService } from './tokens.service';
   providers: [
     TokensService,
     AuthService,
-    // Fail-closed by design: every route is protected unless @Public(). Task
-    // 8 adds PermissionsGuard as a third APP_GUARD after this one. Nest
+    // Fail-closed by design: every route is protected unless @Public(). Nest
     // runs APP_GUARD providers in registration order, and PermissionsGuard
-    // depends on req.actor, which only this guard sets.
+    // depends on req.actor, which only this guard sets, so this one is
+    // registered first.
     { provide: APP_GUARD, useClass: SessionGuard },
-    // Global (not per-controller): PermissionsGuard denies with a thrown
-    // ForbiddenError, and Nest's guard chain stops at the first guard that
-    // registered on the controller runs AFTER every global guard (Nest
-    // composes [global..., class..., method...] guards, in that order), so
-    // it would never even be reached for a denied request. That was
-    // let a denied STUDENT loop `GET /users` well past 60 requests with no
-    // 429, because PermissionsGuard's denial always fires first. Registered
-    // to deny (429) BEFORE PermissionsGuard ever gets a chance to deny (403)
-    // and write another permission.denied row, closing the exact gap F1
-    // balancer's health probes are unaffected; AuthController keeps its
-    // instance rather than a second, redundant local one.
-    // Registered under its own class token too (useExisting, not a second
-    // useClass: that would construct two separate instances), so the
-    // scope-resolver tests can `app.get(PermissionsGuard)` and call
-    // `loadFacts` directly without going through HTTP. Must be registered
-    // AFTER SessionGuard (see above): req.actor must already be populated
-    // by the time this one runs.
+    // Registered under its own class token as well as as a guard, with
+    // useExisting rather than a second useClass: two useClass registrations
+    // would construct two separate instances. The single instance is what
+    // lets the scope-resolver tests call `app.get(PermissionsGuard)` and
+    // exercise `loadFacts` directly without going through HTTP.
+    //
+    // Must come AFTER SessionGuard, above: req.actor has to be populated by
+    // the time this one runs.
     PermissionsGuard,
     { provide: APP_GUARD, useExisting: PermissionsGuard },
   ],
