@@ -67,7 +67,7 @@ describe('AuditLog', () => {
       .rejects.toThrow(/append-only/i);
   });
 
-  it('rejects an UPDATE matching no rows — proving the trigger is statement-level', async () => {
+  it('rejects an UPDATE matching no rows, proving the trigger is statement-level', async () => {
     // The existing bulk-UPDATE test would also pass against a FOR EACH ROW
     // trigger, since it touches a real row. Only a zero-row statement
     // distinguishes the two, and that is the form a careless bulk migration
@@ -119,7 +119,7 @@ describe('Notification', () => {
   it('allows two different dedupe keys for the same user', async () => {
     // A (user_id)-only unique constraint would allow exactly one
     // notification per user, ever, and would pass every other test in this
-    // block — both existing tests only vary the user, never the key.
+    // block: both existing tests only vary the user, never the key.
     const user = await mkUser();
     await prisma.notification.create({
       data: {

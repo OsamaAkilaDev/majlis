@@ -57,7 +57,7 @@ describe('PATCH /me', () => {
     expect(res.status).toBe(200);
 
     const row = await prisma.user.findUniqueOrThrow({ where: { id: me.userId } });
-    // Catches a service doing `data: body` rather than picking fields —
+    // Catches a service doing `data: body` rather than picking fields,
     // which would let any student make themselves an Admin with one PATCH.
     expect(row.fullName).toBe('New Name');
     expect(row.platformRole).toBe('STUDENT');
@@ -67,7 +67,7 @@ describe('PATCH /me', () => {
   it('updates avatarUrl without touching fullName when only avatarUrl is sent', async () => {
     // Catches an implementation that always writes both columns (e.g.
     // `data: { fullName: body.fullName, avatarUrl: body.avatarUrl }`
-    // unconditionally) — that would null out fullName the moment a client
+    // unconditionally): that would null out fullName the moment a client
     // sends only avatarUrl, since an omitted key becomes `undefined`.
     const me = await loginAsStudent(app);
     const res = await request(app.getHttpServer())
@@ -118,7 +118,7 @@ describe('GET /users', () => {
   });
 
   it('paginates forward across pages rather than repeating page one', async () => {
-    // Filler rows created directly (mkUser), not through /auth/signup — a
+    // Filler rows created directly (mkUser), not through /auth/signup: a
     // dozen real signups in one test would trip the 3-per-hour throttle.
     const admin = await loginAsAdmin(app);
     for (let i = 0; i < 5; i++) await mkUser();
@@ -136,7 +136,7 @@ describe('GET /users', () => {
     expect(second.body.items).toHaveLength(2);
 
     // Catches a cursor param that's accepted but ignored (or a broken
-    // `skip`/`cursor` pairing) — either would hand back the same rows a
+    // `skip`/`cursor` pairing): either would hand back the same rows a
     // second time instead of walking forward.
     const firstIds = (first.body.items as { id: string }[]).map((u) => u.id);
     const secondIds = (second.body.items as { id: string }[]).map((u) => u.id);
@@ -200,7 +200,7 @@ describe('PATCH /users/{id}/status', () => {
     expect(await prisma.auditLog.count({ where: { entityId: victim.userId } })).toBe(1);
   });
 
-  it('reinstating does not need to revoke tokens again — suspension already revoked them all', async () => {
+  it('reinstating does not need to revoke tokens again: suspension already revoked them all', async () => {
     const admin = await loginAsAdmin(app);
     const victim = await signupAndKeepCookies(app);
 
@@ -232,8 +232,8 @@ describe('PATCH /users/{id}/status', () => {
 
   it('serialises two concurrent suspends of the same account to one 200 and one 409', async () => {
     // Catches a plain `findUnique` (no lock): both requests would read
-    // ACTIVE, both pass the "already in that state" guard, and both commit
-    // — two 200s and two user.suspended audit rows for one transition,
+    // ACTIVE, both pass the "already in that state" guard, and both commit,
+    // two 200s and two user.suspended audit rows for one transition,
     // instead of the second one correctly seeing the first's write and
     // bouncing off the 409 guard.
     const admin = await loginAsAdmin(app);
@@ -253,7 +253,7 @@ describe('PATCH /users/{id}/status', () => {
   it('rejects a malformed id with 400, not 500', async () => {
     // Catches the pre-fix gap: User.id is @db.Uuid, and a plain findUnique
     // against a non-uuid string throws Prisma's P2023, which problem.filter.ts
-    // did not map — surfacing as a bare 500 instead of a client error.
+    // did not map, surfacing as a bare 500 instead of a client error.
     const admin = await loginAsAdmin(app);
     const res = await patchStatus(app, admin.sessionCookie, 'not-a-uuid', 'SUSPENDED', 'x');
     expect(res.status).toBe(400);
@@ -350,7 +350,7 @@ describe('GET /clubs/:clubId/user-search', () => {
   it('carries a club Lead all the way through an event assignment', async () => {
     // The flow this route exists for. Before it, the picker called
     // GET /users, a Lead got a 403, the list rendered empty and nobody
-    // could be assigned — which put Stage 6's whole EventAssignment scan
+    // could be assigned, which put Stage 6's whole EventAssignment scan
     // path out of reach of everyone but an Admin.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);

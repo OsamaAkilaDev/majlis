@@ -6,7 +6,7 @@ import { TransactionHost } from '../../src/prisma/transaction.host';
 
 /**
  * Proves the club-scope path of PermissionsGuard end to end over HTTP. No
- * Stage 2 endpoint uses club scope — Stage 4 is the first real one — so
+ * Stage 2 endpoint uses club scope (Stage 4 is the first real one), so
  * without this fixture the decorator's scope-reading path ships unexercised
  * by an actual request and Stage 4 inherits it unverified.
  *
@@ -23,7 +23,7 @@ export class ScopedTestController {
   /**
    * A route the router genuinely matches (unlike an empty `:clubId`
    * segment, which 404s before the guard ever runs) whose decorator points
-   * `from` at a dotted path with no real value behind it —
+   * `from` at a dotted path with no real value behind it:
    * `params.missing.deeper` reads a property off `undefined`. Exercises
    * readScopeId/readAt's guard against exactly that: without the
    * `typeof acc !== 'object'` check in readAt, this throws a raw TypeError
@@ -43,7 +43,7 @@ export class ScopedTestController {
  * endpoint exists; Task 11 re-asserts denial against the real one.
  *
  * The handler performs a real write (through TransactionHost, never
- * PrismaService) rather than a no-op — otherwise "the write did not happen"
+ * PrismaService) rather than a no-op: otherwise "the write did not happen"
  * would hold trivially even against a guard that lets every request through,
  * since a no-op handler never writes regardless of what the guard decides.
  */

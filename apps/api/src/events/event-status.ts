@@ -43,7 +43,7 @@ export interface DueStatusInput {
 }
 
 /**
- * The status an event's own timestamps say it should be in — a pure function,
+ * The status an event's own timestamps say it should be in, a pure function,
  * which is what lets a list read render it without writing anything.
  *
  * Boundaries are evaluated newest first, because the check-in window may open

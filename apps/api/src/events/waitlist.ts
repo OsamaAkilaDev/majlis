@@ -6,8 +6,8 @@ import type { TransactionHost } from '../prisma/transaction.host';
  * Promotes up to `seats` students off the head of an event's waitlist,
  * inside the caller's transaction.
  *
- * A free function rather than a service so both callers — a cancellation
- * freeing a seat, and a capacity rise creating several — reach the same code
+ * A free function rather than a service so both callers (a cancellation
+ * freeing a seat, and a capacity rise creating several) reach the same code
  * without one service having to inject the other.
  *
  * `FOR UPDATE SKIP LOCKED` over `ORDER BY waitlist_position` is spec 5.2's

@@ -106,7 +106,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const res = await request(path, init);
   // Read as text and parse only what is there. `res.json()` on an empty body
   // throws SyntaxError, which is not a ProblemError and so reaches the form
-  // as "could not reach the server" — on a request that succeeded. A 204 is
+  // as "could not reach the server", on a request that succeeded. A 204 is
   // not the only bodyless success: /auth/forgot-password answers 202.
   const body = await res.text();
   return (body ? JSON.parse(body) : undefined) as T;

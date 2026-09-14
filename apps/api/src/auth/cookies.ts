@@ -33,7 +33,7 @@ export const REFRESH_COOKIE_PATH = '/';
 /**
  * Design spec (§3): Secure whenever `NODE_ENV !== 'development'`, not only in
  * `'production'`. The two callers in auth.controller.ts each computed
- * `NODE_ENV === 'production'` independently — a staging deploy running with
+ * `NODE_ENV === 'production'` independently. A staging deploy running with
  * `NODE_ENV=test` (a real, common setup) would satisfy neither branch and
  * ship the session and refresh cookies without Secure, over plain HTTP.
  * Centralised here so both call sites derive it from the same rule rather

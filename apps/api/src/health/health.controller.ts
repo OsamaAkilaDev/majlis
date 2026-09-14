@@ -5,7 +5,7 @@ import { Public } from '../auth/public.decorator';
 import { TransactionHost } from '../prisma/transaction.host';
 
 /**
- * auth.module.ts) — this is what a load balancer or uptime monitor pings
+ * auth.module.ts): this is what a load balancer or uptime monitor pings
  * repeatedly to keep a serverless instance warm, and it predates F1's fix
  * above 60/min would start getting 429s for no reason connected to F1's
  * actual concern (the append-only audit table).

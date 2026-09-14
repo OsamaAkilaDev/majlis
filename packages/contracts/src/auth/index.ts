@@ -8,7 +8,7 @@ export { PASSWORD_MIN };
  * signup's INSERT and login's LOOKUP share this one schema.
  *
  * `user.email` carries a `CHECK (email = lower(email))` database constraint.
- * An un-normalised INSERT dies loudly on that constraint — annoying, but
+ * An un-normalised INSERT dies loudly on that constraint: annoying, but
  * self-announcing. An un-normalised LOOKUP has no such backstop: it just
  * fails to find the row and reports "invalid credentials," which reads like
  * a password bug for weeks. One schema for both closes that gap structurally
@@ -16,8 +16,8 @@ export { PASSWORD_MIN };
  *
  * Order is deliberate: `z.string().trim().email()` trims BEFORE validating
  * the email format, so " Foo@Bar.com " (leading/trailing space, as a pasted
- * address often carries) is accepted and normalised. `z.email().trim()` —
- * the form suggested when this was planned — was tried first and rejected:
+ * address often carries) is accepted and normalised. `z.email().trim()`
+ * (the form suggested when this was planned) was tried first and rejected:
  * verified directly against the installed zod@4.5.4, `.email()`'s format
  * check runs on the string as received, before `.trim()` gets a chance to
  * run, so a padded address fails validation before normalisation ever
@@ -44,7 +44,7 @@ export const loginBodySchema = z.object({
 
 /**
  * A club role held by the acting user, scoped to one club. `role` is a plain
- * string rather than a strict enum — this schema is a response shape, not an
+ * string rather than a strict enum: this schema is a response shape, not an
  * authorization decision (that's permissions.ts's job, which already pays
  * the cost of keeping a local role union in sync with Prisma's generated
  * enum). A second, differently-drifting copy of the same five-value union
@@ -56,8 +56,8 @@ export const sessionClubRoleSchema = z.object({
 });
 
 /**
- * What every authenticated response — signup, login, and Task 11's
- * `/auth/me` — sends back about the acting user. Never includes
+ * What every authenticated response (signup, login, and Task 11's
+ * `/auth/me`) sends back about the acting user. Never includes
  * `passwordHash`; this is the one shape every auth endpoint returns.
  */
 export const sessionUserSchema = z.object({

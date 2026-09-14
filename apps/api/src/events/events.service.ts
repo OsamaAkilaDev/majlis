@@ -43,8 +43,8 @@ type EventWithClub = EventRow & { club: { name: string; logoUrl: string; status:
 
 /**
  * Exactly the columns `toSummary` reads. A list page is the hottest read in
- * the product and the full row carries `description` — the longest column on
- * the table — plus the certificate and check-in fields, none of which a
+ * the product and the full row carries `description` (the longest column on
+ * the table) plus the certificate and check-in fields, none of which a
  * summary renders.
  */
 const SUMMARY_SELECT = {
@@ -83,7 +83,7 @@ interface Actor {
 
 /**
  * The body keys a patch may write, derived from EVENT_FIELDS rather than
- * listed again — the two must describe the same set, and a second hand-kept
+ * listed again: the two must describe the same set, and a second hand-kept
  * list would drift into a field that passes the permission gate and then
  * silently writes nothing.
  *
@@ -403,7 +403,7 @@ export class EventsService {
 
     // toDetail resolves the viewer's roles in this club and assignments on
     // this event anyway, and those are exactly what visibilityFilter asks
-    // the database for a second time — so the draft gate reads them off the
+    // the database for a second time, so the draft gate reads them off the
     // built detail instead of issuing its own two queries.
     const detail = await this.toDetail(actor, row);
 
@@ -611,7 +611,7 @@ export class EventsService {
 
       // Spec 7.7, event published: the club's active members. Not every
       // student in the university, and not the club's officers by virtue of
-      // their appointment — acceptance grants membership too (spec 7.2), so
+      // their appointment: acceptance grants membership too (spec 7.2), so
       // an officer is already in this set.
       const members = await this.host.tx.clubMembership.findMany({
         where: { clubId: event.clubId, status: 'ACTIVE' },
@@ -681,7 +681,7 @@ export class EventsService {
   /**
    * Everyone still holding a place on the event, notified inside the
    * caller's transaction. CANCELLED registrations are excluded: somebody who
-   * withdrew is not owed news about a venue change. REMOVED rows are kept —
+   * withdrew is not owed news about a venue change. REMOVED rows are kept:
    * the person was told they are coming and then taken off by an officer,
    * and a cancellation still concerns them.
    */

@@ -18,7 +18,7 @@ import { TransactionHost } from '../prisma/transaction.host';
 
 /**
  * Canonical UUID shape, used only to decide whether `updateStatus`'s FOR
- * UPDATE lock (below) is safe to run as raw SQL — see the comment at its
+ * UPDATE lock (below) is safe to run as raw SQL: see the comment at its
  * call site.
  */
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,7 +27,7 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const SEARCH_LIMIT = 20;
 
 /**
- * Picks exactly the fields a profile response ever carries — never the raw
+ * Picks exactly the fields a profile response ever carries, never the raw
  * Prisma `User` row, which also has `passwordHash`. Shared by `/me` and the
  * admin status endpoint, which return the same shape for two different
  * targets (the caller, and the user an admin just acted on).
@@ -52,7 +52,7 @@ export class UsersService {
 
   /**
    * GET /me. `actor` is the row SessionGuard already loaded fresh for this
-   * request — no second read needed.
+   * request: no second read needed.
    */
   me(actor: User): UserProfile {
     return toUserProfile(actor);
@@ -60,10 +60,10 @@ export class UsersService {
 
   /**
    * PATCH /me. Picks `fullName` and `avatarUrl` explicitly and never spreads
-   * the request body into Prisma's `data` — that is exactly what would let a
+   * the request body into Prisma's `data`: that is exactly what would let a
    * client smuggle `platformRole` or `status` into the same call and
    * escalate itself to Admin. A key left out of `data` entirely (rather than
-   * set to `undefined`) is Prisma's own "no change" — that is what makes a
+   * set to `undefined`) is Prisma's own "no change". That is what makes a
    * request with only `fullName` leave `avatarUrl` untouched.
    */
   async updateMe(actor: User, body: PatchMeBody): Promise<UserProfile> {
@@ -76,8 +76,8 @@ export class UsersService {
   }
 
   /**
-   * GET /users. Cursor-paginated on `id` — uuid v7, so ascending order is
-   * also creation order — which is what makes the cursor a stable position
+   * GET /users. Cursor-paginated on `id` (uuid v7, so ascending order is
+   * also creation order), which is what makes the cursor a stable position
    * rather than one a concurrent insert or update could reshuffle. `limit`'s
    * upper bound is enforced by `cursorPageQuerySchema` at the validation
    * boundary (see @majlis/contracts), not re-checked here.
@@ -130,14 +130,14 @@ export class UsersService {
   }
 
   /**
-   * PATCH /users/{id}/status — the only route that suspends or reinstates an
+   * PATCH /users/{id}/status, the only route that suspends or reinstates an
    * account. Everything runs in one transaction.
    *
    * No discriminated-result dance here, unlike AuthService.refresh: every
    * throw below fires before this transaction has written anything, so
    * letting host.run's interactive `$transaction` roll it back on either
    * check discards nothing. Past both checks, the remaining statements
-   * either all commit together or all roll back together — there is no point
+   * either all commit together or all roll back together: there is no point
    * where a write must survive a later failure in the same call.
    */
   async updateStatus(actor: User, targetId: string, body: PatchUserStatusBody): Promise<UserProfile> {
@@ -150,7 +150,7 @@ export class UsersService {
 
       // A malformed (non-UUID) id would fail the ::uuid cast below as a raw
       // Postgres error (P2010) rather than the typed Prisma validation error
-      // (P2023) problem.filter.ts maps to 400 — routing it through the same
+      // (P2023) problem.filter.ts maps to 400, routing it through the same
       // typed call the pre-lock code always made keeps that mapping intact
       // for this route too. A well-formed id proceeds to the lock below
       // regardless of whether it matches a row.
@@ -159,8 +159,8 @@ export class UsersService {
       }
 
       // Locks the target row before the read that decides the two checks
-      // below — same FOR UPDATE-then-Prisma-read pattern as
-      // AuthService.refresh — so two concurrent suspend calls on the same
+      // below (same FOR UPDATE-then-Prisma-read pattern as
+      // AuthService.refresh), so two concurrent suspend calls on the same
       // user serialise on this row instead of both reading ACTIVE, both
       // passing the no-op guard, and both writing a user.suspended audit row
       // for one transition. "user" is a reserved word in Postgres and must
@@ -170,7 +170,7 @@ export class UsersService {
       if (locked.length === 0) throw new NotFoundError('No such user.');
 
       // Re-read under the lock just taken, so this is the fresh value a
-      // concurrent updater's commit would have changed — not a stale read
+      // concurrent updater's commit would have changed, not a stale read
       // from before the lock was acquired.
       const before = await this.host.tx.user.findUniqueOrThrow({ where: { id: targetId } });
       if (before.status === next) throw new ConflictError('That account is already in that state.');

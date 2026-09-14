@@ -37,7 +37,7 @@ describe('seed', () => {
   });
 
   it('appoints the right people to those roles, not merely the right number', async () => {
-    // Counting by role alone passes even if the two people were swapped —
+    // Counting by role alone passes even if the two people were swapped,
     // the right number of wrong rows.
     await seed(prisma);
     const club = await prisma.club.findFirstOrThrow();
@@ -64,8 +64,8 @@ describe('seed', () => {
   });
 
   it('lets the seeded admin actually log in with the password README.md promises', async () => {
-    // The old placeholder hash made every seeded account unauthenticatable —
-    // this is the exact login a fresh clone's README walks a developer
+    // The old placeholder hash made every seeded account unauthenticatable.
+    // This is the exact login a fresh clone's README walks a developer
     // through. Asserting the response's specific email and platformRole,
     // not merely a 200, is what would catch a fix that hashes the right
     // password but stores it against the wrong persona (e.g. every seeded
@@ -80,7 +80,7 @@ describe('seed', () => {
 
   it('rejects the seeded admin with the wrong password', async () => {
     // Discriminates against a seed bug that hashes an empty string, ignores
-    // ARGON2_OPTIONS, or otherwise accepts anything — a login test that only
+    // ARGON2_OPTIONS, or otherwise accepts anything: a login test that only
     // checked the correct password succeeding would miss all three.
     await seed(prisma);
     const res = await login(app, { email: 'admin@uni.ac.ae', password: 'wrong-password-entirely' });
@@ -92,7 +92,7 @@ describe('seed', () => {
     expect(await prisma.qrPass.count()).toBe(await prisma.user.count());
   });
 
-  it('is idempotent — running it twice changes nothing', async () => {
+  it('is idempotent: running it twice changes nothing', async () => {
     await seed(prisma);
     const after1 = {
       users: await prisma.user.count(),

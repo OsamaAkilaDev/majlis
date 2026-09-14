@@ -11,7 +11,7 @@ import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 import { DomainError } from './domain-error';
 
-/** Narrow structural check — avoids importing Prisma error classes here. */
+/** Narrow structural check: avoids importing Prisma error classes here. */
 function isPrismaError(e: unknown): e is { code: string; message: string } {
   return typeof e === 'object' && e !== null && typeof (e as { code?: unknown }).code === 'string';
 }
@@ -123,9 +123,9 @@ export class ProblemExceptionFilter implements ExceptionFilter {
         };
       }
       // A malformed value for a typed column (e.g. "not-a-uuid" against
-      // User.id's @db.Uuid) — a client input error, never a server fault.
+      // User.id's @db.Uuid), a client input error, never a server fault.
       // Without this branch it falls through to the generic 500 below, and
-      // Prisma's own error message embeds the failing call's arguments — on
+      // Prisma's own error message embeds the failing call's arguments: on
       // the signup path, that would include passwordHash.
       //
       // P2023 ("Inconsistent column data") is the code Prisma's docs and

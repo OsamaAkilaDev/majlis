@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 /**
  * Conservative allowlist for a caller-supplied correlation id: ASCII
  * alphanumerics plus the handful of separators real id generators use
- * (`.`, `_`, `~`, `-`), capped at 64 characters. Anything else — including a
- * value with no cap at all — is rejected rather than stored, because this
+ * (`.`, `_`, `~`, `-`), capped at 64 characters. Anything else (including a
+ * value with no cap at all) is rejected rather than stored, because this
  * string lands verbatim in `audit_log.request_id`, an append-only column
  * with no delete path. Without this, an unauthenticated caller could stamp
  * an arbitrary string (e.g. a correlation id copied off an admin's own

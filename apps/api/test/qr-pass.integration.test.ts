@@ -71,9 +71,9 @@ describe('GET /me/qr-pass', () => {
 
   it('answers two colliding first-time inserts with the one row that won', async () => {
     // qr_pass.user_id is unique and the first call races itself from two
-    // tabs. Two concurrent GETs do NOT reliably produce that collision —
-    // whichever request reaches its findUnique second usually finds the
-    // other's committed row and never inserts — so the insert path is
+    // tabs. Two concurrent GETs do NOT reliably produce that collision
+    // (whichever request reaches its findUnique second usually finds the
+    // other's committed row and never inserts), so the insert path is
     // driven directly here. Both INSERTs then run, one takes the P2002, and
     // a service that rethrows it turns an ordinary race into a 500 on the
     // student's own QR screen. Verified: this goes red against a rethrow,
@@ -104,7 +104,7 @@ describe('POST /me/qr-pass/rotate', () => {
 
     const old = verifyPass(before.body.token as string, SECRET);
     const fresh = verifyPass(res.body.token as string, SECRET);
-    // The old token still verifies — it was genuinely signed — and is dead
+    // The old token still verifies (it was genuinely signed) and is dead
     // anyway, because its version no longer matches the stored one.
     expect(old.ok && old.payload.tokenVersion).toBe(1);
     expect(fresh.ok && fresh.payload.tokenVersion).toBe(2);
@@ -142,7 +142,7 @@ describe('POST /me/qr-pass/rotate', () => {
 describe('pass ownership', () => {
   it('returns each caller their own pass and never another user', async () => {
     // Catches a handler that reads a user id off the request instead of off
-    // the session — the shape of every "return my X" IDOR.
+    // the session, the shape of every "return my X" IDOR.
     const [one, two] = await Promise.all([loginAsStudent(app), loginAsStudent(app)]);
 
     const first = verifyPass((await getPass(one!.sessionCookie)).body.token as string, SECRET);

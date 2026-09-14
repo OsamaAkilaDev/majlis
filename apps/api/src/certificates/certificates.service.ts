@@ -569,8 +569,8 @@ export class CertificatesService {
   }
 
   /**
-   * Every revocation goes through here — the Admin route, the attendance
-   * correction, and the reissue — so spec 7.7's certificate-revoked
+   * Every revocation goes through here (the Admin route, the attendance
+   * correction, and the reissue), so spec 7.7's certificate-revoked
    * notification is written once, in the caller's transaction, rather than
    * at three call sites one of which would eventually be forgotten.
    */

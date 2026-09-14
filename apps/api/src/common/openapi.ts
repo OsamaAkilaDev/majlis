@@ -9,7 +9,7 @@ import { API_PREFIX } from '../config/api-prefix';
  * by hand.
  *
  * nestjs-zod v5 relies on Zod 4's native JSON Schema output, so there is no
- * `patchNestJsSwagger` any more — it was removed in v5. `cleanupOpenApiDoc`
+ * `patchNestJsSwagger` any more: it was removed in v5. `cleanupOpenApiDoc`
  * post-processes the generated document instead.
  *
  * DEVIATION from spec §8, which says the document is served at
@@ -34,7 +34,7 @@ export function setupOpenApi(app: INestApplication): void {
 
   const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
   // SwaggerModule.setup is not covered by setGlobalPrefix, so the path must
-  // still be spelled out here — but built from the constant rather than
+  // still be spelled out here, but built from the constant rather than
   // duplicating the literal '/api/v1'.
   SwaggerModule.setup(`${API_PREFIX}/docs`, app, document);
 }

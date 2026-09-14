@@ -5,7 +5,7 @@ describe('RequestContext', () => {
   it('keeps concurrent contexts separate', async () => {
     // Catches: a context implemented with a module-level mutable variable,
     // which leaks one request's id into another's audit rows under any
-    // concurrency at all. The setTimeout is the point — without
+    // concurrency at all. The setTimeout is the point: without
     // AsyncLocalStorage the first callback resumes after the second has
     // overwritten the shared variable, and both push 'req-2'.
     const ctx = new RequestContext();

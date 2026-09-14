@@ -91,7 +91,7 @@ describe('ProblemExceptionFilter', () => {
     expect(body.errors).toEqual([expect.objectContaining({ path: 'title' })]);
   });
 
-  it('maps a Prisma unique-violation to 409, not 500 — a lost race is expected, not a fault', () => {
+  it('maps a Prisma unique-violation to 409, not 500: a lost race is expected, not a fault', () => {
     const p2002 = Object.assign(new Error('Unique constraint failed'), {
       code: 'P2002',
       meta: { target: ['event_id', 'user_id'] },
@@ -106,10 +106,10 @@ describe('ProblemExceptionFilter', () => {
     expect(invokeFilter(p2025).status).toBe(404);
   });
 
-  it('maps a Prisma inconsistent-column-data (P2023) to 400, not 500 — a malformed :id is a client error', () => {
+  it('maps a Prisma inconsistent-column-data (P2023) to 400, not 500: a malformed :id is a client error', () => {
     // Catches the pre-fix gap: without this branch, "not-a-uuid" against a
     // @db.Uuid column falls through to the generic 500 branch below, which
-    // also risks echoing Prisma's own message — it embeds the failing
+    // also risks echoing Prisma's own message: it embeds the failing
     // call's arguments, including passwordHash on the signup path.
     const p2023 = Object.assign(
       new Error('Inconsistent column data: invalid input syntax for type uuid: "not-a-uuid"'),
@@ -120,11 +120,11 @@ describe('ProblemExceptionFilter', () => {
     expect(body.detail).not.toContain('not-a-uuid');
   });
 
-  it('maps a Prisma data-validation error (P2007) to 400 too — the code the pg driver adapter actually raises', () => {
+  it('maps a Prisma data-validation error (P2007) to 400 too, the code the pg driver adapter actually raises', () => {
     // Verified live: prisma@7.10.0 with @prisma/adapter-pg (this project's
     // driver) surfaces a malformed uuid as P2007, not P2023, wrapping the
-    // same underlying Postgres 22P02. Catches a filter that maps only P2023
-    // — that would leave this project's actual malformed-:id failure mode
+    // same underlying Postgres 22P02. Catches a filter that maps only P2023.
+    // That would leave this project's actual malformed-:id failure mode
     // as an unhandled 500 despite "fixing" F2.
     const p2007 = Object.assign(new Error('Data validation error'), {
       code: 'P2007',

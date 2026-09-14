@@ -8,7 +8,7 @@ afterAll(async () => { await disconnectTestPrisma(prisma); });
 beforeEach(async () => { await truncateAll(prisma); });
 
 describe('Club', () => {
-  it('is ACTIVE on creation — there is no approval gate', async () => {
+  it('is ACTIVE on creation: there is no approval gate', async () => {
     const club = await mkClub();
     expect(club.status).toBe('ACTIVE');
   });
@@ -23,7 +23,7 @@ describe('Club', () => {
   });
 });
 
-describe('ClubTeamAppointment — exactly one active Lead per club', () => {
+describe('ClubTeamAppointment: exactly one active Lead per club', () => {
   async function appoint(clubId: string, userId: string, role: 'LEAD' | 'OPERATIONS', status: 'ACTIVE' | 'ENDED' | 'INVITED') {
     return prisma.clubTeamAppointment.create({
       data: { clubId, userId, role, status, invitedById: userId },
@@ -70,7 +70,7 @@ describe('ClubTeamAppointment — exactly one active Lead per club', () => {
   });
 });
 
-describe('ClubMembership — one open membership per (user, club)', () => {
+describe('ClubMembership: one open membership per (user, club)', () => {
   async function join(clubId: string, userId: string, status: 'PENDING' | 'ACTIVE' | 'LEFT' | 'REMOVED') {
     return prisma.clubMembership.create({ data: { clubId, userId, status } });
   }
@@ -96,7 +96,7 @@ describe('ClubMembership — one open membership per (user, club)', () => {
     await expect(join(club.id, user.id, 'PENDING')).rejects.toMatchObject({ code: 'P2002' });
   });
 
-  it('scopes the rule per user — two students may both hold open memberships in one club', async () => {
+  it('scopes the rule per user: two students may both hold open memberships in one club', async () => {
     // Without this, a (club_id)-only index would pass every other test in
     // this block while capping each club at one member platform-wide.
     const club = await mkClub();
@@ -105,7 +105,7 @@ describe('ClubMembership — one open membership per (user, club)', () => {
     await expect(join(club.id, b.id, 'ACTIVE')).resolves.toBeDefined();
   });
 
-  it('scopes the rule per club — one student may belong to two clubs', async () => {
+  it('scopes the rule per club: one student may belong to two clubs', async () => {
     // Mirror of the per-user test above. A (user_id)-only index would cap a
     // student at one club membership for their entire time at the university.
     const [first, second] = [await mkClub(), await mkClub()];

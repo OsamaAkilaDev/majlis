@@ -8,7 +8,7 @@ describe('resolveRequestId', () => {
 
   it('treats a blank header as absent', () => {
     // Catches: a `typeof v === 'string'` check alone, which accepts '' as a
-    // valid id — satisfying audit_log.request_id's NOT NULL constraint while
+    // valid id, satisfying audit_log.request_id's NOT NULL constraint while
     // being useless for correlating anything.
     expect(resolveRequestId('')).not.toBe('');
   });
@@ -29,7 +29,7 @@ describe('resolveRequestId', () => {
   it('rejects a value with characters outside the allowlist', () => {
     // Catches a `typeof v === 'string' && v.trim().length > 0` check alone,
     // which stores ANY non-blank string verbatim into audit_log.request_id
-    // — an append-only column with no delete path — letting an
+    // (an append-only column with no delete path), letting an
     // unauthenticated caller stamp an arbitrary value (e.g. one copied off
     // an admin's own response header) onto a permission.denied row forever.
     expect(resolveRequestId('trace/me;123')).not.toBe('trace/me;123');

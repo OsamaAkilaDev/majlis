@@ -17,7 +17,7 @@ let app: INestApplication;
 let tokens: TokensService;
 
 beforeAll(async () => {
-  // ProtectedTestModule is added only here, never in AppModule — Task 11
+  // ProtectedTestModule is added only here, never in AppModule. Task 11
   // brings the real /me route. SessionGuard still applies: it is AppModule's
   // global APP_GUARD, and every test app compiles AppModule regardless of
   // which extra module carries this fixture controller.
@@ -44,7 +44,7 @@ describe('SessionGuard', () => {
   it('rejects a still-unexpired access token once the user is suspended', async () => {
     // Catches a guard that verifies the JWT and trusts it, skipping the
     // per-request user lookup. That guard passes every other test in this
-    // file — login-equivalent, protected access, logout-equivalent — while
+    // file (login-equivalent, protected access, logout-equivalent) while
     // silently giving a suspended user the rest of the token's 15-minute
     // life. Spec §1's first guarantee is that suspension takes effect on the
     // very next request, not at token expiry.
@@ -57,8 +57,8 @@ describe('SessionGuard', () => {
   });
 
   it('gives a suspended user the identical rejection body a missing cookie gets', async () => {
-    // The code is correct today — both branches throw the same
-    // UnauthorizedError('Not signed in.') — but nothing above pins that.
+    // The code is correct today (both branches throw the same
+    // UnauthorizedError('Not signed in.')), but nothing above pins that.
     // Catches a later refactor that gives the suspended branch a more
     // specific message (e.g. 'Account suspended.'): that would let anyone
     // holding a stale cookie for a suspended account distinguish "this
@@ -71,10 +71,10 @@ describe('SessionGuard', () => {
     const suspended = await request(app.getHttpServer()).get(PROTECTED_PATH).set('Cookie', cookie);
     const noCookie = await request(app.getHttpServer()).get(PROTECTED_PATH);
 
-    // requestId is expected to differ per request — asserted here so the
+    // requestId is expected to differ per request, asserted here so the
     // two toEqual bodies below aren't quietly comparing one cached response
-    // against itself. Every other field — type, title, status, detail,
-    // instance — must be identical, not just status.
+    // against itself. Every other field (type, title, status, detail,
+    // instance) must be identical, not just status.
     const { requestId: suspendedRequestId, ...suspendedBody } = suspended.body;
     const { requestId: noCookieRequestId, ...noCookieBody } = noCookie.body;
     expect(suspendedRequestId).not.toBe(noCookieRequestId);
@@ -118,7 +118,7 @@ describe('SessionGuard', () => {
     expect(res.status).toBe(200);
   });
 
-  it('leaves /api/v1/docs reachable without a session — Swagger mounts outside the Nest router', async () => {
+  it('leaves /api/v1/docs reachable without a session: Swagger mounts outside the Nest router', async () => {
     const res = await request(app.getHttpServer()).get(`${API_PREFIX}/docs`);
     expect(res.status).toBe(200);
   });

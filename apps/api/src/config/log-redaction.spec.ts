@@ -115,8 +115,8 @@ describe('LOG_REDACT_PATHS', () => {
     const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
 
     // Shaped like pino-http's actual request serializer output:
-    // { id, method, url, query, params, headers, remoteAddress, remotePort }
-    // — notably no `body`. See pino-std-serializers/lib/req.js.
+    // { id, method, url, query, params, headers, remoteAddress, remotePort },
+    // notably no `body`. See pino-std-serializers/lib/req.js.
     logger.info(
       {
         req: {
@@ -201,7 +201,7 @@ describe('the QR pass token and its signing key', () => {
     // { id, method, url, query, params, headers, remoteAddress, remotePort }
     // and no `body` key for a path-based redaction to need to strip.
     //
-    // Catches a serializer that starts passing the body through — the one
+    // Catches a serializer that starts passing the body through, the one
     // change that would put a live credential into every scan's log line,
     // with no redaction path covering it, silently.
     const out = redactedReqSerializer({

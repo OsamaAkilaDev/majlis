@@ -19,7 +19,7 @@ vi.mock('@node-rs/argon2', async (importOriginal) => {
   return { ...actual, verify: vi.fn(actual.verify) };
 });
 
-// AuthService.DUMMY_HASH is `private` at the type level only — TypeScript
+// AuthService.DUMMY_HASH is `private` at the type level only. TypeScript
 // erases that at runtime, so the class still carries it as a real static
 // property. Reading it here (rather than pasting a second copy of the
 // literal into the test) means this test can never drift from the value
@@ -65,7 +65,7 @@ describe('POST /auth/signup', () => {
     await signup(app, { email, password: 'correct-horse-battery' });
 
     const row = await prisma.user.findUniqueOrThrow({ where: { email } });
-    // Catches a service that stores req.body.password verbatim — the most
+    // Catches a service that stores req.body.password verbatim, the most
     // direct possible violation of "no secrets in code or logs" applied to
     // the database itself.
     expect(row.passwordHash).not.toContain('correct-horse-battery');
@@ -92,7 +92,7 @@ describe('POST /auth/signup', () => {
 
     const row = await prisma.refreshToken.findFirstOrThrow({ where: { userId: res.body.id } });
     // Catches a mint/create pairing that accidentally persists the raw
-    // token — a leaked RefreshToken row would then be a live session for
+    // token: a leaked RefreshToken row would then be a live session for
     // whoever reads it, rather than a useless hash.
     expect(row.tokenHash).not.toBe(rawRefresh);
     expect(row.tokenHash).toBe(tokens.hashRefreshToken(rawRefresh));
@@ -111,7 +111,7 @@ describe('POST /auth/signup', () => {
   });
 
   it('resolves a concurrent duplicate signup to exactly one 201 and one 409', async () => {
-    // Two sequential calls (the test above) never actually contend — the
+    // Two sequential calls (the test above) never actually contend: the
     // first always finishes before the second starts. It is the database's
     // unique index on email that serialises a genuine race, not the
     // service's try/catch by itself; this proves that holds under real
@@ -122,7 +122,7 @@ describe('POST /auth/signup', () => {
   });
 
   it('rejects an 11-character password, one below the minimum', async () => {
-    // Catches a `.min(11)` typo — the vaguer "some short password" version
+    // Catches a `.min(11)` typo. The vaguer "some short password" version
     // of this test would not.
     const res = await signup(app, { password: 'a'.repeat(11) });
     expect(res.status).toBe(400);
@@ -150,7 +150,7 @@ describe('POST /auth/login', () => {
 
     const res = await login(app, { email: 'Osama@UNI.ac.ae', password: 'correct-horse-battery' });
 
-    // Catches a lookup that skips emailSchema's normalisation — it would
+    // Catches a lookup that skips emailSchema's normalisation: it would
     // fail to find the row and report "invalid credentials," a bug that
     // reads exactly like a wrong password.
     expect(res.status).toBe(200);
@@ -166,7 +166,7 @@ describe('POST /auth/login', () => {
     expect(unknownEmailRes.status).toBe(401);
     expect(wrongPasswordRes.status).toBe(401);
 
-    // requestId is expected to differ per request — asserted so the two
+    // requestId is expected to differ per request, asserted so the two
     // toEqual bodies below aren't quietly comparing one response against
     // itself. A differing `detail` string between the two branches is the
     // usual shape of an account-enumeration bug, and comparing only status
@@ -177,9 +177,9 @@ describe('POST /auth/login', () => {
     expect(unknownBody).toEqual(wrongBody);
   });
 
-  it('verifies against the dummy hash when no user is found — the dummy-hash branch actually runs', async () => {
+  it('verifies against the dummy hash when no user is found: the dummy-hash branch actually runs', async () => {
     // Asserts the CODE PATH taken, not its wall-clock cost. A timing
-    // assertion on two real HTTP round trips is load-sensitive — a GC pause
+    // assertion on two real HTTP round trips is load-sensitive: a GC pause
     // or a busy CI runner can violate it with nothing wrong, and it can pass
     // even with the dummy-hash branch deleted, as long as both paths happen
     // to be equally slow for some other reason. This is strictly more
@@ -201,7 +201,7 @@ describe('POST /auth/login', () => {
     expect(correctPassword.status).toBe(403);
 
     const wrongPassword = await login(app, { email: 'sus@uni.ac.ae', password: 'not-the-password' });
-    // Indistinguishable from an unknown email — the one deliberate exception
+    // Indistinguishable from an unknown email: the one deliberate exception
     // to enumeration resistance only fires once the caller has already
     // proven the password.
     expect(wrongPassword.status).toBe(401);
@@ -245,7 +245,7 @@ describe('POST /auth/login', () => {
     });
     // A second, non-ACTIVE appointment in a DIFFERENT club. Without it, the
     // fixture only ever inserts ACTIVE rows, so deleting `buildSessionUser`'s
-    // `status: 'ACTIVE'` filter entirely would still leave this test green —
+    // `status: 'ACTIVE'` filter entirely would still leave this test green:
     // there'd be nothing else in the table for the unfiltered query to
     // wrongly pick up.
     await prisma.clubTeamAppointment.create({
@@ -272,7 +272,7 @@ describe('POST /auth/login', () => {
 
 describe('loginAsAdmin test helper', () => {
   it('promotes the signed-up user so the same session cookie now carries admin authority', async () => {
-    // Not an assertion about a product endpoint — this proves the Task 10+
+    // Not an assertion about a product endpoint. This proves the Task 10+
     // helper itself does what its doc comment claims: the cookie minted at
     // signup keeps authenticating after the direct-write promotion, because
     // SessionGuard re-reads platformRole from the database every request.

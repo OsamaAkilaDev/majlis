@@ -13,7 +13,7 @@ import { PERMISSION_KEY, type RequiredPermission, type ScopeSpec } from './requi
 
 /**
  * ACTIVE-only club appointments for `userId` in `clubId`. `status` is
- * filtered in the WHERE clause, never afterwards — spec §5.1: "No permission
+ * filtered in the WHERE clause, never afterwards. Spec §5.1: "No permission
  * is active until status = 'ACTIVE'." A resolver that queried without this
  * filter would grant full Lead authority to anyone merely INVITED, including
  * someone who DECLINED.
@@ -61,7 +61,7 @@ export async function resolveEventClubFacts(
 
 /**
  * Event assignments for `userId` on `eventId`. `EventAssignment` carries no
- * status column — an assignment row is authority the moment it exists — so,
+ * status column (an assignment row is authority the moment it exists), so,
  * unlike the club resolver, there is no status filter to apply here.
  */
 export async function resolveEventFacts(
@@ -79,8 +79,8 @@ export async function resolveEventFacts(
 /**
  * Reads a dotted path (e.g. `'params.clubId'`) off an arbitrary object,
  * returning `undefined` rather than throwing for a missing or malformed
- * path. Used only to read the scope IDENTIFIER off the request — never a
- * role, club role, or ownership claim — so a missing/malformed path must
+ * path. Used only to read the scope IDENTIFIER off the request (never a
+ * role, club role, or ownership claim), so a missing/malformed path must
  * resolve to "no scope", which the guard then treats as a denial, not a 500.
  */
 function readAt(obj: unknown, path: string): unknown {
@@ -107,7 +107,7 @@ function readTargetId(req: Request): string | undefined {
  * (see AuthModule) so `req.actor` is already populated when this runs.
  *
  * Re-derives authority from the database on every request via
- * resolveClubFacts/resolveEventFacts — a client-supplied role, club id, or
+ * resolveClubFacts/resolveEventFacts: a client-supplied role, club id, or
  * ownership claim is never trusted, only the scope IDENTIFIER read off the
  * request (see readScopeId).
  */
@@ -135,7 +135,7 @@ export class PermissionsGuard implements CanActivate {
     if (evaluate(required.permission, facts)) return true;
 
     // Denial is audited even though the transaction the handler would have
-    // opened never starts — this write gets its own transaction via
+    // opened never starts. This write gets its own transaction via
     // host.run(), which is what proves the row commits even though the
     // action it denies never runs.
     await this.host.run(() =>
@@ -156,13 +156,13 @@ export class PermissionsGuard implements CanActivate {
    * the guard instance (not a free function) so it can call the injected
    * TransactionHost.
    *
-   * Event scope also resolves club-level facts for the EVENT'S OWN CLUB —
+   * Event scope also resolves club-level facts for the EVENT'S OWN CLUB,
    * decided here because spec §6.1's club officer rows (e.g. Lead) carry
    * authority over the club's events without a separate per-event
    * assignment row; resolving only EventAssignment would silently deny a
    * club Lead acting on their own club's event. A scope id that does not
    * resolve to a real row (bad id, or a deleted event) yields no authority
-   * rather than throwing — an unresolvable scope must DENY, never 500.
+   * rather than throwing: an unresolvable scope must DENY, never 500.
    */
   async loadFacts(
     actor: User,

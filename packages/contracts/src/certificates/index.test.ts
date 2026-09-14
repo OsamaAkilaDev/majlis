@@ -5,8 +5,8 @@ describe('verificationSchema', () => {
   it('discloses those six fields and nothing else, ever', () => {
     // Spec 7.6: /verify returns holder name, event title, club name, issue
     // date and status, "and nothing else, ever". This is an anonymous,
-    // unauthenticated route, so a service that widened the response — an
-    // email, a user id, the serial number — would publish it to the world.
+    // unauthenticated route, so a service that widened the response (an
+    // email, a user id, the serial number) would publish it to the world.
     const parsed = verificationSchema.parse({
       status: 'ACTIVE',
       holderName: 'A Student',

@@ -5,12 +5,12 @@ import { configureApp } from '../src/configure-app';
 
 /**
  * Boots the real AppModule through the real configureApp, exactly as
- * main.ts does — so the guards, pipes and filters under test in every
+ * main.ts does, so the guards, pipes and filters under test in every
  * integration suite are the real ones, not a stand-in.
  *
  * `extraModules` adds test-only fixtures (e.g. `ProtectedTestModule`, see
  * test/fixtures/) alongside the real AppModule. They ride the same global
- * guards and filters AppModule wires up — they are never added to AppModule
+ * guards and filters AppModule wires up. They are never added to AppModule
  * itself.
  *
  * `overrides` replaces a real provider with a test double (e.g. a fake

@@ -62,7 +62,7 @@ describe('POST /auth/refresh', () => {
     await prisma.user.update({ where: { id: s.body.id }, data: { status: 'SUSPENDED' } });
 
     // Catches a refresh that trusts the stored row without re-reading the
-    // user — suspension has to bite here as well as on the session guard.
+    // user: suspension has to bite here as well as on the session guard.
     expect((await refresh(app, refreshCookieOf(s))).status).toBe(401);
   });
 
@@ -84,7 +84,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('gives an identical response across expiry, revocation, an unknown token, a suspended user, and no cookie', async () => {
-    // Five independently-broken cases, five root causes — the client must not
+    // Five independently-broken cases, five root causes. The client must not
     // be able to tell them apart. Includes the controller's own missing-cookie
     // branch, the one path that never reaches AuthService.refresh.
     const expired = await signup(app, {});
@@ -111,7 +111,7 @@ describe('POST /auth/refresh', () => {
       expect(res.status).toBe(401);
     }
 
-    // requestId differs per request by design — stripped so it can't mask a
+    // requestId differs per request by design, stripped so it can't mask a
     // real difference in the rest of the body.
     const stripBody = (res: request.Response) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to omit it
@@ -149,7 +149,7 @@ describe('POST /auth/logout', () => {
       204,
     );
     // Catches a logout that throws (500) or 4xxs on a token it already
-    // revoked — a user retrying a slow request must not be punished for it.
+    // revoked: a user retrying a slow request must not be punished for it.
     expect((await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', cookie)).status).toBe(
       204,
     );
@@ -171,7 +171,7 @@ describe('POST /auth/logout', () => {
 
     await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', cookie);
 
-    // Catches a logout that clears cookies without revoking the row — the
+    // Catches a logout that clears cookies without revoking the row: the
     // cookie is gone from that browser, but the credential still works for
     // anyone who captured it. Revocation is the only thing ending a session
     // now that rotation is gone, so this is the load-bearing logout test.

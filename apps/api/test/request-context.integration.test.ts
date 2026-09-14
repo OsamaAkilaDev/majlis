@@ -17,7 +17,7 @@ let seenRequestId: string | undefined;
  * RequestContext.current from inside a real request without adding a
  * controller just for the test. It must be registered before app.init(),
  * same as the global interceptors any real feature module would add via
- * APP_INTERCEPTOR — one registered afterwards is silently never consulted.
+ * APP_INTERCEPTOR: one registered afterwards is silently never consulted.
  */
 class CaptureRequestIdInterceptor implements NestInterceptor {
   constructor(private readonly context: RequestContext) {}
@@ -43,7 +43,7 @@ afterAll(async () => {
 describe('request context wiring in the real bootstrap', () => {
   it('carries the same request id echoed in the x-request-id response header', async () => {
     // Catches: a request-context middleware that reads req.id assuming
-    // nestjs-pino's genReqId already ran. It hasn't — nestjs-pino binds its
+    // nestjs-pino's genReqId already ran. It hasn't: nestjs-pino binds its
     // middleware via NestModule.configure(), which Nest defers to
     // app.init(), strictly after configureApp()'s direct app.use() calls
     // (verified by running the real bootstrap: with that ordering, req.id
@@ -58,7 +58,7 @@ describe('request context wiring in the real bootstrap', () => {
 
   it('reuses a caller-supplied x-request-id rather than minting a fresh one', async () => {
     // Catches an implementation that always calls randomUUID(), ignoring an
-    // incoming x-request-id header — the pre-existing problem.filter.ts
+    // incoming x-request-id header, the pre-existing problem.filter.ts
     // contract callers rely on to correlate their own logs.
     await request(app.getHttpServer())
       .get(`${API_PREFIX}/health`)
@@ -71,7 +71,7 @@ describe('request context wiring in the real bootstrap', () => {
   it('treats a blank x-request-id header as absent rather than adopting it verbatim', async () => {
     // Catches a `typeof v === 'string'` check with no blank check: it would
     // satisfy audit_log.request_id's NOT NULL constraint while writing an
-    // empty string into every audit row for the request — useless for
+    // empty string into every audit row for the request, useless for
     // correlating anything, and not caught by the "not 'unknown'" assertion
     // above.
     const res = await request(app.getHttpServer())

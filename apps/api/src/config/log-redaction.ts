@@ -7,11 +7,11 @@ import { NOTIFICATION_SWEEP_SECRET_HEADER, SWEEP_SECRET_HEADER } from './sweep-h
  *
  * These match pino-http's actual serialized shape: request headers live
  * under `req.headers`, the parsed query string lives under `req.query`
- * (pino-http copies `req.query` verbatim — see
+ * (pino-http copies `req.query` verbatim, see
  * pino-std-serializers/lib/req.js), and response headers come from
  * `res.getHeaders()`.
  *
- * pino-http's request serializer does NOT serialize a request body at all —
+ * pino-http's request serializer does NOT serialize a request body at all:
  * the serialized shape is only
  * `{ id, method, url, query, params, headers, remoteAddress, remotePort }`.
  * A `req.body.*` redaction path is therefore inert: there is nothing at that
@@ -31,7 +31,7 @@ export const LOG_REDACT_PATHS = [
   'req.query.token',
   'req.query.code',
   // The QR pass token travels in a POST body, which pino-http never
-  // serializes (see above) — so this is defensive rather than load-bearing
+  // serializes (see above), so this is defensive rather than load-bearing
   // today. It is here because a later change that moves the token into a
   // query string (a prefetched image URL, a deep link) would otherwise put
   // a live credential into every log line silently.

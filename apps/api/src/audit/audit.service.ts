@@ -20,7 +20,7 @@ export interface AuditEntry {
  * Writes through host.tx, so a row enlists in whatever transaction the caller
  * opened. That is what makes "the audit row is written in the same
  * transaction as the action" structural rather than a rule someone has to
- * remember — and what makes the rollback test in audit.integration.test.ts
+ * remember, and what makes the rollback test in audit.integration.test.ts
  * the definition of the guarantee rather than a nicety.
  *
  * The table is append-only by statement-level trigger. There is no update
@@ -39,12 +39,12 @@ export class AuditService {
     // before/after are an optional Json column. A bare JS `null` is not a
     // valid value for Prisma's create input here (the generated type is
     // `NullableJsonNullValueInput | InputJsonValue`, which excludes literal
-    // `null`) — and `Prisma.JsonNull` would write the JSON value `null`
+    // `null`), and `Prisma.JsonNull` would write the JSON value `null`
     // into the column, not leave it SQL NULL. `Prisma.DbNull` is the
     // sentinel that means "no snapshot", i.e. an actual SQL NULL.
     //
     // `== null` (not `=== undefined`) catches both an omitted key and an
-    // explicit `before: null` from a caller — AuditEntry['before'] is
+    // explicit `before: null` from a caller. AuditEntry['before'] is
     // `unknown`, so nothing stops a future caller (Tasks 8/10/11) from
     // passing null on purpose to mean "no snapshot", and that must take the
     // DbNull branch too rather than falling through to a cast that lies

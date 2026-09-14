@@ -8,7 +8,7 @@ export const attendanceMethodSchema = z.enum(['QR_SCAN', 'MANUAL']);
 
 /**
  * GET /me/qr-pass. `token` is the signed pass itself, returned to its owner
- * and to nobody else — there is no route anywhere that returns another
+ * and to nobody else: there is no route anywhere that returns another
  * user's token. It is never stored and never logged; only `tokenVersion`,
  * which the signature commits to, lives in the database (spec 5.1).
  */
@@ -47,8 +47,8 @@ const holder = {
 
 /**
  * Six outcomes on one 200 response, discriminated by `result`. They are not
- * client errors — they are outcomes the operator has to read off a phone at
- * arm's length — so only the seventh, "not authorised to scan this event",
+ * client errors: they are outcomes the operator has to read off a phone at
+ * arm's length, so only the seventh, "not authorised to scan this event",
  * is an HTTP fault (403, written by PermissionsGuard).
  *
  * Only the two success shapes carry personal data. A failure never names a
@@ -64,7 +64,7 @@ export const checkInResultSchema = z.discriminatedUnion('result', [
   z.object({ result: z.literal('INVALID_PASS') }),
 ]);
 
-/** One row per registration, checked in or not — this is the check-in roster. */
+/** One row per registration, checked in or not: this is the check-in roster. */
 export const attendanceRowSchema = z.object({
   /** The registration id: the roster is the registration list, with attendance on it. */
   id: z.uuid(),

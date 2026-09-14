@@ -23,7 +23,7 @@ import { TokensService } from './tokens.service';
     TokensService,
     AuthService,
     // Fail-closed by design: every route is protected unless @Public(). Task
-    // 8 adds PermissionsGuard as a third APP_GUARD after this one — Nest
+    // 8 adds PermissionsGuard as a third APP_GUARD after this one. Nest
     // runs APP_GUARD providers in registration order, and PermissionsGuard
     // depends on req.actor, which only this guard sets.
     { provide: APP_GUARD, useClass: SessionGuard },
@@ -35,14 +35,14 @@ import { TokensService } from './tokens.service';
     // let a denied STUDENT loop `GET /users` well past 60 requests with no
     // 429, because PermissionsGuard's denial always fires first. Registered
     // to deny (429) BEFORE PermissionsGuard ever gets a chance to deny (403)
-    // and write another permission.denied row — closing the exact gap F1
+    // and write another permission.denied row, closing the exact gap F1
     // balancer's health probes are unaffected; AuthController keeps its
     // instance rather than a second, redundant local one.
     // Registered under its own class token too (useExisting, not a second
-    // useClass — that would construct two separate instances), so the
+    // useClass: that would construct two separate instances), so the
     // scope-resolver tests can `app.get(PermissionsGuard)` and call
     // `loadFacts` directly without going through HTTP. Must be registered
-    // AFTER SessionGuard (see above) — req.actor must already be populated
+    // AFTER SessionGuard (see above): req.actor must already be populated
     // by the time this one runs.
     PermissionsGuard,
     { provide: APP_GUARD, useExisting: PermissionsGuard },

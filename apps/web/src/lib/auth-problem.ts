@@ -30,7 +30,7 @@ const UNAUTHORIZED_FIELD: Record<keyof typeof FIELDS, string> = {
 /**
  * Places a failure where the user can act on it, and always in the API's own
  * words: a rewritten message drifts from the server the moment either changes.
- * Nothing may be dropped — a message that maps to no rendered control still has
+ * Nothing may be dropped: a message that maps to no rendered control still has
  * to reach the form, or the submit silently does nothing.
  */
 export function routeProblem(

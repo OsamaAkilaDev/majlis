@@ -56,7 +56,7 @@ describe('Event', () => {
 
   it('rejects an event created with zero capacity', async () => {
     // capacity > 0 is the third conjunct of event_capacity_bounds and is
-    // otherwise untested — both other capacity tests only vary the counter.
+    // otherwise untested: both other capacity tests only vary the counter.
     await expect(anEvent({ capacity: 0 })).rejects.toThrow(/event_capacity_bounds/);
   });
 
@@ -109,7 +109,7 @@ describe('Event', () => {
   });
 });
 
-describe('EventRegistration — one open registration per (user, event)', () => {
+describe('EventRegistration: one open registration per (user, event)', () => {
   async function register(eventId: string, userId: string, status: 'CONFIRMED' | 'WAITLISTED' | 'CANCELLED' | 'REMOVED' | 'NO_SHOW') {
     return prisma.eventRegistration.create({ data: { eventId, userId, status } });
   }
@@ -117,7 +117,7 @@ describe('EventRegistration — one open registration per (user, event)', () => 
   it('scopes the rule per user and per event', async () => {
     // Without this, an index on (event_id) alone would cap each event at one
     // registrant, and one on (user_id) alone would let a student register
-    // only once ever — both would pass every other test in this block.
+    // only once ever: both would pass every other test in this block.
     const event = await anEvent();
     const [a, b] = [await mkUser(), await mkUser()];
     await register(event.id, a.id, 'CONFIRMED');
@@ -185,7 +185,7 @@ describe('EventAssignment', () => {
     await expect(prisma.eventAssignment.create({ data })).rejects.toMatchObject({ code: 'P2002' });
   });
 
-  it('scopes the rule per (event, responsibility) — one person can hold two responsibilities on one event, and be assigned across two events', async () => {
+  it('scopes the rule per (event, responsibility): one person can hold two responsibilities on one event, and be assigned across two events', async () => {
     // Both tests above pass identically against a (user_id)-only unique:
     // the first test never varies the user or the event, and the second
     // never varies the responsibility. Only a matrix of user x event x

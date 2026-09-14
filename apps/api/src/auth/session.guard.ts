@@ -48,7 +48,7 @@ export function sessionsInvalidatedSince(sessionsInvalidatedAt: Date | null, iss
 /**
  * Registered globally as APP_GUARD (see AuthModule) so every route is
  * protected unless explicitly marked @Public(). Runs before PermissionsGuard
- * (Task 8), which reads `req.actor` set here — that guard must be registered
+ * (Task 8), which reads `req.actor` set here: that guard must be registered
  * immediately after this one, never before.
  */
 @Injectable()
@@ -76,7 +76,7 @@ export class SessionGuard implements CanActivate {
     // loss take effect on the next request rather than at token expiry.
     // Do not cache it. Do not move any of it into the token.
     const user = await this.host.tx.user.findUnique({ where: { id: userId } });
-    // Same generic message as a missing cookie — the specific "account
+    // Same generic message as a missing cookie: the specific "account
     // suspended" wording belongs only on the login response (Task 9), where
     // the caller has already proven the password.
     if (!user || user.status !== 'ACTIVE') throw new UnauthorizedError('Not signed in.');

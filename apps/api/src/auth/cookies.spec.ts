@@ -15,7 +15,7 @@ describe('secureCookies', () => {
     expect(secureCookies('production')).toBe(true);
   });
 
-  it('is true in test — a staging deploy running NODE_ENV=test must still ship Secure cookies', () => {
+  it('is true in test: a staging deploy running NODE_ENV=test must still ship Secure cookies', () => {
     // Catches the pre-fix `NODE_ENV === 'production'` check: it satisfies
     // neither 'test' nor any other non-development value, so a staging
     // deploy running with NODE_ENV=test would ship the session cookie
