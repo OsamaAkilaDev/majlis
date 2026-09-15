@@ -69,7 +69,7 @@ These are settled. Do not re-litigate without asking the human.
 | Logging | Pino, structured, with request IDs and redaction |
 | Monorepo | pnpm workspaces + Turborepo |
 | Testing | Vitest, Supertest, Playwright, against a **native local Postgres 18** |
-| Hosting | **Vercel for both** apps; Supabase for Postgres and Storage |
+| Hosting | **Vercel** for the web app, **Render** for the API; Supabase for Postgres and Storage. Revised 2026-09-15, see 4.5 |
 
 **Pinned versions**, verified 2026-09-10. Pin these exactly; do not use `latest`.
 
@@ -192,21 +192,35 @@ One `transition()` function per entity, in `clubs/club.state.ts`, `events/event.
 
 ### 4.5 Deployment
 
-Both apps deploy to Vercel; Postgres and Storage are Supabase.
+The **web app deploys to Vercel**. The **API deploys to Render** as a persistent Node
+process, configured by `render.yaml` at the repository root. Postgres and Storage are
+Supabase. Revised 2026-09-15; see §14 for why the API moved.
 
-The known serverless constraints and their resolutions:
+The short version: **NestJS 12 is ESM-only** and this app compiles to CommonJS, so it
+depends on Node's `require(esm)`, unflagged in 22.12. A normal `node` process on Node 22
+has it; Vercel's function loader does not, and every request died with `ERR_REQUIRE_ESM`
+before a route could run. **Node 22.12 is therefore a hard floor for this project.**
+
+Constraints and their resolutions, as they actually stand:
 
 | Constraint | Resolution |
 |---|---|
-| Vercel Hobby cron is daily; the event lifecycle wants ~10 minutes | **Lazy lifecycle** (§7.3) makes tick frequency irrelevant. A free external cron (GitHub Actions scheduled workflow) hits an authenticated sweep endpoint every 10 minutes as a backstop. |
-| Cold starts at the door | The bootstrapped Nest instance is cached in module scope, so only true cold starts pay for DI setup. Scanning traffic is continuous during a session, so functions stay warm. The scanner screen fires a health ping on open, before the first student arrives. |
-| Prisma connection exhaustion | `DATABASE_URL` on Supabase's transaction pooler (`:6543`, `pgbouncer=true&connection_limit=1`); `DIRECT_URL` on `:5432` for migrations. Row locks work correctly in pgBouncer transaction mode, so §6 concurrency guarantees are unaffected. |
-| 4.5 MB request body cap | Club logos upload **direct from browser to Supabase Storage** using a signed URL the API issues after validating declared type and size. Better architecture regardless of host. |
+| Nothing calls the two sweep endpoints on a schedule | **Lazy lifecycle** (§7.3) makes tick frequency irrelevant for status. Certificate issuance and notification delivery do need a tick. A free external cron (a GitHub Actions scheduled workflow) hitting the authenticated sweep endpoints is the intended backstop and is not built. |
+| Render's free instances spin down after inactivity | A cold start costs roughly a minute. Acceptable for a showcase, not for a check-in desk: the scanner screen should fire a health ping on open, well before the first student arrives. Paid instances do not spin down. |
+| Prisma connections | `DATABASE_URL` and `DIRECT_URL` both on Supabase's **session** pooler (`:5432`). A persistent server wants real sessions, and migrations cannot run through the transaction pooler. The transaction pooler (`:6543`) is the right answer only for serverless. |
+| The direct `db.<ref>.supabase.co` host is **IPv6-only** | Use the pooler hostnames, which have IPv4. This broke the first deployment's migrations with `P1001` and is invisible from a machine that has IPv6. |
+| 4.5 MB request body cap | Club logos upload **direct from browser to Supabase Storage** using a signed URL the API issues after validating declared type and size. Kept: better architecture regardless of host. |
 | No WebSockets | Not used. |
 
-A plain `Dockerfile` is committed so the API is portable to Koyeb, Cloud Run, Fly, or a VPS as a configuration change rather than a rewrite. Nothing in `apps/api` may depend on a Vercel-specific API.
+Migrations run in the build, before the new instance serves traffic, so a schema change
+ships with the commit that makes it and a failed migration fails the deploy rather than
+starting a server against the wrong schema. `prisma generate` is part of `pnpm build`
+rather than only `postinstall`, because a cached or skipped install must not leave the
+generated client missing.
 
-Note for the record: Vercel's Hobby tier is non-commercial-use-only under their terms. Acceptable for a showcase; revisit before Majlis bills anyone.
+No `Dockerfile` is committed. An earlier version of this section claimed one was; it never
+existed. Nothing in `apps/api` depends on a host-specific API, so portability to Koyeb,
+Fly, Cloud Run or a VPS remains a configuration change rather than a rewrite.
 
 ---
 
@@ -1168,3 +1182,41 @@ It also leaves the **storage buckets created by hand**: `majlis-storage` (public
 `majlis-certificates` (private, added in Stage 6). Nothing in the repository creates or
 verifies them, so a fresh environment silently 500s on the first certificate download. The
 handbook must carry this.
+
+### The API deploys to Render, not Vercel (2026-09-15)
+
+The original decision, from Stage 1, was "deployed entirely on Vercel". That was made before
+anyone tried it, and the API cannot run there.
+
+**NestJS 12 is ESM-only.** `@nestjs/core`, `@nestjs/common` and `@nestjs/config` all declare
+`"type": "module"`. This app compiles to CommonJS, so every compiled file `require()`s an ES
+module. Node supports that as of 22.12, unflagged, which is why every local run, the whole
+test suite and eight stages of development never saw a problem. Vercel's function runtime
+uses its own loader (the stack frames are `/opt/rust/nodejs.js`), and it rejects
+`require(esm)` regardless of the Node version selected, so **every request failed with
+`ERR_REQUIRE_ESM` before a route could run**. Setting `engines.node` to `22.x` did not change
+it.
+
+Two ways out were tried and rejected. Bundling the app to a single CommonJS file with esbuild
+does produce a bundle, but a 20 MB one that dies on `createRequire(import.meta.url)`, because
+ESM code flattened into CJS leaves `import.meta` undefined; repairing that means hand-patching
+globals a framework expects. Migrating the API to ESM is the genuinely correct long-term fix,
+since NestJS 12 is ESM and the app arguably should be, but it means `"type": "module"`,
+`moduleResolution: nodenext`, `.js` extensions on every relative import across the whole
+`src` tree, and regenerating the Prisma client as ESM. That is a real refactor and doing it
+at the end of a project to satisfy one host is the wrong order.
+
+So the API runs as a persistent Node process on Render, where `node dist/main.js` works
+unchanged, and the web app stays on Vercel. `render.yaml` is committed.
+
+**Node 22.12 is now a documented hard floor for this project**, which nothing had ever
+stated. It is the single most load-bearing fact about running this codebase anywhere, and it
+was invisible precisely because every machine that ever ran it happened to satisfy it.
+
+Five other things had to be fixed before this was even visible, each hidden behind the
+previous one: there was no serverless entry point at all, Vercel recompiled the TypeScript
+with its own config and failed on a `Response` type, Supabase's direct database host is
+IPv6-only and unreachable from a build machine, the runtime Node was too old, and a restored
+build cache skipped `postinstall` so the Prisma client was never generated. The last two
+fixes are kept because they are correct regardless of host: `prisma generate` belongs to the
+build rather than to `postinstall`, and the Node floor belongs in `engines`.

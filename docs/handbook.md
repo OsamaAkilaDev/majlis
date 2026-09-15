@@ -6,6 +6,14 @@ The API is one NestJS process serving `/api/v1`. The web app is Next.js and
 proxies `/api/v1/*` to the API, so the browser only ever talks to the web
 origin. State lives in PostgreSQL and in two Supabase storage buckets.
 
+The **web app runs on Vercel**. The **API runs on Render** as a persistent Node
+process, configured by `render.yaml` at the repository root.
+
+**Node 22.12 or newer is required.** Not a preference: NestJS 12 is ESM-only and
+this app compiles to CommonJS, so it depends on Node's `require(esm)`, which
+was unflagged in 22.12. On anything older the process dies on its first import
+with `ERR_REQUIRE_ESM`. This is why the API is not on a serverless platform.
+
 ## Read this before the first deploy
 
 ### The two storage buckets are created by hand
@@ -59,7 +67,7 @@ No default. The process will not start without them.
 
 | Variable | What it does |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection string the application uses. Must be a `postgres://` or `postgresql://` URL. On Supabase this is the pooled connection |
+| `DATABASE_URL` | Postgres connection string the application uses. Must be a `postgres://` or `postgresql://` URL. On Supabase use a **pooler** hostname (`aws-N-<region>.pooler.supabase.com`), not `db.<ref>.supabase.co`. For the API on Render, the **session** pooler (`:5432`). Only use the transaction pooler (`:6543`) if you ever run it serverless |
 | `SESSION_SECRET` | Signs the session JWT. Minimum 32 characters |
 | `SUPABASE_STORAGE_URL` | Supabase project storage base URL. Must be `https://` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key. Minimum 20 characters. Never expose it to a browser |
@@ -111,7 +119,7 @@ user id they can guess.
 
 | Variable | Read by | What it does |
 | --- | --- | --- |
-| `DIRECT_URL` | `apps/api/prisma.config.ts` | Connection string for migrations. Migrations cannot run through pgBouncer, so on Supabase set this to the direct `:5432` connection. Falls back to `DATABASE_URL` |
+| `DIRECT_URL` | `apps/api/prisma.config.ts` | Connection string for migrations. On Supabase use the **session pooler** (`:5432` on the `pooler.supabase.com` host). **Not** `db.<ref>.supabase.co`: that host is IPv6-only and unreachable from most build machines, which fails as `P1001`. Falls back to `DATABASE_URL` |
 | `SHADOW_DATABASE_URL` | `apps/api/prisma.config.ts` | Only read by `prisma migrate diff`. `migrate dev` creates and drops its own when unset |
 | `TEST_DATABASE_URL` | integration test harness | Overrides the `majlis_test` database the harness otherwise derives from `DATABASE_URL` |
 | `ALLOW_REMOTE_SEED` | `prisma/seed.ts` | Set to `yes` to let the seed run against a non-local database. It refuses otherwise, and refuses `NODE_ENV=production` regardless |
@@ -198,12 +206,13 @@ Stated as facts. None of these is a bug report.
 | Limit | Detail |
 | --- | --- |
 | **No rate limiting, anywhere** | Dropped from the build by the product owner on 2026-09-13, not an oversight. Login, signup, scan, `/verify/{code}`, `forgot-password` and both sweep endpoints are all unlimited. Argon2id's cost is the only brake on password guessing |
-| **CI has never run** | The workflow's commands pass locally and nothing has ever been pushed to a remote, because no remote exists. Eight stages of green suites on one Windows machine is not the same claim as green on a clean Linux runner. Path casing, line endings and the Playwright browser install each break exactly once, on the first run |
+| **CI is red** | It ran for the first time on 2026-09-15 and failed on two jobs, `Migrations match schema` and the e2e suite. Nobody has triaged it. Eight stages of green suites on one Windows machine is not the same claim as green on a clean Linux runner |
 | **Email delivery is unverified** | See above. No key has ever existed, so no message has ever been sent |
 | **Both buckets are hand-made** | See the top of this document |
 | **The QR scanner needs a secure context** | It uses `BarcodeDetector` and `navigator.mediaDevices.getUserMedia`, and browsers withhold both outside a secure context. Over plain HTTP on a LAN address the camera will not open. `localhost` counts as secure; `http://192.168.x.x` does not. Where the scanner is unavailable it says so once and hands over to manual check-in by email, which works everywhere |
 | **No offline support** | Majlis is an installable PWA but scanning and every other action require connectivity |
-| **Deployment is not configured in this repository** | No `vercel.json`, no CI workflow, no production environment inventory. Deferred deliberately |
+| **The web app has no deployment config in this repository** | `render.yaml` covers the API. The Vercel project for `apps/web` is configured in the dashboard: root directory `apps/web`, and `API_ORIGIN` pointing at the Render service |
+| **Nothing schedules the sweeps** | Certificates issue and queued email sends only when something calls the two `/internal/*-sweep` endpoints. A scheduled GitHub Actions workflow is the intended backstop and is not built |
 | **Orphaned uploads accumulate** | Replacing a club logo or event poster leaves the previous object in the bucket, and no image can be deleted through the API at all |
 | **`GET /clubs/{id}/audit` scans up to 500 event ids per page** | `AuditLog` deliberately has no foreign keys, so a club's audit is assembled from the club id plus its event ids. The upgrade path is a `club_id` column written at record time |
 | **No CSP on the web app** | Deliberate. Inline styles and a server-generated inline SVG mean a policy tight enough to be worth having breaks rendering, and one loose enough not to buys nothing. `X-Content-Type-Options`, `Referrer-Policy` and `X-Frame-Options: DENY` are set |
@@ -219,8 +228,15 @@ pnpm --filter @majlis/api prisma:migrate    # create and apply, development only
 ```
 
 `prisma:deploy` uses `DIRECT_URL` if set, otherwise `DATABASE_URL`. On Supabase
-set `DIRECT_URL` to the direct `:5432` connection: migrations cannot run through
-pgBouncer.
+set it to the **session pooler** (`:5432` on `aws-N-<region>.pooler.supabase.com`).
+Two traps, both of which have already cost a deployment: migrations cannot run
+through the transaction pooler (`:6543`), and the direct host
+`db.<ref>.supabase.co` resolves to IPv6 only, so a build machine without IPv6
+fails with `P1001: Can't reach database server` while the same string works
+from a developer machine that happens to have IPv6.
+
+On Render, migrations run in the build (`render.yaml`), before the new instance
+serves traffic, so a schema change ships with the commit that makes it.
 
 `prisma migrate dev` does not run `generate` for you.
 

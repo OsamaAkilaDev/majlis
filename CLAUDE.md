@@ -88,7 +88,9 @@ permissions lands.
 
 **Do not use the Cloudflare skills** (`nextjs-on-cloudflare`, `workers-*`,
 `wrangler`, `durable-objects`, `migrate-to-vinext`, and the rest). They applied to
-the abandoned build. This project deploys to **Vercel**.
+the abandoned build. The **web app** deploys to Vercel; the **API** deploys to
+**Render** (`render.yaml`), because NestJS 12 is ESM-only and Vercel's function
+loader cannot `require()` an ES module. See spec 4.5.
 
 ## Ground rules
 
@@ -158,7 +160,9 @@ Each of these is verified behaviour that cost a session to discover.
 Full ledger with reasoning in spec §3. The ones most easily reversed by accident:
 
 - **Stack:** NestJS 12 + Prisma 7 + Supabase Postgres + Next.js 16, Tailwind v4 +
-  shadcn/ui, Zod 4 contracts, pnpm + Turborepo. Deployed entirely on **Vercel**.
+  shadcn/ui, Zod 4 contracts, pnpm + Turborepo. Web on **Vercel**, API on
+  **Render**. **Node 22.12 is a hard floor**: NestJS 12 is ESM-only and this app is
+  CommonJS, so it depends on require(esm).
 - **No approval workflow anywhere.** Admin creates club → active. Lead publishes
   event → live. No pending states, no `ApprovalDecision` entity.
 - **One QR pass per user**, not per registration — identity only, no event data.

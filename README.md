@@ -18,7 +18,7 @@ Running it in production needs more than this file covers. See
 | Web | Next.js 16 (App Router), Tailwind v4, shadcn/ui component layer |
 | Shared | `@majlis/contracts`, Zod schemas that generate the OpenAPI document |
 | Tooling | pnpm 11, Turborepo, Vitest, Playwright |
-| Hosting | Vercel, with Supabase for Postgres and object storage |
+| Hosting | Web on Vercel, API on Render, with Supabase for Postgres and object storage |
 
 ## Prerequisites
 
@@ -96,6 +96,24 @@ limit and fails to compile routes, which surfaces in Playwright as
 | `pnpm --filter @majlis/api prisma:migrate` | Create and apply a migration in development |
 | `pnpm --filter @majlis/api db:seed` | Seed development data. Idempotent. Refuses `NODE_ENV=production`, and any non-local database unless `ALLOW_REMOTE_SEED=yes` |
 | `pnpm format` | Prettier |
+
+## Deployment
+
+| | Where | Configured by |
+| --- | --- | --- |
+| Web | Vercel | Dashboard. Root directory `apps/web`, and `API_ORIGIN` pointing at the API |
+| API | Render | [`render.yaml`](render.yaml), committed |
+| Postgres, object storage | Supabase | Two buckets, created by hand. See the handbook |
+
+**Node 22.12 or newer is required.** NestJS 12 is ESM-only and this app compiles
+to CommonJS, so it depends on `require(esm)`. On anything older the process dies
+on its first import. It is also why the API is not deployed serverless: Vercel's
+function loader rejects `require(esm)` at any Node version.
+
+Migrations run in the Render build, so a schema change ships with the commit that
+makes it and a failed migration fails the deploy. On Supabase, use the **session
+pooler** hostname for both `DATABASE_URL` and `DIRECT_URL`; the direct
+`db.<ref>.supabase.co` host is IPv6-only and unreachable from most build machines.
 
 ## Layout
 

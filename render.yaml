@@ -1,0 +1,95 @@
+# Render blueprint for the Majlis API.
+#
+# The API runs as a persistent Node process here rather than as a serverless
+# function, and that is the reason it is on Render at all: NestJS 12 ships
+# ESM-only (@nestjs/core, @nestjs/common and @nestjs/config all declare
+# "type": "module") while this app compiles to CommonJS, so the whole thing
+# depends on Node's require(esm), unflagged in 22.12. A normal `node` process
+# on Node 22 has it. Vercel's function loader does not, and every request
+# died with ERR_REQUIRE_ESM before a route could run.
+#
+# The web app still deploys to Vercel; only the API lives here. Point the web
+# project's API_ORIGIN at this service's URL.
+#
+# Nothing secret is in this file. Every value marked `sync: false` is entered
+# in the Render dashboard and never committed.
+
+services:
+  - type: web
+    name: majlis-api
+    runtime: node
+    plan: free
+    # Supabase is in eu-central-2. Frankfurt is the nearest Render region, and
+    # on the free plan the database round trip is the latency that matters.
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+
+    # Migrations run as part of the build, so a schema change ships with the
+    # commit that makes it and a failed migration fails the deploy instead of
+    # starting a server against the wrong schema. `prisma generate` is part of
+    # `pnpm build` (see apps/api/package.json) rather than only postinstall,
+    # because a cached or skipped install must not leave the client missing.
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @majlis/api build &&
+      pnpm --filter @majlis/api exec prisma migrate deploy
+
+    # Repo root as the working directory, not apps/api: pnpm workspace links
+    # resolve from here, and @majlis/contracts is a workspace dependency.
+    startCommand: node apps/api/dist/main.js
+
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      # Node 22.12 is a hard floor, not a preference. See the note at the top.
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+      # PORT is injected by Render and read by main.ts. Do not set it here.
+
+      # Supabase: use the SESSION pooler (port 5432) for both. A persistent
+      # server wants real sessions, and migrations cannot run through the
+      # transaction pooler. The direct db.<ref>.supabase.co host is IPv6-only,
+      # which is what broke the first deployment's migrations.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+
+      # Production refuses to boot on the published example values for these
+      # four. Generate them with:
+      #   node -e "const c=require('crypto');for(const [k,n] of [['SESSION_SECRET',32],['QR_SIGNING_SECRET',32],['LIFECYCLE_SWEEP_SECRET',24],['NOTIFICATION_SWEEP_SECRET',24]]) console.log(k+'='+c.randomBytes(n).toString('base64url'))"
+      - key: SESSION_SECRET
+        sync: false
+      - key: QR_SIGNING_SECRET
+        sync: false
+      - key: LIFECYCLE_SWEEP_SECRET
+        sync: false
+      - key: NOTIFICATION_SWEEP_SECRET
+        sync: false
+
+      - key: SUPABASE_STORAGE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # Where the QR printed on a certificate points. This one has a localhost
+      # default and NO production refusal, so leaving it unset issues
+      # certificates carrying a QR nobody can scan, permanently, because the
+      # rendered PDF is cached in storage. Set it to the web app's origin.
+      - key: PUBLIC_WEB_ORIGIN
+        sync: false
+
+      # Optional. With RESEND_API_KEY unset every notification is marked
+      # SKIPPED and the in-app inbox works completely; password reset is the
+      # only flow that needs mail.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
