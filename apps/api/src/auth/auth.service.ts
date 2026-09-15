@@ -241,9 +241,13 @@ export class AuthService {
       // same transaction as the revocation, so a logout cannot half-happen.
       //
       // It is account-wide rather than per family, because the stamp is a
-      // single instant on the user. Another device's refresh token survives,
-      // so that device renews itself on its next request rather than being
-      // signed out.
+      // single instant on the user, so signing out on one device signs out
+      // every device. That is the behaviour, not an accident: the web
+      // middleware only renews when the session cookie is ABSENT, and this
+      // leaves it present but rejected, so another device lands on /login.
+      // Narrowing it to one family would need a per-family stamp the access
+      // token could be checked against, and nobody has asked for multi-device
+      // sessions to survive a sign-out.
       await this.host.tx.user.update({
         where: { id: row.userId },
         data: { sessionsInvalidatedAt: now },
