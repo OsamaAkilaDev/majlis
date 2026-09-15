@@ -30,10 +30,16 @@ services:
     # starting a server against the wrong schema. `prisma generate` is part of
     # `pnpm build` (see apps/api/package.json) rather than only postinstall,
     # because a cached or skipped install must not leave the client missing.
+    #
+    # turbo, not `pnpm --filter @majlis/api build`: the API imports
+    # @majlis/contracts, which resolves to its dist/, and a filtered pnpm build
+    # does not build dependencies. turbo's build task has dependsOn: ["^build"],
+    # so contracts is built first. Getting this wrong fails with 40+
+    # "Cannot find module @majlis/contracts" errors.
     buildCommand: >-
       corepack enable &&
       pnpm install --frozen-lockfile &&
-      pnpm --filter @majlis/api build &&
+      pnpm exec turbo run build --filter=@majlis/api &&
       pnpm --filter @majlis/api exec prisma migrate deploy
 
     # Repo root as the working directory, not apps/api: pnpm workspace links
