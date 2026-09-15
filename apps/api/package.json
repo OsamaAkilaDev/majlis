@@ -2,6 +2,7 @@
   "name": "@majlis/api",
   "version": "0.0.0",
   "private": true,
+  "engines": { "node": "22.x" },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start:dev": "node --watch -r @swc-node/register src/main.ts",
