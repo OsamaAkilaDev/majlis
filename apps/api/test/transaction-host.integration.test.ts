@@ -69,7 +69,7 @@ describe('TransactionHost', () => {
   });
 
   it('returns the callback result, from both the opening and the joining path', async () => {
-    // run() has two distinct return paths — one that opens a transaction and
+    // run() has two distinct return paths: one that opens a transaction and
     // one that joins an ambient one. Every other test here asserts only on
     // database side effects, so a regression that awaited the callback but
     // discarded its value would pass all of them.

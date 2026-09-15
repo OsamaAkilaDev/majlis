@@ -81,7 +81,7 @@ describe('SESSION_SECRET', () => {
 describe('token TTL format', () => {
   // Catches: no format validation at all (the pre-fix state), where a typo
   // like "15 minutes" or "fifteen" boots the server cleanly and then makes
-  // jsonwebtoken's sign() throw a plain, uncaught Error on the first login —
+  // jsonwebtoken's sign() throw a plain, uncaught Error on the first login,
   // an accidental 500 instead of a boot-time failure.
   it.each(['15m', '30d', '15 m', '15min', '1h', '900', '1.5h', '1000ms', '15 minutes'])(
     'accepts %s, a form ms() parses',
@@ -100,10 +100,10 @@ describe('token TTL format', () => {
   );
 
   it.each(['0s', '-1s', '0', '-15m'])(
-    'rejects %s — a zero or negative TTL boots cleanly and mints an already-expired token',
+    'rejects %s: a zero or negative TTL boots cleanly and mints an already-expired token',
     (ttl) => {
       // Catches the pre-fix gap: this note previously (wrongly) claimed a
-      // positivity rule would break tokens.service.spec.ts. It does not —
+      // positivity rule would break tokens.service.spec.ts. It does not:
       // that spec constructs `new ConfigService({...})` directly, bypassing
       // envSchema entirely. Only this accept-list asserted the undesired
       // behaviour, and it was wrong to.

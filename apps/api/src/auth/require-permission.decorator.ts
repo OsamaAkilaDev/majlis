@@ -3,7 +3,7 @@ import type { Permission } from './permissions';
 
 /**
  * Where PermissionsGuard finds the scope identifier. `from` is a dotted path
- * read off the Express `Request` object (e.g. `'params.clubId'`) — the
+ * read off the Express `Request` object (e.g. `'params.clubId'`), the
  * IDENTIFIER only. The guard re-derives who holds what authority over that
  * identifier from the database; it never trusts a role, club role, or
  * ownership claim carried on the request itself.

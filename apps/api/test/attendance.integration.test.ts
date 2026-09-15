@@ -121,15 +121,15 @@ describe('POST /events/:eventId/check-in/scan', () => {
     const second = await scan(ops.sessionCookie, event.id, { token });
 
     expect(second.body.result).toBe('ALREADY_CHECKED_IN');
-    // A rewritten timestamp would answer the operator's real question —
-    // has this person already been through the door — with today's clock
+    // A rewritten timestamp would answer the operator's real question
+    // (has this person already been through the door) with today's clock
     // instead of the record.
     expect(second.body.checkedInAt).toBe(first.body.checkedInAt);
     expect(await prisma.attendanceRecord.count({ where: { registrationId: registration.id } })).toBe(1);
   });
 
   it('admits one record when two operators scan the same person at the same instant', async () => {
-    // Two scans fired with Promise.all are NOT reliably concurrent — one
+    // Two scans fired with Promise.all are NOT reliably concurrent: one
     // usually commits before the other reads, and that version passes even
     // with attendance_record_registration_id_key dropped. So the first
     // operator is an open transaction held here: the second operator's

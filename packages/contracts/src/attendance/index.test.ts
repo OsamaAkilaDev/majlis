@@ -4,7 +4,7 @@ import { checkInResultSchema, correctAttendanceBodySchema, manualCheckInBodySche
 describe('checkInResultSchema', () => {
   it('strips personal data from a failure result', () => {
     // Spec 7.5: a failure never names a student. The union is the last line
-    // of that guarantee — a service that accidentally spread the looked-up
+    // of that guarantee. A service that accidentally spread the looked-up
     // user onto a NOT_REGISTERED answer would disclose an unrelated person
     // to whoever is holding the scanner.
     const parsed = checkInResultSchema.parse({

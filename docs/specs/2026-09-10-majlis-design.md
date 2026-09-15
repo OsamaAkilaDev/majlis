@@ -587,7 +587,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
 | 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
-| 8 | Hardening | Security review and hardening, optimisation and performance (Core Web Vitals, bundle, the scan path), README, and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13 — see below |
+| 8 | ✅ **Done**: Hardening | Whole-codebase security audit and nine fixes, six performance fixes, the em dash sweep, the README rewrite and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13. Planned in [`2026-09-13-stage-8-hardening.md`](../superpowers/plans/2026-09-13-stage-8-hardening.md) |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
 
@@ -1042,7 +1042,93 @@ the markup.
 - **Stage 8:** `GET /clubs/{id}/audit` scans up to 500 of a club's event ids per page. The
   upgrade path is a `club_id` column on `AuditLog` written at record time.
 
+### Stage 8 completion note (2026-09-15)
+
+The last stage, and the only one shaped as audit-then-fix rather than build-then-review.
+Two read-only audits ran over the whole codebase in parallel, one security and one
+performance; one dispatch applied what they found; the README and handbook were written
+last so they describe what shipped.
+
+**Seven stages of per-branch review had never looked at the product as a whole, and it
+showed.** The security audit's headline finding was that both club roster routes carried
+no permission key at all. `GET /clubs/{id}/members` and `/team` handed every member's name
+and email address to any signed-in user, which made the `user:search` permission added in
+Stage 6 decorative: the rule existed precisely so that an address only reaches somebody who
+already leads a club, and the roster handed it to everyone. Every previous review saw one
+branch, and a route that is missing a decorator looks identical to one that does not need
+it unless you are reading the permission matrix against the whole route table. Verified
+live after the fix: the lead sees `userEmail` on a roster row, a plain student gets the
+same row with the field absent.
+
+**Every timestamp the product had ever written was four hours off.** The Prisma pg driver
+adapter parses `timestamptz` as naive UTC, so a write shifted by the server's `TimeZone`
+setting and a read shifted it back. Symmetric, so the application never noticed and no test
+could have caught it. It matters because the shift is the *server's* offset: `Asia/Dubai`
+on this machine, `UTC` on Supabase, so identical code stored different instants in
+development and production. The connection now pins `options=-c timezone=UTC`. This is the
+clearest example in the build of a defect that only a direct probe finds: the evidence was
+writing `2026-06-15T12:00:00.000Z` through Prisma and reading `extract(epoch)` back as
+`08:00:00Z`.
+
+Also fixed: signed upload URLs bypassed the club status freeze and left no audit row, so an
+officer of an archived club could replace its live logo through the one path with no gate;
+logout revoked the refresh family but left the issued JWT working for up to fifteen more
+minutes, which `password_changed_at` (now `sessions_invalidated_at`) had always been the
+mechanism to prevent.
+
+**Performance was measured, and three of six fixes did not buy what the audit predicted.**
+That is the part worth carrying forward. The audit reasoned from the code and was right
+about direction and wrong about magnitude more often than not:
+
+- It predicted the bundle fix would remove 419.5 KB from every route. It removed 13 KB
+  decoded, 3 KB gzip. The contract schemas did leave the universal chunk, but what
+  dominates it is zod itself plus Radix, and zod is held by `problemDetailsSchema`, which
+  `apiFetch` parses every error response with. Stubbing that out takes the universal route
+  to 637.5 KB, so roughly **366 KB decoded sits behind removing runtime validation from the
+  browser's error path**. That is a trust-boundary decision, not a performance one, and it
+  was deliberately not taken.
+- It predicted an `(entity_type, id DESC)` index would collapse the rare-entity-type audit
+  query. It does not, because `(entity_type, entity_id)` already answers that case. The
+  index buys the sort, not the scan.
+- The `?upcoming=true` index and the `pg_trgm` GIN index are both only partly used: a
+  common search term still plans identically at 8.4 ms. A rare term goes from 8.6 ms to
+  0.119 ms, which is the case that was worth it.
+
+The three that did land as predicted were large: the notification delivery sweep was a
+parallel sequential scan of every notification ever written (37.4 ms to 0.019 ms at 400,000
+rows), the `actorUserId` audit filter got *slower* the more selective it was because the
+planner walked the primary key backwards (46.5 ms to 0.011 ms), and the scan path lost two
+round trips end to end (257 ms to 223 ms through a proxy with a 5 ms per-packet delay).
+`pg_trgm` is a database requirement from this stage on, which is in the handbook.
+
+**One e2e was signing every other one out.** Eight failures appeared on the first full
+Playwright run after this stage, six of which passed in isolation and one of which was
+deterministic: the single test that signs out was doing so as the seeded student account
+that twenty-seven other tests sign in as, and `sessions_invalidated_at` is account-wide. Any
+of them mid-navigation when it landed bounced to `/login` and failed on a missing element,
+which reads exactly like a product defect. Worth carrying: **a shared fixture account plus
+one destructive test is a suite that fails at random**, and the failure never points at the
+test that caused it. It also surfaced a comment that claimed the opposite of the behaviour,
+asserting another device "renews itself on its next request"; the web middleware only
+renews when the session cookie is *absent*, and the stamp leaves it present but rejected.
+Signing out signs out every device. That is now stated rather than contradicted.
+
+**What this stage did not do.** No rate limiting and no deployment, both dropped by the
+product owner on 2026-09-13 and recorded in §14. No CSP, because the app uses inline styles
+and a server-generated inline SVG and a wrong policy breaks the product silently. The club
+audit keeps its 500-event cap rather than gaining a `club_id` column, which is a migration
+plus a backfill of an append-only table and not a last-stage change.
+
+**Known limits, stated plainly rather than left to be discovered:** CI has never run, so
+eight stages of green suites are eight stages of green suites *on one Windows machine*.
+Email delivery has never been verified against a real Resend key. Both Supabase buckets are
+created by hand and nothing in the repository creates or verifies them, which makes a fresh
+environment silently 500 on its first certificate download. Setting `RESEND_API_KEY` makes
+`POST /auth/forgot-password` able to send mail to a caller-chosen address, unauthenticated
+and unlimited, so it should be limited in the same change that turns email on.
+
 ---
+
 ## 14. Open items
 
 - ~~The visual identity itself, palette, type ramp and component language, is deferred to Stage 3~~ Settled in Stage 3; the approved values live in [`2026-09-11-stage-3-shells-design.md`](2026-09-11-stage-3-shells-design.md) §2.

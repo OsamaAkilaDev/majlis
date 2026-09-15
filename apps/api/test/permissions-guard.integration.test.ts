@@ -65,7 +65,7 @@ async function anEvent(clubId: string, createdById: string) {
   });
 }
 
-describe('PermissionsGuard — HTTP', () => {
+describe('PermissionsGuard: HTTP', () => {
   it('denies a non-admin and records the denial, and the write does not happen', async () => {
     // Catches a guard that denies correctly but records nothing (first two
     // assertions), and separately a guard that records the denial but lets
@@ -137,13 +137,13 @@ describe('PermissionsGuard — HTTP', () => {
     // it, so the guard never runs and `expect([403,404])` would pass
     // against ANY implementation of the guard), `broken-scope` is a route
     // the router genuinely matches. Its decorator points `from` at
-    // `params.missing.deeper` — a dotted path with no real value behind it.
+    // `params.missing.deeper`, a dotted path with no real value behind it.
     // readScopeId/readAt must resolve that to "no scope found" and let
     // evaluate() deny from empty facts, never throw: without the
     // `typeof acc !== 'object'` guard in readAt, indexing a property off
     // the `undefined` that `params.missing` resolves to throws a raw
     // TypeError, surfacing as an unhandled 500.
-    const user = await mkUser(); // STUDENT, no club roles — evaluate() must deny
+    const user = await mkUser(); // STUDENT, no club roles: evaluate() must deny
     const club = await mkClub();
     const res = await request(app.getHttpServer())
       .get(`${API_PREFIX}/__test/clubs/${club.id}/broken-scope`)
@@ -154,7 +154,7 @@ describe('PermissionsGuard — HTTP', () => {
 
 describe('resolveClubFacts', () => {
   it('grants club scope only in the club the appointment is in', async () => {
-    // Two users, two clubs — a resolver that ignores its userId argument
+    // Two users, two clubs. A resolver that ignores its userId argument
     // (e.g. queries by clubId alone) would pass a single-user fixture; this
     // shape catches it via the bob@clubA assertion.
     const alice = await mkUser();
@@ -209,13 +209,13 @@ describe('resolveEventFacts', () => {
   });
 });
 
-describe('PermissionsGuard.loadFacts — event scope also carries the event\'s club authority', () => {
+describe('PermissionsGuard.loadFacts: event scope also carries the event\'s club authority', () => {
   it('grants a club LEAD authority over an event in their own club with no per-event assignment', async () => {
     // Verifies the decision recorded in permissions.guard.ts: an event's
     // club-level officers hold authority over its events even without a
     // separate EventAssignment row. A resolver that only ever queried
     // EventAssignment would silently deny a club Lead acting on their own
-    // club's event — this pins that it does not.
+    // club's event. This pins that it does not.
     const lead = await mkUser();
     const club = await mkClub();
     const event = await anEvent(club.id, lead.id);

@@ -1,24 +1,37 @@
 # Majlis
 
-University club and event management. One verified student identity, one club
-structure, one registration record, one attendance truth, one certificate history.
+University club and event management. One student identity, one club structure,
+one registration record, one attendance truth, one certificate history.
+
+Clubs, membership, events, registration with capacity and waitlist, QR check-in,
+certificate issuance and public certificate verification, notifications and
+reporting. Three app shells: student (mobile-first), club officer, and admin.
+
+Running it in production needs more than this file covers. See
+[`docs/handbook.md`](docs/handbook.md).
 
 ## Stack
 
-NestJS 12 · Prisma 7 · PostgreSQL 18 (Supabase in production) · Next.js
-(App Router) · Tailwind v4 + shadcn/ui · Zod 4 shared contracts · pnpm +
-Turborepo
+| | |
+| --- | --- |
+| API | NestJS 12, Prisma 7, PostgreSQL 18, Zod 4 |
+| Web | Next.js 16 (App Router), Tailwind v4, shadcn/ui component layer |
+| Shared | `@majlis/contracts`, Zod schemas that generate the OpenAPI document |
+| Tooling | pnpm 11, Turborepo, Vitest, Playwright |
+| Hosting | Vercel, with Supabase for Postgres and object storage |
 
-Stage 1 (this repo, currently) builds the API only — `apps/web` lands in a
-later stage.
+## Prerequisites
 
-## Getting started
+- Node 22.14 or later
+- pnpm 11.15 or later
+- PostgreSQL 18 on `localhost:5432`, with the `pg_trgm` extension available
+  (the migrations create it; the database role needs to be allowed to)
 
-Prerequisites: Node 22.14, pnpm 11.15, PostgreSQL 18 on `localhost:5432`.
+## Getting it running
 
 ```bash
-# .env first: postinstall runs `prisma generate`, which loads
-# prisma.config.ts and needs DIRECT_URL.
+# .env first: install runs `prisma generate`, which loads prisma.config.ts
+# and reads the connection string from there.
 cp .env.example .env
 pnpm install
 
@@ -27,28 +40,24 @@ psql -U postgres -h localhost -f scripts/bootstrap-db.sql
 psql -U postgres -h localhost -c "CREATE DATABASE majlis_dev OWNER majlis;"
 psql -U postgres -h localhost -c "CREATE DATABASE majlis_test OWNER majlis;"
 
-pnpm --filter @majlis/api prisma:generate
 pnpm --filter @majlis/api prisma:deploy
 pnpm --filter @majlis/api db:seed
-pnpm --filter @majlis/api start:dev
+
+pnpm --filter @majlis/api start:dev    # http://localhost:3001
+pnpm --filter @majlis/web dev          # http://localhost:3000
 ```
 
-The API is then on <http://localhost:3001/api/v1>, with generated OpenAPI docs
-at <http://localhost:3001/api/v1/docs>.
+`pnpm db:check` prints the server version if `DATABASE_URL` connects.
 
-## Commands
+Image upload and certificate PDFs need `SUPABASE_STORAGE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY`, and two buckets that nothing in this repository
+creates. The handbook has the details; everything else works without them.
 
-| Command | What it does |
-| --- | --- |
-| `pnpm typecheck` | Typecheck every package |
-| `pnpm lint` | Lint every package |
-| `pnpm test` | Unit tests |
-| `pnpm --filter @majlis/api test:integration` | Integration tests against `majlis_test` |
-| `pnpm build` | Build every package. Needs `API_ORIGIN` set: a production web build refuses to bake in the localhost default |
-| `pnpm --filter @majlis/api start:dev` | Run the API in watch mode |
-| `pnpm --filter @majlis/api db:seed` | Seed development data (idempotent; refuses when `NODE_ENV=production`, and refuses any non-local database unless `ALLOW_REMOTE_SEED=yes`) |
+The web app proxies `/api/v1/*` to the API, so browse the product at
+<http://localhost:3000>. Generated OpenAPI docs are at
+<http://localhost:3001/api/v1/docs> outside production.
 
-## Seeded accounts
+### Seeded accounts
 
 Development only. Password `Passw0rd!`.
 
@@ -59,7 +68,50 @@ Development only. Password `Passw0rd!`.
 | `ops@uni.ac.ae` | Operations Officer of Robotics Club |
 | `student@uni.ac.ae` | Student |
 
+## Tests
+
+```bash
+pnpm typecheck && pnpm lint && pnpm test      # unit tests, every package
+pnpm --filter @majlis/api test:integration    # against majlis_test
+pnpm --filter @majlis/web test:e2e            # Playwright + axe, needs both servers up
+API_ORIGIN=http://localhost:3001 pnpm build
+```
+
+Integration tests run against a real PostgreSQL. They derive `majlis_test` from
+`DATABASE_URL` and refuse any connection string that does not name it;
+`TEST_DATABASE_URL` overrides.
+
+Restart `next dev` before an e2e run. A long-lived one grows past Node's heap
+limit and fails to compile routes, which surfaces in Playwright as
+`element(s) not found`.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `pnpm build` | Build every package. Needs `API_ORIGIN`: a production web build refuses the localhost default |
+| `pnpm lint` | ESLint over every package. TypeScript only, no markdown |
+| `pnpm --filter @majlis/api start:dev` | API in watch mode, SWC register |
+| `pnpm --filter @majlis/api prisma:deploy` | Apply migrations |
+| `pnpm --filter @majlis/api prisma:migrate` | Create and apply a migration in development |
+| `pnpm --filter @majlis/api db:seed` | Seed development data. Idempotent. Refuses `NODE_ENV=production`, and any non-local database unless `ALLOW_REMOTE_SEED=yes` |
+| `pnpm format` | Prettier |
+
+## Layout
+
+```
+apps/api           NestJS API. Modules by domain, Prisma schema and migrations in prisma/
+apps/web           Next.js app. Route groups: (student) (club) (admin) (auth) (public)
+packages/contracts Zod schemas shared by both, and the source of the OpenAPI document
+docs/specs         Design spec and per-stage design notes
+docs/superpowers   One implementation plan per stage
+scripts            Database bootstrap SQL
+```
+
 ## Documentation
 
-- Design spec: [`docs/specs/2026-09-10-majlis-design.md`](docs/specs/2026-09-10-majlis-design.md)
-- Plans: [`docs/superpowers/plans/`](docs/superpowers/plans/)
+- Operator handbook: [`docs/handbook.md`](docs/handbook.md)
+- Design spec, binding: [`docs/specs/2026-09-10-majlis-design.md`](docs/specs/2026-09-10-majlis-design.md).
+  Section 3 is the decisions ledger, section 13 the build stages and their
+  completion notes.
+- Agent rules: [`CLAUDE.md`](CLAUDE.md)

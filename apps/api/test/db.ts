@@ -1,5 +1,5 @@
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { pgAdapter } from '../src/prisma/pg-adapter';
 
 /**
  * Resolves the test connection string, refusing to run against anything
@@ -7,8 +7,8 @@ import { PrismaClient } from '../src/generated/prisma/client';
  *
  * The database name is parsed out of the URL rather than matched as a
  * substring of the whole string. A substring check on
- * `postgresql://majlis_test_ro:pw@prod-host/majlis_prod` would pass — the
- * marker matches the username — and truncateAll would then TRUNCATE every
+ * `postgresql://majlis_test_ro:pw@prod-host/majlis_prod` would pass (the
+ * marker matches the username) and truncateAll would then TRUNCATE every
  * table in a production database's public schema.
  */
 export function testDatabaseUrl(): string {
@@ -33,7 +33,7 @@ function deriveFromDatabaseUrl(): string {
 }
 
 export function createTestPrisma(): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: testDatabaseUrl() }) });
+  return new PrismaClient({ adapter: pgAdapter(testDatabaseUrl()) });
 }
 
 export async function disconnectTestPrisma(prisma: PrismaClient): Promise<void> {

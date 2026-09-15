@@ -1,4 +1,5 @@
-import type { EventStatus } from '@majlis/contracts';
+import type { ClubStatus, EventStatus } from '@majlis/contracts';
+import { assertAcceptsEdits as assertClubAcceptsEdits } from '../clubs/club-status';
 import { UnprocessableError } from '../common/problem/domain-error';
 
 /**
@@ -42,7 +43,7 @@ export interface DueStatusInput {
 }
 
 /**
- * The status an event's own timestamps say it should be in — a pure function,
+ * The status an event's own timestamps say it should be in, a pure function,
  * which is what lets a list read render it without writing anything.
  *
  * Boundaries are evaluated newest first, because the check-in window may open
@@ -60,4 +61,22 @@ export function dueStatus(event: DueStatusInput, now: Date): EventStatus {
   if (now >= event.checkInOpensAt) return 'ONGOING';
   if (now >= event.registrationClosesAt) return 'REGISTRATION_CLOSED';
   return 'PUBLISHED';
+}
+
+/**
+ * Whether this event still accepts edits: its club's own edit gate, plus the
+ * three terminal event states.
+ *
+ * Shared by `EventsService.update` and by the poster upload-url mint, which
+ * overwrites the live poster object and so is an edit as much as a PATCH is.
+ * A guard in only one of the two leaves the other as the way round it.
+ */
+export function assertEventAcceptsEdits(event: {
+  status: EventStatus;
+  club: { status: ClubStatus };
+}): void {
+  assertClubAcceptsEdits(event.club.status);
+  if (event.status === 'CANCELLED' || event.status === 'COMPLETED' || event.status === 'CERTIFIED') {
+    throw new UnprocessableError(`A ${event.status.toLowerCase()} event can no longer be edited.`);
+  }
 }

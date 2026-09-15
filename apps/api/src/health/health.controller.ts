@@ -5,10 +5,10 @@ import { Public } from '../auth/public.decorator';
 import { TransactionHost } from '../prisma/transaction.host';
 
 /**
- * auth.module.ts) — this is what a load balancer or uptime monitor pings
- * repeatedly to keep a serverless instance warm, and it predates F1's fix
- * above 60/min would start getting 429s for no reason connected to F1's
- * actual concern (the append-only audit table).
+ * The health check. @Public() because this is what a load balancer or an
+ * uptime monitor pings, and it must answer before any session exists.
+ * It exposes nothing sensitive: a status and a database round trip, per
+ * spec section 11.
  */
 @ApiTags('ops')
 @Controller('health')

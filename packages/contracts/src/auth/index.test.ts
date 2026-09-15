@@ -3,7 +3,7 @@ import { emailSchema, loginBodySchema, signupBodySchema } from './index';
 
 describe('emailSchema', () => {
   it('trims before validating format', () => {
-    // Catches `z.email().trim()` — the form this was planned with — where
+    // Catches `z.email().trim()` (the form this was planned with) where
     // the format check runs on the untrimmed string first and a padded
     // address fails validation before trim() ever runs.
     expect(emailSchema.parse('  Foo@Bar.com  ')).toBe('foo@bar.com');
@@ -20,7 +20,7 @@ describe('emailSchema', () => {
 
 describe('signupBodySchema', () => {
   it('rejects a password shorter than 12 characters', () => {
-    // Catches a boundary that forgot the min-length rule entirely — a schema
+    // Catches a boundary that forgot the min-length rule entirely. A schema
     // missing `.min(12)` would let an 8-character password through.
     expect(
       signupBodySchema.safeParse({ email: 'a@uni.ac.ae', password: 'short11!', fullName: 'A' }).success,
@@ -45,7 +45,7 @@ describe('signupBodySchema', () => {
 });
 
 describe('loginBodySchema', () => {
-  it('shares emailSchema with signup — the same normalisation applies to the lookup side', () => {
+  it('shares emailSchema with signup: the same normalisation applies to the lookup side', () => {
     const parsed = loginBodySchema.parse({ email: 'Osama@UNI.ac.ae', password: 'anything' });
     expect(parsed.email).toBe('osama@uni.ac.ae');
   });

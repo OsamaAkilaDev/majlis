@@ -15,7 +15,7 @@ export type TransactionClient = Prisma.TransactionClient;
  * Carries the current transaction implicitly through the call stack.
  *
  * Services read `host.tx` instead of `prisma`, so a helper called five frames
- * down — the audit writer, most importantly — automatically enlists in the
+ * down (the audit writer, most importantly) automatically enlists in the
  * caller's transaction without being handed one. That is what makes
  * "the audit row is written in the same transaction as the action" a
  * structural property rather than something a reviewer has to catch.
@@ -33,7 +33,7 @@ export class TransactionHost {
 
   /**
    * Runs `fn` inside a transaction. If a transaction is already open on this
-   * async context, `fn` joins it — Postgres has no true nested transactions,
+   * async context, `fn` joins it: Postgres has no true nested transactions,
    * and a savepoint here would let an inner failure be swallowed while the
    * outer action commits, which is exactly the bug this design prevents.
    */

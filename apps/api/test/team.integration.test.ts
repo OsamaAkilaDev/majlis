@@ -179,7 +179,9 @@ describe('POST /clubs/:clubId/team', () => {
 describe('GET /clubs/:clubId/team', () => {
   it('computes hasLeftClub from the ClubMembership row, not the appointment role', async () => {
     const club = await makeClub();
-    const viewer = await loginAsStudent(app);
+    // A Lead reads it, not a bystander: the list is open to anyone signed in,
+    // but only club:team-manage sees the addresses on it, asserted below.
+    const viewer = await makeActiveLead(app, club.id);
     const stillMember = await makeActiveOfficer(app, club.id, 'MARKETING');
     await prisma.clubMembership.create({ data: { clubId: club.id, userId: stillMember.userId, status: 'ACTIVE' } });
     // Same role as stillMember, no membership row. Varying membership
@@ -349,5 +351,43 @@ describe('admin override on a team invitation', () => {
       where: { action: 'club.officer_invited', entityId: withReason.body.id },
     });
     expect(row.reason).toBe('The club has no Lead to do it.');
+  });
+});
+
+describe('GET /clubs/:clubId/team, email visibility', () => {
+  /**
+   * The route carries no @RequirePermission, and assertCanReadRoster returns
+   * immediately for any ACTIVE club, so before Stage 8 this handed every
+   * officer's address to any signed-in account. Two readers in one test:
+   * asserting only the Lead's copy would pass against a handler that always
+   * sends the address, and asserting only the bystander's would pass against
+   * one that never does.
+   */
+  it('sends userEmail to a Lead and omits it entirely for a member with no role', async () => {
+    const club = await makeClub();
+    const officer = await makeActiveOfficer(app, club.id, 'OPERATIONS');
+    const lead = await makeActiveLead(app, club.id);
+    const bystander = await loginAsStudent(app);
+    await prisma.clubMembership.create({
+      data: { clubId: club.id, userId: bystander.userId, status: 'ACTIVE' },
+    });
+
+    const read = (cookie: string) =>
+      request(app.getHttpServer()).get(`${API_PREFIX}/clubs/${club.id}/team`).set('Cookie', cookie);
+
+    const asLead = await read(lead.sessionCookie);
+    const asBystander = await read(bystander.sessionCookie);
+
+    expect(asLead.status).toBe(200);
+    expect(asBystander.status).toBe(200);
+
+    const rowFor = (res: request.Response) =>
+      res.body.items.find((a: { userId: string }) => a.userId === officer.userId);
+
+    expect(rowFor(asLead).userEmail).toBeTruthy();
+    // The list itself stays open: the bystander still sees the officer.
+    expect(rowFor(asBystander).userFullName).toBeTruthy();
+    // Omitted, not nulled.
+    expect(rowFor(asBystander)).not.toHaveProperty('userEmail');
   });
 });

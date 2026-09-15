@@ -23,7 +23,7 @@ export type DepartmentSeed = Prisma.DepartmentCreateInput;
 /**
  * A value unique to this call. Integration tests share one database and
  * truncate between tests, but a collision inside a single test is still
- * possible with a fixed string — and a unique-constraint failure in setup
+ * possible with a fixed string, and a unique-constraint failure in setup
  * reads like a bug in the code under test.
  */
 export function uniq(prefix: string): string {
@@ -31,7 +31,7 @@ export function uniq(prefix: string): string {
 }
 
 /**
- * A plain seed object — does not touch the database. Email is lowercased
+ * A plain seed object: does not touch the database. Email is lowercased
  * deliberately: the user table carries CHECK (email = lower(email)), so a
  * factory producing mixed case would fail on insert and every test would
  * start with a constraint error instead of the one it meant to check.
@@ -46,7 +46,7 @@ export function aUser(overrides: Partial<UserSeed> = {}): UserSeed {
   };
 }
 
-/** A plain seed object — does not touch the database. */
+/** A plain seed object: does not touch the database. */
 export function aDepartment(overrides: Partial<DepartmentSeed> = {}): DepartmentSeed {
   const handle = uniq('dept');
   return {
@@ -56,7 +56,7 @@ export function aDepartment(overrides: Partial<DepartmentSeed> = {}): Department
   };
 }
 
-/** A plain seed object — does not touch the database. */
+/** A plain seed object: does not touch the database. */
 export function aClub(departmentId: string, overrides: Partial<ClubSeed> = {}): ClubSeed {
   const handle = uniq('club');
   return {
@@ -73,7 +73,7 @@ export function aClub(departmentId: string, overrides: Partial<ClubSeed> = {}): 
 
 // vitest.integration.config.ts runs with pool: 'forks' and isolate left at
 // its default (true), so each test file gets its own worker and its own
-// module instance of this file — one lazily-created client per test file,
+// module instance of this file, one lazily-created client per test file,
 // not one shared across the whole run. It is left to be reclaimed when that
 // file's forked worker exits rather than explicitly disconnected, which is
 // safe at this scale (one extra connection per file, for the suite's
@@ -90,7 +90,7 @@ export function mkUser(overrides: Partial<UserSeed> = {}): Promise<User> {
 }
 
 /**
- * Inserts and returns a Club row, creating its Department too — so a test
+ * Inserts and returns a Club row, creating its Department too, so a test
  * needing a club never has to reach for a shared one just to skip that
  * step. Pass `departmentId` in overrides to place it in an existing
  * department instead.
@@ -219,7 +219,7 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 /**
- * A plain seed object — does not touch the database. Every window satisfies
+ * A plain seed object: does not touch the database. Every window satisfies
  * the four CHECK constraints in the events migration, so a test that only
  * cares about one of them can override that one and still insert.
  *
@@ -262,7 +262,7 @@ export function mkEvent(
 }
 
 /**
- * A plain seed object — does not touch the database. `status` is required
+ * A plain seed object: does not touch the database. `status` is required
  * with no default for the same reason mkAppointment's is: a waitlist test
  * that forgot to state it would otherwise quietly assert against CONFIRMED.
  */
@@ -276,7 +276,7 @@ export function aRegistration(
 }
 
 /**
- * Inserts a registration row directly. Does NOT maintain `confirmedCount` —
+ * Inserts a registration row directly. Does NOT maintain `confirmedCount`:
  * a test seeding CONFIRMED rows must set the counter itself, because the
  * counter is exactly what the code under test is responsible for.
  */

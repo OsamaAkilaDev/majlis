@@ -145,7 +145,18 @@ test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
 });
 
 test('signing out ends the session server-side, not only in the browser', async ({ page }) => {
-  await signIn(page, 'student@uni.ac.ae');
+  // Signs up rather than reusing the seeded student, because logout stamps
+  // sessionsInvalidatedAt on the whole user. Sharing an account with the 27
+  // other tests that sign in as the seeded student made every one of them a
+  // coin flip: whichever was mid-navigation when this ran bounced to /login.
+  const email = `signout-${Date.now()}@uni.ac.ae`;
+  await page.goto('/signup');
+  await page.getByLabel('Full name').fill('Sign Out');
+  await page.getByLabel('University email').fill(email);
+  await page.getByLabel('Password').fill('a-long-enough-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/home$/);
+
   await page.getByRole('button', { name: 'Account' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/login$/);

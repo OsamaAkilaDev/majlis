@@ -26,7 +26,12 @@ export const appointmentSchema = z.object({
   clubId: z.uuid(),
   userId: z.uuid(),
   userFullName: z.string(),
-  userEmail: z.string(),
+  /**
+   * Omitted entirely, never nulled, for a reader who does not hold
+   * `club:team-manage` in this club. The list itself is open to any
+   * signed-in user; the addresses on it are not.
+   */
+  userEmail: z.string().optional(),
   role: clubRoleSchema,
   status: appointmentStatusSchema,
   invitationExpiresAt: z.string().nullable(),

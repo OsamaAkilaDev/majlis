@@ -3,35 +3,40 @@ import { cursorPageSchema } from '../common/pagination';
 
 /**
  * Mirrors Prisma's `UserStatus` enum (schema.prisma). Declared locally rather
- * than imported from the generated client — same reasoning as
+ * than imported from the generated client, same reasoning as
  * `apps/api/src/auth/permissions.ts`'s local PlatformRole/ClubRole unions:
  * this package has no business depending on Prisma's runtime.
  */
 export const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
 
 /**
- * Zod 4's `.url()` validates shape only — it does not restrict scheme, so it
+ * Zod 4's `.url()` validates shape only: it does not restrict scheme, so it
  * accepts `javascript:alert(1)`, `data:text/html,x`, and `file:///etc/passwd`
  * just as happily as `https://...`. Stored verbatim and echoed by `GET /me`,
- * every auth response, and `PATCH /users/{id}/status` — i.e. into an admin's
- * browser for the student they just suspended. `new URL(v).protocol` is the
+ * every auth response, and `PATCH /users/{id}/status` (i.e. into an admin's
+ * browser for the student they just suspended). `new URL(v).protocol` is the
  * platform's own scheme parser, safer here than a hand-rolled regex.
+ *
+ * `https:` only: a `http:` avatar loads over plain transport into an
+ * authenticated page, which every browser reports as mixed content and most
+ * simply block. The length bound is what stops the column from being used as
+ * free storage by a `data:`-length URL that happens to start with https.
  */
-const httpUrlSchema = z.string().trim().refine(
+const httpsUrlSchema = z.string().trim().max(2048).refine(
   (v) => {
     try {
-      return ['http:', 'https:'].includes(new URL(v).protocol);
+      return new URL(v).protocol === 'https:';
     } catch {
       return false;
     }
   },
-  { message: 'must be an http:// or https:// URL' },
+  { message: 'must be an https:// URL' },
 );
 
 /**
  * The shape both `GET /me` and `PATCH /me` return, and what
  * `PATCH /users/{id}/status` returns for the user it just changed.
- * Deliberately excludes `clubRoles` — that's `sessionUserSchema`'s job (see
+ * Deliberately excludes `clubRoles`: that's `sessionUserSchema`'s job (see
  * `../auth`), the one every auth response carries. Collapsing the two would
  * put authorization facts into a profile-edit response.
  */
@@ -50,13 +55,13 @@ export const meSchema = userProfileSchema;
 /**
  * `PATCH /me`'s body. Deliberately narrow: `fullName` and `avatarUrl` are the
  * only two fields a user may change about themselves. The service picks
- * these two fields explicitly when writing to Prisma — this schema
+ * these two fields explicitly when writing to Prisma. This schema
  * stripping every other key (platformRole, status, email) is a second,
  * structural layer of the same guarantee, never a substitute for it.
  */
 export const patchMeBodySchema = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
-  avatarUrl: httpUrlSchema.nullable().optional(),
+  avatarUrl: httpsUrlSchema.nullable().optional(),
 });
 
 /** One row of `GET /users`' admin listing. */
@@ -102,7 +107,7 @@ export const userSearchQuerySchema = z.object({
 });
 
 /**
- * `PATCH /users/{id}/status`'s body. `reason` is required — every admin
+ * `PATCH /users/{id}/status`'s body. `reason` is required: every admin
  * override in spec §11's audited-action list carries one, and this is the
  * first of them Stage 2 implements.
  */

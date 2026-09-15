@@ -123,7 +123,7 @@ export function TeamManager({
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="font-medium text-ink">{a.userFullName}</span>
-                    <span className="text-label text-ink-2">{a.userEmail}</span>
+                    {a.userEmail ? <span className="text-label text-ink-2">{a.userEmail}</span> : null}
                   </div>
                 </TableCell>
                 <TableCell>{enumLabel(a.role)}</TableCell>

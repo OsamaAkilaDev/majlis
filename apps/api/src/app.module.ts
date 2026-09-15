@@ -32,12 +32,12 @@ import { UsersModule } from './users/users.module';
           // request-context middleware already assigns req.id and the
           // x-request-id response header before pino-http runs, on every
           // real entry point today (main.ts, every integration test). This
-          // fallback exists for a bootstrap path that skips configureApp()
-          // — nothing enforces that every future one won't. pino-http's own
+          // fallback exists for a bootstrap path that skips configureApp().
+          // Nothing enforces that every future one won't. pino-http's own
           // `req.id = req.id || genReqId(...)` (pino-http/logger.js) makes
           // this completely inert whenever configureApp's middleware has
           // already run; it only ever fires otherwise. Do not remove it as
-          // dead code — that was tried and reverted, see PR review.
+          // dead code: that was tried and reverted, see PR review.
           genReqId: (req, res) => {
             const id = resolveRequestId(req.headers['x-request-id']);
             res.setHeader('x-request-id', id);

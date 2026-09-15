@@ -1,7 +1,15 @@
 import type { SessionUser } from '@majlis/contracts';
 
-export const SESSION_COOKIE = 'majlis_session';
-export const REFRESH_COOKIE = 'majlis_refresh';
+/**
+ * The API adds the `__Host-` prefix to both cookies in production only (see
+ * `apps/api/src/auth/cookies.ts`); the prefix needs HTTPS, and the dev loop
+ * and Playwright both run over HTTP. Derived the same way here, so middleware
+ * looks for the names the API actually set.
+ */
+const HOST_PREFIX = process.env.NODE_ENV === 'production' ? '__Host-' : '';
+
+export const SESSION_COOKIE = `${HOST_PREFIX}majlis_session`;
+export const REFRESH_COOKIE = `${HOST_PREFIX}majlis_refresh`;
 
 /** Routes reachable with no account at all. */
 const PUBLIC_PREFIXES = ['/verify'];

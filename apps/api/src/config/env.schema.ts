@@ -6,12 +6,12 @@ const postgresUrl = z
 
 /**
  * ACCESS_TOKEN_TTL and REFRESH_TOKEN_TTL are handed to jsonwebtoken's `sign()`
- * as `expiresIn`, which — for a string value — delegates to `ms()`
+ * as `expiresIn`, which (for a string value) delegates to `ms()`
  * (jsonwebtoken@9.0.3 depends on ms@^2.1.1, resolved here to 2.1.3). `ms()`
  * returns `undefined` for anything it can't parse, and jsonwebtoken's
- * `timespan()` then makes `sign()` throw a plain `Error` — uncaught, that
+ * `timespan()` then makes `sign()` throw a plain `Error`: uncaught, that
  * surfaces as a bare 500 on the first login attempt. This regex is copied
- * from ms@2.1.3's own `parse()` (not imported — it's jsonwebtoken's
+ * from ms@2.1.3's own `parse()` (not imported: it's jsonwebtoken's
  * transitive dependency, not ours to depend on) so a malformed value is
  * rejected here, at boot, instead of there, on the first request.
  */
@@ -26,16 +26,16 @@ const jwtDuration = z
     // ms() parses the leading numeric portion exactly like parseFloat does
     // (the regex above already guarantees the string matches its grammar),
     // so this is the same magnitude ms() itself would compute the sign of.
-    // A zero or negative token lifetime is nonsensical — "0s" mints a token
-    // that's already expired, and "-1s" one that expired before it existed
-    // — and jsonwebtoken's sign() accepts either without complaint.
+    // A zero or negative token lifetime is nonsensical ("0s" mints a token
+    // that's already expired, and "-1s" one that expired before it existed),
+    // and jsonwebtoken's sign() accepts either without complaint.
     (v) => parseFloat(v) > 0,
     { message: 'must be a positive duration (greater than zero)' },
   );
 
 /**
- * The value shipped in .env.example. Fine for development — the repo should
- * clone and run — but a production process that boots with it is signing
+ * The value shipped in .env.example. Fine for development (the repo should
+ * clone and run), but a production process that boots with it is signing
  * every session with a secret published in a public repository.
  */
 export const EXAMPLE_SESSION_SECRET = 'dev-only-session-secret-change-me!!';
@@ -85,14 +85,14 @@ export const envSchema = z
       .default(EXAMPLE_QR_SIGNING_SECRET),
     /**
      * Spec 7.5: Operations and Lead may correct attendance for 48 hours
-     * after an event ends. It is also what gates COMPLETED to CERTIFIED —
+     * after an event ends. It is also what gates COMPLETED to CERTIFIED:
      * issuing the moment an event completes would make this window zero.
      */
     ATTENDANCE_CORRECTION_WINDOW_HOURS: z.coerce.number().int().positive().max(8760).default(48),
     /**
      * Where the QR printed on a certificate points. The API is reached
      * through the web app's rewrite rather than directly, so it has no other
-     * reason to know its own public origin — and a certificate carrying a
+     * reason to know its own public origin, and a certificate carrying a
      * QR nobody can scan is a QR that may as well not be there.
      */
     PUBLIC_WEB_ORIGIN: z.url().default('http://localhost:3000'),

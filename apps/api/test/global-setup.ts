@@ -7,7 +7,7 @@ import { testDatabaseUrl } from './db';
  * Applies all migrations to the test database once, before any test file runs.
  *
  * `prisma migrate deploy` errors on an empty migrations directory, which is
- * the state until the first schema task lands — so this is a no-op until
+ * the state until the first schema task lands, so this is a no-op until
  * there is something to apply.
  */
 export default function setup(): void {

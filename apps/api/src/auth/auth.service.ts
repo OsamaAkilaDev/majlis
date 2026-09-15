@@ -39,9 +39,9 @@ export const PASSWORD_RESET_TTL_MINUTES = 30;
 export const RESET_LINK_INVALID = 'That password reset link is no longer valid.';
 
 /**
- * Every refresh failure path — expiry, an unknown token, a suspended
- * user, and (in the controller) a missing cookie — throws this exact
- * message. The client cannot tell which case occurred, and does not need
+ * Every refresh failure path throws this exact message: expiry, an
+ * unknown token, a suspended user, and (in the controller) a missing
+ * cookie. The client cannot tell which case occurred, and does not need
  * to: distinguishing them would only help an attacker probe which sessions
  * are real. Exported so AuthController's missing-cookie check uses the same
  * literal rather than a second copy that could drift from this one.
@@ -52,7 +52,7 @@ export const SESSION_EXPIRED = 'Session expired.';
  * OWASP's current minimum for argon2id. Exported so the exact same
  * parameters govern real password hashing, the dummy hash below (which must
  * cost the same ~100ms as a real hash to close the timing oracle it
- * defeats), and Task 12's seed — three call sites that must never drift out
+ * defeats), and Task 12's seed, three call sites that must never drift out
  * of step with each other.
  */
 export const ARGON2_OPTIONS: Options = {
@@ -74,8 +74,8 @@ export class AuthService {
   private readonly webOrigin: string;
 
   /**
-   * A fixed argon2id hash of a throwaway string — generated once with
-   * ARGON2_OPTIONS, pasted here as a literal — verified against on every
+   * A fixed argon2id hash of a throwaway string (generated once with
+   * ARGON2_OPTIONS, pasted here as a literal), verified against on every
    * login where no matching user row exists.
    *
    * Without it, "no user, return immediately" and "user found, spend ~100ms
@@ -100,7 +100,7 @@ export class AuthService {
 
   /**
    * `input.email` was already normalised by `signupBodySchema` at the
-   * validation boundary — the same `emailSchema` login's lookup uses, so
+   * validation boundary, the same `emailSchema` login's lookup uses, so
    * the two directions can never drift apart (see @majlis/contracts).
    */
   async signup(input: SignupBody): Promise<AuthResult> {
@@ -114,7 +114,7 @@ export class AuthService {
         });
       } catch (e) {
         // A lost race on the unique email index is an expected outcome, not
-        // a server fault — reported as a domain conflict, never a 500.
+        // a server fault: reported as a domain conflict, never a 500.
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
           throw new ConflictError('An account with this email already exists.');
         }
@@ -125,24 +125,24 @@ export class AuthService {
   }
 
   async login(input: LoginBody): Promise<AuthResult> {
-    // Looked up outside any transaction — same reasoning as signup's hash()
+    // Looked up outside any transaction, same reasoning as signup's hash()
     // call: the read plus the ~100ms argon2 verify below have no need of one,
     // and only issueSession (minting a token and persisting the refresh-token
     // row) does. The pre-fix version wrapped this whole method in host.run,
-    // pinning a pooled connection idle for the entire CPU-bound verify —
+    // pinning a pooled connection idle for the entire CPU-bound verify,
     // the first thing to fall over under a semester-start login burst on a
     // small serverless pool.
     const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
 
     // Runs unconditionally, even when no user was found, and still outside
-    // any transaction — verifying against DUMMY_HASH instead of
+    // any transaction. Verifying against DUMMY_HASH instead of
     // short-circuiting is what keeps "no such account" and "wrong password"
     // costing the same ~100ms.
     const ok = await verify(user?.passwordHash ?? AuthService.DUMMY_HASH, input.password);
 
     if (!user || !ok) throw new UnauthorizedError('Email or password is incorrect.');
 
-    // Reported only once the caller has already proven the password — the
+    // Reported only once the caller has already proven the password, the
     // one deliberate exception to enumeration resistance (spec: this
     // leaks account state only to someone who already knows it). A wrong
     // password against a suspended account still falls through the branch
@@ -166,7 +166,7 @@ export class AuthService {
   /**
    * Inserts one refresh_token row and returns its id and raw value. Shared
    * by issueSession (a brand-new family) and refresh (a rotation within an
-   * existing family) so both mint through the exact same code — there is
+   * existing family) so both mint through the exact same code: there is
    * only one place a raw token is ever generated or a row ever created.
    */
   private async mintRefreshTokenRow(
@@ -217,7 +217,7 @@ export class AuthService {
 
   /**
    * Revokes the whole family the presented token belongs to (not just the
-   * one row) and returns regardless of what it finds — no cookie, an
+   * one row) and returns regardless of what it finds: no cookie, an
    * unknown token, or one already revoked all succeed identically. A user
    * who cannot log out is a worse outcome than a redundant no-op, and there
    * is nothing sensitive to report by failing here: unlike reuse, presenting
@@ -230,9 +230,27 @@ export class AuthService {
     await this.host.run(async () => {
       const row = await this.host.tx.refreshToken.findUnique({ where: { tokenHash: hash } });
       if (!row) return;
+      const now = new Date();
       await this.host.tx.refreshToken.updateMany({
         where: { familyId: row.familyId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
+      });
+      // Revoking the family ends the ability to RENEW; the access token
+      // already in the cookie is a stateless 15 minute JWT and outlived the
+      // logout without this. Same mechanism a password reset uses, in the
+      // same transaction as the revocation, so a logout cannot half-happen.
+      //
+      // It is account-wide rather than per family, because the stamp is a
+      // single instant on the user, so signing out on one device signs out
+      // every device. That is the behaviour, not an accident: the web
+      // middleware only renews when the session cookie is ABSENT, and this
+      // leaves it present but rejected, so another device lands on /login.
+      // Narrowing it to one family would need a per-family stamp the access
+      // token could be checked against, and nobody has asked for multi-device
+      // sessions to survive a sign-out.
+      await this.host.tx.user.update({
+        where: { id: row.userId },
+        data: { sessionsInvalidatedAt: now },
       });
     });
   }
@@ -334,13 +352,13 @@ export class AuthService {
       // the caller learns nothing about the account from either.
       if (user.status !== 'ACTIVE') throw new UnauthorizedError(RESET_LINK_INVALID);
 
-      // passwordChangedAt in the same write, not a second one: SessionGuard
-      // refuses every access token issued at or before it, and that is the
-      // only thing that ends a session already in progress. A reset that
-      // leaves a stolen 15 minute JWT working is not a reset.
+      // sessionsInvalidatedAt in the same write, not a second one:
+      // SessionGuard refuses every access token issued at or before it, and
+      // that is the only thing that ends a session already in progress. A
+      // reset that leaves a stolen 15 minute JWT working is not a reset.
       await this.host.tx.user.update({
         where: { id: user.id },
-        data: { passwordHash, passwordChangedAt: now },
+        data: { passwordHash, sessionsInvalidatedAt: now },
       });
       const { count: revoked } = await this.host.tx.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },
@@ -361,7 +379,7 @@ export class AuthService {
   /**
    * GET /auth/me. Rebuilds the exact SessionUser shape signup/login/refresh
    * return, from the actor SessionGuard already loaded fresh for this
-   * request — this is deliberately the only endpoint that carries
+   * request. This is deliberately the only endpoint that carries
    * `clubRoles`; `/me` (Task 11's UsersService) returns the editable profile
    * and nothing about authorization.
    */
@@ -371,8 +389,8 @@ export class AuthService {
 
   /**
    * Every auth response's user shape includes the actor's ACTIVE club
-   * roles — the same ACTIVE-only filter PermissionsGuard's resolveClubFacts
-   * applies (no permission is active until status = 'ACTIVE') — so the
+   * roles, the same ACTIVE-only filter PermissionsGuard's resolveClubFacts
+   * applies (no permission is active until status = 'ACTIVE'), so the
    * student/officer/admin shell can route on login without a second round
    * trip.
    */

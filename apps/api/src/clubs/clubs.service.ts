@@ -110,14 +110,45 @@ export class ClubsService {
   }
 
   /**
-   * POST /clubs/:clubId/logo-upload-url and .../banner-upload-url. Unlike
-   * mintLogoUpload, the club already exists, so the object path is derived
-   * from its real id rather than a freshly minted one.
+   * A signed URL for `resourceId`'s object path, with no gate of its own.
+   * Callers that mint against an entity which does not exist yet (a club or
+   * an event being created) use this directly; the two that mint against a
+   * live object gate it first, below and in EventsService.
    */
-  async mintEditUpload(clubId: string, kind: ImageKind): Promise<SignedUpload> {
-    const path = objectPath(kind, clubId);
+  async mintEditUpload(resourceId: string, kind: ImageKind): Promise<SignedUpload> {
+    const path = objectPath(kind, resourceId);
     const { signedUrl, token } = await this.storage.createSignedUploadUrl(path);
     return { path, signedUrl, token, publicUrl: this.storage.publicUrlFor(path, Date.now()) };
+  }
+
+  /**
+   * POST /clubs/:clubId/logo-upload-url and .../banner-upload-url. The club
+   * already exists, so the object path is derived from its real id rather
+   * than a freshly minted one, and the URL overwrites the live public object.
+   *
+   * That makes this an edit, and it takes `update`'s status gate: without it
+   * an officer of an ARCHIVED club could replace its public logo through the
+   * one path that refused nothing. The audit row is the only record the
+   * object was replaced at all, since the bytes never pass through the API,
+   * and is written in the same transaction so a failed mint leaves no trace
+   * of a URL nobody received.
+   */
+  async mintClubImageUpload(actor: { id: string }, clubId: string, kind: ImageKind): Promise<SignedUpload> {
+    return this.host.run(async () => {
+      await loadClub(this.host, clubId, assertAcceptsEdits);
+      const upload = await this.mintEditUpload(clubId, kind);
+
+      await this.audit.record({
+        action: 'club.upload_url_minted',
+        entityType: 'Club',
+        entityId: clubId,
+        outcome: 'SUCCESS',
+        actorUserId: actor.id,
+        after: { kind, path: upload.path },
+      });
+
+      return upload;
+    });
   }
 
   /**

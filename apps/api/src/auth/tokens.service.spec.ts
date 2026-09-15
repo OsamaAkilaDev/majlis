@@ -28,7 +28,7 @@ describe('TokensService', () => {
 
     it('draws 32 bytes (256 bits) of entropy for the raw token', () => {
       // Catches: a regression to a short or predictable generator (e.g.
-      // randomBytes(8), or Math.random().toString(36)) — SHA-256 always
+      // randomBytes(8), or Math.random().toString(36)). SHA-256 always
       // emits 64 hex chars no matter what it's fed, so the hash-shape
       // assertion above passes regardless of the raw token's real entropy.
       // This is the only assertion that constrains the raw token itself.
@@ -64,7 +64,7 @@ describe('TokensService', () => {
       const token = await service.signAccessToken('user-id-2');
       const claims = await service.verifyAccessToken(token);
       expect(claims.userId).toBe('user-id-2');
-      // SessionGuard compares this against passwordChangedAt, so a missing
+      // SessionGuard compares this against sessionsInvalidatedAt, so a missing
       // or non-numeric iat would silently disable that check.
       expect(claims.issuedAt).toBeTypeOf('number');
     });
@@ -89,7 +89,7 @@ describe('TokensService', () => {
   describe('refreshTokenExpiresAt', () => {
     it('resolves a TTL string into a Date roughly that far in the future', async () => {
       // Catches a parser that silently drops the unit (e.g. treats "30d" as
-      // 30 milliseconds) — the assertion window is wide but would still
+      // 30 milliseconds). The assertion window is wide but would still
       // fail for an off-by-a-thousand or off-by-86400 error.
       const before = Date.now();
       const expiresAt = await service.refreshTokenExpiresAt();

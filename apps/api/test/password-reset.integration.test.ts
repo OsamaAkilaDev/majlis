@@ -305,7 +305,7 @@ describe('cookies issued before a reset', () => {
     // A password reset exists because the credential may already be in an
     // attacker's hands. Revoking refresh tokens only ends the ability to
     // RENEW; the access token is a stateless 15 minute JWT, so without the
-    // passwordChangedAt comparison in SessionGuard a stolen cookie keeps
+    // sessionsInvalidatedAt comparison in SessionGuard a stolen cookie keeps
     // working for a quarter of an hour after the victim resets.
     const email = `${uniq('reset')}@uni.ac.ae`;
     const signedUp = await signupAndKeepCookies(app, { email, password: PASSWORD });

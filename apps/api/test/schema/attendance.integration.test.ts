@@ -87,7 +87,7 @@ describe('AttendanceRecord', () => {
     expect(record.checkedInAt).toBeInstanceOf(Date);
   });
 
-  it('scopes attendance per registration, not per event — a queue of students all check in', async () => {
+  it('scopes attendance per registration, not per event: a queue of students all check in', async () => {
     // The catastrophic failure this guards against: a unique index on
     // event_id instead of registration_id would pass every other test here
     // while allowing exactly one check-in per event, ever.
@@ -109,7 +109,7 @@ describe('AttendanceRecord', () => {
     ).resolves.toBeDefined();
   });
 
-  it('scopes attendance per registration, not per user — one student attends two events', async () => {
+  it('scopes attendance per registration, not per user: one student attends two events', async () => {
     // The mirror image of the event-scoping catastrophe: a unique index on
     // user_id would let a student check in to exactly one event for their
     // entire time at the university. Every other test here passes either way.
@@ -196,7 +196,7 @@ describe('Certificate', () => {
     expect(cert.pdfUrl).toBeNull(); // rendered lazily on first download
   });
 
-  it('scopes certificates per registration — two attendees of one event each get one', async () => {
+  it('scopes certificates per registration: two attendees of one event each get one', async () => {
     const { event, user, registration } = await aRegistration();
     await prisma.certificate.create({
       data: certData({ registrationId: registration.id, eventId: event.id, userId: user.id }),
@@ -214,7 +214,7 @@ describe('Certificate', () => {
     ).resolves.toBeDefined();
   });
 
-  it('scopes active certificates per registration, not per student — one student attends two events', async () => {
+  it('scopes active certificates per registration, not per student: one student attends two events', async () => {
     // The catastrophic failure this guards against: a unique index on
     // user_id (instead of registration_id) would allow one active
     // certificate per student for their entire degree, and would pass every

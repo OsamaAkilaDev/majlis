@@ -1,5 +1,5 @@
 /**
- * Field-level edit permissions — pure data plus one deciding function, the
+ * Field-level edit permissions: pure data plus one deciding function, the
  * same shape as PERMISSIONS in ./permissions.ts and for the same reason.
  *
  * The two gates answer different questions. `@RequirePermission('event:edit')`
@@ -21,7 +21,7 @@ const FULL_FIELD_ACCESS: ClubRole[] = ['LEAD', 'VICE_LEAD'];
 
 /**
  * CTO holds nothing on a club: no column on Club is technical. That is why
- * `club:edit` gains MARKETING and not CTO — a CTO admitted to the route
+ * `club:edit` gains MARKETING and not CTO: a CTO admitted to the route
  * would be refused by every field in the body.
  */
 export const CLUB_FIELDS = {
@@ -35,7 +35,7 @@ export const CLUB_FIELDS = {
 } as const satisfies Record<string, readonly ClubRole[]>;
 
 /**
- * The last bucket — slug, the four timestamps and requiresClubMembership — is
+ * The last bucket (slug, the four timestamps and requiresClubMembership) is
  * empty on purpose: those decide when registration opens and what an existing
  * link points at, so they stay with Lead, Vice and Admin.
  */

@@ -12,7 +12,7 @@ export class TokensService {
   /**
    * jsonwebtoken's `expiresIn` type is a template-literal `StringValue`
    * ("15m", "30d", ...) narrower than the plain `string` type the env schema
-   * exposes here — `envSchema` validates the value's actual format (against
+   * exposes here. `envSchema` validates the value's actual format (against
    * the grammar `ms()` accepts) at boot, so this cast just aligns the two
    * TypeScript types; it is not doing any of the real validation.
    */
@@ -28,7 +28,7 @@ export class TokensService {
   }
 
   /**
-   * The payload is `{ sub, iat, exp }` and nothing else — no role, no club
+   * The payload is `{ sub, iat, exp }` and nothing else: no role, no club
    * IDs, no permissions. Spec §6.2 promises that losing an appointment takes
    * effect on the very next request because permissions are re-derived per
    * request and never cached in the session; a role claim here would make
@@ -43,7 +43,7 @@ export class TokensService {
   /**
    * Returns the `sub` and `iat` claims, or throws UnauthorizedError for any
    * failure. `iat` is UNIX seconds, as JWT defines it, and is what
-   * SessionGuard compares against `user.passwordChangedAt`.
+   * SessionGuard compares against `user.sessionsInvalidatedAt`.
    */
   async verifyAccessToken(token: string): Promise<{ userId: string; issuedAt: number }> {
     try {
@@ -57,7 +57,7 @@ export class TokensService {
   /**
    * Refresh tokens are SHA-256, not argon2id. A 256-bit random string has no
    * structure to guess and no dictionary to attack, so argon2id's work
-   * factor — correct for a human-chosen password — buys nothing here and
+   * factor (correct for a human-chosen password) buys nothing here and
    * would add ~100ms to every refresh. Passwords stay argon2id.
    */
   mintRefreshToken(): { raw: string; hash: string } {
@@ -86,10 +86,10 @@ export class TokensService {
 
   /**
    * `RefreshToken.expiresAt` needs a concrete Date, but REFRESH_TOKEN_TTL is
-   * a human duration string like "30d" — the same grammar `ms()` accepts
+   * a human duration string like "30d", the same grammar `ms()` accepts
    * that envSchema already validates at boot (see JWT_DURATION_PATTERN).
-   * Rather than hand-roll a second parser for that grammar — one that could
-   * quietly disagree with jsonwebtoken's own — this borrows jsonwebtoken's
+   * Rather than hand-roll a second parser for that grammar (one that could
+   * quietly disagree with jsonwebtoken's own), this borrows jsonwebtoken's
    * parsing by round-tripping a throwaway signed token through it and
    * reading back the `exp` claim it computed. No new dependency, and the
    * same library that governs the access token's expiry governs this too.

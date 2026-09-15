@@ -1,7 +1,7 @@
 import { hash } from '@node-rs/argon2';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { ARGON2_OPTIONS } from '../src/auth/auth.service';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { pgAdapter } from '../src/prisma/pg-adapter';
 
 /**
  * Development data. Every write is an upsert keyed on a natural unique
@@ -17,6 +17,35 @@ import { PrismaClient } from '../src/generated/prisma/client';
 const SEED_PASSWORD = 'Passw0rd!';
 
 const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
+
+/**
+ * Restores a seeded registration to the status its scenario needs.
+ *
+ * Registrations have no natural unique key, so this cannot be an upsert; but
+ * the "create only if absent" guard it replaces left a row an earlier suite
+ * run had moved elsewhere exactly where it was. A NO_SHOW registration is
+ * not CANCELLED, so the old guard found it and did nothing, and the
+ * documented "re-run db:seed to refresh the scan window" refreshed the
+ * window without restoring the registration the scan applies to. The
+ * scenario then failed as though the scanner were broken.
+ *
+ * CANCELLED rows are left behind rather than reused: the one-open-per-user
+ * partial index allows a fresh open row beside them, which is what a student
+ * who cancelled and registered again actually looks like.
+ */
+async function seedRegistration(
+  prisma: PrismaClient,
+  eventId: string,
+  userId: string,
+  status: 'CONFIRMED' | 'CHECKED_IN',
+) {
+  const existing = await prisma.eventRegistration.findFirst({
+    where: { eventId, userId, status: { not: 'CANCELLED' } },
+  });
+  if (!existing) return prisma.eventRegistration.create({ data: { eventId, userId, status } });
+  if (existing.status === status) return existing;
+  return prisma.eventRegistration.update({ where: { id: existing.id }, data: { status } });
+}
 
 export async function seed(prisma: PrismaClient): Promise<void> {
   const passwordHash = await hash(SEED_PASSWORD, ARGON2_OPTIONS);
@@ -178,17 +207,8 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // The one seat, held. A guarded create rather than an upsert: registrations
-  // have no natural unique key, and event_registration_one_open_per_user would
-  // reject the second run.
-  const taken = await prisma.eventRegistration.findFirst({
-    where: { eventId: showcase.id, userId: users['lead@uni.ac.ae']!, status: { not: 'CANCELLED' } },
-  });
-  if (!taken) {
-    await prisma.eventRegistration.create({
-      data: { eventId: showcase.id, userId: users['lead@uni.ac.ae']!, status: 'CONFIRMED' },
-    });
-  }
+  // The one seat, held.
+  await seedRegistration(prisma, showcase.id, users['lead@uni.ac.ae']!, 'CONFIRMED');
 
   // Stage 6 needs two clocks the other events cannot supply, because nothing
   // in the product can move an event's boundaries into the past: one event
@@ -228,14 +248,9 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  const open = await prisma.eventRegistration.findFirst({
-    where: { eventId: tonight.id, userId: users['student@uni.ac.ae']!, status: { not: 'CANCELLED' } },
-  });
-  if (!open) {
-    await prisma.eventRegistration.create({
-      data: { eventId: tonight.id, userId: users['student@uni.ac.ae']!, status: 'CONFIRMED' },
-    });
-  }
+  // Back to CONFIRMED even when an earlier suite run checked it in or swept
+  // it to NO_SHOW: this is the registration the scanner walk scans.
+  await seedRegistration(prisma, tonight.id, users['student@uni.ac.ae']!, 'CONFIRMED');
 
   const finished = {
     ...event,
@@ -275,14 +290,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   // and WAITLISTED into NO_SHOW) and it is eligible for a certificate. The
   // attendance record comes with it: a registration checked in with no record
   // is a state the product itself cannot produce.
-  let attended = await prisma.eventRegistration.findFirst({
-    where: { eventId: past.id, userId: users['student@uni.ac.ae']!, status: { not: 'CANCELLED' } },
-  });
-  if (!attended) {
-    attended = await prisma.eventRegistration.create({
-      data: { eventId: past.id, userId: users['student@uni.ac.ae']!, status: 'CHECKED_IN' },
-    });
-  }
+  const attended = await seedRegistration(prisma, past.id, users['student@uni.ac.ae']!, 'CHECKED_IN');
   await prisma.attendanceRecord.upsert({
     where: { registrationId: attended.id },
     update: {},
@@ -328,7 +336,7 @@ async function main(): Promise<void> {
   if (!url) throw new Error('DATABASE_URL is not set.');
   assertSafeToSeed(url, process.env);
 
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+  const prisma = new PrismaClient({ adapter: pgAdapter(url) });
   try {
     await seed(prisma);
     console.error('Seed complete.');

@@ -33,7 +33,7 @@ class ForgotPasswordDto extends createZodDto(forgotPasswordBodySchema) {}
 class ResetPasswordDto extends createZodDto(resetPasswordBodySchema) {}
 
 /**
- * Signup and login — the first endpoints in the product that issue a
+ * Signup and login, the first endpoints in the product that issue a
  * session. Both are @Public(): SessionGuard is a global APP_GUARD, so a
  * route that forgets this decorator is simply unreachable by anyone who
  * isn't already signed in.
@@ -96,7 +96,7 @@ export class AuthController {
 
   /**
    * Not @Public(): this is the one endpoint that echoes back session
-   * identity, including `clubRoles` — the same shape signup/login/refresh
+   * identity, including `clubRoles`, the same shape signup/login/refresh
    * return, re-derived from the actor SessionGuard already loaded fresh for
    * this request. `/me` (UsersController) is the editable-profile route and
    * deliberately carries none of this.
@@ -109,7 +109,7 @@ export class AuthController {
 
   /**
    * @Public(): SessionGuard checks the session cookie, which is exactly what
-   * refresh exists to replace once it has expired — requiring a valid one
+   * refresh exists to replace once it has expired. Requiring a valid one
    * here would make the endpoint unusable for the one case it's for.
    */
   @Public()
@@ -118,7 +118,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: SESSION_EXPIRED, type: ProblemDetailsDto })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
-    // Same message and status as every failure inside AuthService.refresh —
+    // Same message and status as every failure inside AuthService.refresh:
     // a missing cookie is not a distinguishable case either.
     if (!raw) throw new UnauthorizedError(SESSION_EXPIRED);
 
@@ -129,7 +129,7 @@ export class AuthController {
 
   /**
    * @Public(): an expired (or already cleared) access token must not block
-   * logging out. Always 204 — see AuthService.logout's doc comment for why
+   * logging out. Always 204: see AuthService.logout's doc comment for why
    * "no cookie", "unknown token", and "already revoked" all succeed.
    */
   @Public()
@@ -145,7 +145,7 @@ export class AuthController {
   }
 
   /**
-   * Tokens live only in httpOnly cookies, never in the JSON response body —
+   * Tokens live only in httpOnly cookies, never in the JSON response body:
    * the response body is the session user and nothing else, so a token
    * never ends up in a browser devtools network log or an API client's
    * response history.

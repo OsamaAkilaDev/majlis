@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
  * Guards the ESLint rule that keeps `PrismaService` injectable only inside
  * `src/prisma/`. A lint rule fails silently: a glob that matches nothing
  * leaves the repo green forever while the boundary it was meant to hold is
- * wide open. So this asserts in both directions — the rule fires where it
+ * wide open. So this asserts in both directions: the rule fires where it
  * must, and stays quiet where it must not.
  *
  * `cwd` is `apps/api` under vitest, which is also how `pnpm lint` runs, so

@@ -18,7 +18,7 @@ import { EVENT_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/fi
 import { clubOverrideReason } from '../auth/override';
 import type { PlatformRole } from '../auth/permissions';
 import { resolveClubFacts, resolveEventFacts } from '../auth/permissions.guard';
-import { assertAcceptsEdits, assertAcceptsNewActivity } from '../clubs/club-status';
+import { assertAcceptsNewActivity } from '../clubs/club-status';
 import { loadClub } from '../clubs/load-club';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { ClubsService } from '../clubs/clubs.service';
@@ -35,7 +35,7 @@ import { TransactionHost } from '../prisma/transaction.host';
 import { EventLifecycleService } from './event-lifecycle.service';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from '../notifications/notification.service';
-import { assertTransition, dueStatus } from './event-status';
+import { assertEventAcceptsEdits, assertTransition, dueStatus } from './event-status';
 import { promoteFromWaitlist } from './waitlist';
 
 const WITH_CLUB = { club: { select: { name: true, logoUrl: true, status: true } } } as const;
@@ -43,8 +43,8 @@ type EventWithClub = EventRow & { club: { name: string; logoUrl: string; status:
 
 /**
  * Exactly the columns `toSummary` reads. A list page is the hottest read in
- * the product and the full row carries `description` — the longest column on
- * the table — plus the certificate and check-in fields, none of which a
+ * the product and the full row carries `description` (the longest column on
+ * the table) plus the certificate and check-in fields, none of which a
  * summary renders.
  */
 const SUMMARY_SELECT = {
@@ -83,7 +83,7 @@ interface Actor {
 
 /**
  * The body keys a patch may write, derived from EVENT_FIELDS rather than
- * listed again — the two must describe the same set, and a second hand-kept
+ * listed again: the two must describe the same set, and a second hand-kept
  * list would drift into a field that passes the permission gate and then
  * silently writes nothing.
  *
@@ -226,21 +226,38 @@ export class EventsService {
    * `event:edit` alone. `event:edit` admits all five club roles, so without
    * this a CTO or Operations officer could mint a signed URL and overwrite the
    * live poster object they are not allowed to set.
+   *
+   * It takes `update`'s status gate too: the URL overwrites the live public
+   * object, so it is an edit, and without the gate it was the one edit path a
+   * cancelled or completed event accepted. The audit row is the only record
+   * the object was replaced at all, since the bytes never pass through the
+   * API, and is written in the same transaction so a failed mint leaves no
+   * trace of a URL nobody received.
    */
   async mintEditUpload(actor: Actor, eventId: string): Promise<SignedUpload> {
-    const event = await this.host.tx.event.findUnique({
-      where: { id: eventId },
-      select: { clubId: true },
-    });
-    if (!event) throw new NotFoundError('No such event.');
+    return this.host.run(async () => {
+      const event = await this.loadEvent(eventId);
+      assertEventAcceptsEdits(event);
 
-    const { clubRoles } = await resolveClubFacts(this.host, actor.id, event.clubId);
-    assertFieldsAllowed({ posterUploaded: true }, EVENT_FIELDS, {
-      platformRole: actor.platformRole,
-      clubRoles,
-    });
+      const { clubRoles } = await resolveClubFacts(this.host, actor.id, event.clubId);
+      assertFieldsAllowed({ posterUploaded: true }, EVENT_FIELDS, {
+        platformRole: actor.platformRole,
+        clubRoles,
+      });
 
-    return this.clubs.mintEditUpload(eventId, 'event-poster');
+      const upload = await this.clubs.mintEditUpload(eventId, 'event-poster');
+
+      await this.audit.record({
+        action: 'event.upload_url_minted',
+        entityType: 'Event',
+        entityId: eventId,
+        outcome: 'SUCCESS',
+        actorUserId: actor.id,
+        after: { kind: 'event-poster', path: upload.path },
+      });
+
+      return upload;
+    });
   }
 
   async create(actor: Actor, clubId: string, body: CreateEventBody): Promise<EventDetail> {
@@ -334,6 +351,22 @@ export class EventsService {
     const filters: Prisma.EventWhereInput = {
       ...(query.clubId ? { clubId: query.clubId } : {}),
       ...(query.status ? { status: query.status } : {}),
+      // ponytail: `q` and `upcoming` both have an index behind them
+      // (event_title_trgm_idx, event_ends_at_id_idx) and both are only
+      // PARTLY used, for the same reason: this list orders by `id`, and
+      // neither index delivers that order, so the planner keeps choosing a
+      // primary-key walk whenever it estimates enough matches to hit the
+      // page size quickly. Measured on 22,000 events:
+      //
+      //   q, zero or rare match  8.5 ms / 1,016 buffers -> 0.02 ms / 11
+      //   q, common term         9.1 ms / 1,182 buffers -> 8.4 ms / 1,182
+      //   upcoming=true          3.4 ms / 1,295 buffers -> 2.8 ms / 1,295
+      //
+      // The rest is behind the ordering, not the indexes: ordering by
+      // `(ends_at, id)` takes upcoming=true to 0.02 ms / 5 buffers, and a
+      // trigram-similarity order does the same for a common term. Both mean
+      // this endpoint paginates on a different key, which changes the cursor
+      // contract every caller holds. Left for a stage that can carry it.
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
       ...(query.upcoming ? { endsAt: { gte: new Date() } } : {}),
     };
@@ -370,7 +403,7 @@ export class EventsService {
 
     // toDetail resolves the viewer's roles in this club and assignments on
     // this event anyway, and those are exactly what visibilityFilter asks
-    // the database for a second time — so the draft gate reads them off the
+    // the database for a second time, so the draft gate reads them off the
     // built detail instead of issuing its own two queries.
     const detail = await this.toDetail(actor, row);
 
@@ -452,10 +485,7 @@ export class EventsService {
       await this.host.tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${eventId}::uuid FOR UPDATE`;
 
       const event = await this.loadEvent(eventId);
-      assertAcceptsEdits(event.club.status);
-      if (event.status === 'CANCELLED' || event.status === 'COMPLETED' || event.status === 'CERTIFIED') {
-        throw new UnprocessableError(`A ${event.status.toLowerCase()} event can no longer be edited.`);
-      }
+      assertEventAcceptsEdits(event);
 
       // Re-derived here rather than carried over from the guard: the field
       // gate is a second authorization decision and trusts nothing the first
@@ -581,7 +611,7 @@ export class EventsService {
 
       // Spec 7.7, event published: the club's active members. Not every
       // student in the university, and not the club's officers by virtue of
-      // their appointment — acceptance grants membership too (spec 7.2), so
+      // their appointment: acceptance grants membership too (spec 7.2), so
       // an officer is already in this set.
       const members = await this.host.tx.clubMembership.findMany({
         where: { clubId: event.clubId, status: 'ACTIVE' },
@@ -651,7 +681,7 @@ export class EventsService {
   /**
    * Everyone still holding a place on the event, notified inside the
    * caller's transaction. CANCELLED registrations are excluded: somebody who
-   * withdrew is not owed news about a venue change. REMOVED rows are kept —
+   * withdrew is not owed news about a venue change. REMOVED rows are kept:
    * the person was told they are coming and then taken off by an officer,
    * and a cancellation still concerns them.
    */

@@ -14,7 +14,7 @@ export interface RequestFacts {
  *
  * This mirrors TransactionHost deliberately: the codebase then has one
  * pattern for ambient context rather than two. A Nest REQUEST-scoped
- * provider was rejected — request scope propagates up the injection graph,
+ * provider was rejected: request scope propagates up the injection graph,
  * so one request-scoped audit service makes every service that consumes it
  * request-scoped too.
  */

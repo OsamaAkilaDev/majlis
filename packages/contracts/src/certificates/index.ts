@@ -52,7 +52,7 @@ export const certificatePdfSchema = z.object({ pdfUrl: z.string() });
  * GET /verify/{code}. Public and unauthenticated, so this is the exact and
  * complete list of what a certificate discloses to the world: holder name,
  * event, club, when it was issued, and whether it still stands. Nothing is
- * ever added to it — no email, no user id, no serial, no event id.
+ * ever added to it: no email, no user id, no serial, no event id.
  *
  * A revoked certificate answers REVOKED with its revocation date rather than
  * vanishing: an employer holding a revoked document has to be able to learn

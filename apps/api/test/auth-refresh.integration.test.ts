@@ -2,12 +2,16 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX } from '../src/config/api-prefix';
+import { SESSION_COOKIE } from '../src/auth/cookies';
 import { TokensService } from '../src/auth/tokens.service';
 import { allCookiesOf, rawRefreshTokenFrom, refresh, refreshCookieOf, signup } from './auth-helpers';
 import { createTestApp } from './app';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
 const LOGOUT_PATH = `${API_PREFIX}/auth/logout`;
+const ME_PATH = `${API_PREFIX}/auth/me`;
+
+const me = (cookie: string) => request(app.getHttpServer()).get(ME_PATH).set('Cookie', cookie);
 
 const prisma = createTestPrisma();
 
@@ -58,7 +62,7 @@ describe('POST /auth/refresh', () => {
     await prisma.user.update({ where: { id: s.body.id }, data: { status: 'SUSPENDED' } });
 
     // Catches a refresh that trusts the stored row without re-reading the
-    // user — suspension has to bite here as well as on the session guard.
+    // user: suspension has to bite here as well as on the session guard.
     expect((await refresh(app, refreshCookieOf(s))).status).toBe(401);
   });
 
@@ -80,7 +84,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('gives an identical response across expiry, revocation, an unknown token, a suspended user, and no cookie', async () => {
-    // Five independently-broken cases, five root causes — the client must not
+    // Five independently-broken cases, five root causes. The client must not
     // be able to tell them apart. Includes the controller's own missing-cookie
     // branch, the one path that never reaches AuthService.refresh.
     const expired = await signup(app, {});
@@ -107,7 +111,7 @@ describe('POST /auth/refresh', () => {
       expect(res.status).toBe(401);
     }
 
-    // requestId differs per request by design — stripped so it can't mask a
+    // requestId differs per request by design, stripped so it can't mask a
     // real difference in the rest of the body.
     const stripBody = (res: request.Response) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to omit it
@@ -145,7 +149,7 @@ describe('POST /auth/logout', () => {
       204,
     );
     // Catches a logout that throws (500) or 4xxs on a token it already
-    // revoked — a user retrying a slow request must not be punished for it.
+    // revoked: a user retrying a slow request must not be punished for it.
     expect((await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', cookie)).status).toBe(
       204,
     );
@@ -167,7 +171,7 @@ describe('POST /auth/logout', () => {
 
     await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', cookie);
 
-    // Catches a logout that clears cookies without revoking the row — the
+    // Catches a logout that clears cookies without revoking the row: the
     // cookie is gone from that browser, but the credential still works for
     // anyone who captured it. Revocation is the only thing ending a session
     // now that rotation is gone, so this is the load-bearing logout test.
@@ -175,5 +179,28 @@ describe('POST /auth/logout', () => {
     const rows = await prisma.refreshToken.findMany({ where: { userId: s.body.id } });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.revokedAt).not.toBeNull();
+  });
+
+  it('refuses the pre-logout access token, which revocation alone cannot reach', async () => {
+    const s = await signup(app, {});
+    const setCookie = s.headers['set-cookie'] as unknown as string[];
+    const sessionCookie = setCookie.find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(';')[0]!;
+
+    // Live before, so a 401 afterwards cannot be blamed on the cookie never
+    // having worked.
+    expect((await me(sessionCookie)).status).toBe(200);
+
+    expect(
+      (await request(app.getHttpServer()).post(LOGOUT_PATH).set('Cookie', refreshCookieOf(s))).status,
+    ).toBe(204);
+
+    // Catches a logout that revokes the refresh family and stops there: the
+    // access token is a stateless 15 minute JWT, so the session it belongs
+    // to outlived the logout by up to fifteen minutes.
+    expect((await me(sessionCookie)).status).toBe(401);
+    // SessionGuard 401s a suspended account with the same message, so the
+    // account has to be shown still ACTIVE or this test does not say which
+    // branch refused it.
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: s.body.id } })).status).toBe('ACTIVE');
   });
 });

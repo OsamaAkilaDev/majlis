@@ -20,7 +20,7 @@ import type { ClubRole } from '../../generated/prisma/enums';
 import type { Prisma, ClubMembership as MembershipRow } from '../../generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
-import { assertCanReadRoster } from '../roster-access';
+import { assertCanReadRoster, canReadRosterEmail, type RosterReader } from '../roster-access';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../club-status';
 import { loadClub } from '../load-club';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
@@ -34,13 +34,18 @@ interface AppointmentRoleRow {
   role: ClubRole;
 }
 
-/** Maps a membership row plus its club roles onto the wire shape. */
-function toMember(row: MembershipWithUser, clubRoles: ClubRole[]): Member {
+/**
+ * Maps a membership row plus its club roles onto the wire shape.
+ *
+ * `withEmail` defaults to true because every caller but the roster list is an
+ * officer-only write path that has already cleared `membership:decide`.
+ */
+function toMember(row: MembershipWithUser, clubRoles: ClubRole[], withEmail = true): Member {
   return {
     id: row.id,
     userId: row.userId,
     userFullName: row.user.fullName,
-    userEmail: row.user.email,
+    ...(withEmail ? { userEmail: row.user.email } : {}),
     status: row.status,
     requestedAt: row.requestedAt.toISOString(),
     decidedAt: row.decidedAt?.toISOString() ?? null,
@@ -278,8 +283,11 @@ export class MembershipService {
   }
 
   /** GET /clubs/:clubId/members. Same cursor pattern as ClubsService.list and TeamService.list. */
-  async members(actor: { id: string; platformRole: string }, clubId: string, query: MemberListQuery): Promise<MemberPage> {
+  async members(actor: RosterReader, clubId: string, query: MemberListQuery): Promise<MemberPage> {
     await assertCanReadRoster(this.host, actor, clubId);
+    // The route carries no @RequirePermission (the list is open to any
+    // signed-in user); this is the whole gate on the addresses in it.
+    const withEmail = await canReadRosterEmail(this.host, actor, clubId, 'membership:decide');
 
     const where: Prisma.ClubMembershipWhereInput = {
       clubId,
@@ -296,7 +304,7 @@ export class MembershipService {
     const roles = await this.rolesForMany(clubId, items.map((r) => r.userId));
 
     return {
-      items: items.map((r) => toMember(r, roles.get(r.userId) ?? [])),
+      items: items.map((r) => toMember(r, roles.get(r.userId) ?? [], withEmail)),
       nextCursor,
     };
   }

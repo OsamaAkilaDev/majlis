@@ -73,7 +73,7 @@ describe('AuditService', () => {
   });
 
   it('falls back to the literal "unknown" requestId when no RequestContext is running', async () => {
-    // Pins the fallback branch exactly, rather than `toBeTruthy()` — which
+    // Pins the fallback branch exactly, rather than `toBeTruthy()`, which
     // 'unknown' itself satisfies and so cannot tell "correctly fell back"
     // from "ignored RequestContext entirely and hardcoded something else
     // truthy".
@@ -94,7 +94,7 @@ describe('AuditService', () => {
 
   it('threads requestId and ip from the ambient RequestContext', async () => {
     // Catches a service that ignores RequestContext and always hardcodes
-    // the 'unknown' fallback — the previous test alone can't distinguish
+    // the 'unknown' fallback: the previous test alone can't distinguish
     // "correctly read the ambient facts" from "always writes 'unknown'",
     // since neither wrapped the call in RequestContext.run.
     const context = app.get(RequestContext);
@@ -117,7 +117,7 @@ describe('AuditService', () => {
 
   it('omits actorUserId for an unauthenticated denial rather than writing a fabricated one', async () => {
     // Catches an implementation that defaults a missing actorUserId to some
-    // placeholder (e.g. '' or a system user id) instead of leaving it null —
+    // placeholder (e.g. '' or a system user id) instead of leaving it null:
     // that would misattribute an anonymous denial to a real account.
     const audit = app.get(AuditService);
     await audit.record({
@@ -137,7 +137,7 @@ describe('AuditService', () => {
 
   it('persists before/after snapshots, and writes real SQL NULL when they are omitted', async () => {
     // Catches passing a JSON literal `null` (Prisma.JsonNull) or a bare `null`
-    // cast into the input type when the caller never supplied before/after —
+    // cast into the input type when the caller never supplied before/after:
     // both would put a `"null"` JSON value in the column, not the SQL NULL a
     // reader of a snapshot-less row (a DENIED entry, most of them) expects.
     const audit = app.get(AuditService);
@@ -166,7 +166,7 @@ describe('AuditService', () => {
     });
 
     // Both a real SQL NULL and a stored JSON `null` scalar come back as JS
-    // `null` once node-postgres/pg-types parses the column — that driver
+    // `null` once node-postgres/pg-types parses the column. That driver
     // parsing (JSON.parse) is exactly why an ordinary Prisma or $queryRaw
     // read of the value can't discriminate Prisma.DbNull from
     // Prisma.JsonNull. jsonb_typeof forces the check to happen in Postgres,

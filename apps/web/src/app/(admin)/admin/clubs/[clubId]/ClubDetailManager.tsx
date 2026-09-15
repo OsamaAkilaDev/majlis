@@ -211,7 +211,7 @@ export function ClubDetailManager({
         <h3 className="font-display text-h2 text-ink">Lead</h3>
         {activeLead ? (
           <p className="text-sm text-ink">
-            {activeLead.userFullName} <span className="text-ink-2">{activeLead.userEmail}</span>
+            {activeLead.userFullName}{activeLead.userEmail ? <span className="text-ink-2"> {activeLead.userEmail}</span> : null}
           </p>
         ) : (
           <p className="text-sm text-ink-2">No active Lead</p>

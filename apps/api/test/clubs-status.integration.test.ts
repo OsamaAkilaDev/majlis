@@ -212,3 +212,39 @@ describe.each(['logo', 'banner'] as const)('POST /clubs/:clubId/%s-upload-url', 
     expect(res.status).toBe(403);
   });
 });
+
+describe('POST /clubs/:clubId/logo-upload-url', () => {
+  /**
+   * The mint overwrites the live public object at clubs/<id>/logo.webp, so it
+   * is an edit and takes PATCH /clubs/:clubId's status gate. Before Stage 8
+   * it refused nothing, which made it the one way an officer of an archived
+   * club could still replace its public logo, and nothing recorded it.
+   */
+  it('refuses an archived club and records the mint it allows', async () => {
+    const archived = await makeClub({ status: 'ARCHIVED' });
+    const archivedLead = await makeActiveLead(app, archived.id);
+    const refused = await request(app.getHttpServer())
+      .post(`${CLUBS_PATH}/${archived.id}/logo-upload-url`)
+      .set('Cookie', archivedLead.sessionCookie);
+
+    expect(refused.status).toBe(422);
+    expect(refused.body.detail).toBe('That club is archived.');
+
+    const live = await makeClub();
+    const lead = await makeActiveLead(app, live.id);
+    const allowed = await request(app.getHttpServer())
+      .post(`${CLUBS_PATH}/${live.id}/logo-upload-url`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(allowed.status).toBe(201);
+    // The bytes never pass through the API, so this row is the only record
+    // the object was replaced at all.
+    const rows = await prisma.auditLog.findMany({ where: { entityId: live.id, action: 'club.upload_url_minted' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actorUserId).toBe(lead.userId);
+    // Nothing is recorded for the refusal: that transaction rolled back.
+    expect(
+      await prisma.auditLog.count({ where: { entityId: archived.id, action: 'club.upload_url_minted' } }),
+    ).toBe(0);
+  });
+});

@@ -23,7 +23,7 @@ describe('assertTransition', () => {
 
   it('refuses a skipped step, a step backwards, and a repeat of the current state', () => {
     // Catches an implementation that only checks membership in the chain
-    // rather than adjacency — publishing straight to COMPLETED would then
+    // rather than adjacency: publishing straight to COMPLETED would then
     // skip the whole registration window.
     expect(() => assertTransition('DRAFT', 'ONGOING')).toThrow(UnprocessableError);
     expect(() => assertTransition('ONGOING', 'PUBLISHED')).toThrow(UnprocessableError);

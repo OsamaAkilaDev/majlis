@@ -26,7 +26,7 @@ interface OpenApiDoc {
 
 /**
  * Resolves a `{ $ref: '#/components/schemas/X' }` node against the document
- * it came from — `content['application/json'].schema` is always this shape
+ * it came from: `content['application/json'].schema` is always this shape
  * for a DTO-typed `@ApiResponse`, never the inline schema itself.
  */
 function resolveSchema(doc: OpenApiDoc, schema: OpenApiSchema): OpenApiSchema {
@@ -42,7 +42,7 @@ function fetchDoc(): Promise<request.Response> {
 }
 
 describe('generated OpenAPI document', () => {
-  it('is reachable at docs-json with no session cookie — Swagger mounts outside the Nest router, same as /docs (Task 7)', async () => {
+  it('is reachable at docs-json with no session cookie: Swagger mounts outside the Nest router, same as /docs (Task 7)', async () => {
     const res = await fetchDoc();
     expect(res.status).toBe(200);
     expect((res.body as OpenApiDoc).openapi).toMatch(/^3\./);
@@ -56,14 +56,14 @@ describe('generated OpenAPI document', () => {
     expect(loginPath).toBeDefined();
 
     const response401 = doc.paths[loginPath!]!.post?.responses?.['401'];
-    // Catches a route that documents no error responses at all — the state
+    // Catches a route that documents no error responses at all, the state
     // before this task, where the Problem Details schemas were imported only
     // as TYPES and so never reached the generated document.
     expect(response401).toBeDefined();
 
     const schema = resolveSchema(doc, response401!.content!['application/json']!.schema);
 
-    // The bug being fixed produces a document with no error SHAPE — a test
+    // The bug being fixed produces a document with no error SHAPE: a test
     // that stopped at "the 401 key exists" would still pass against a
     // response object carrying an empty or missing schema. Asserting the
     // resolved schema's own properties is what actually discriminates: it
@@ -76,7 +76,7 @@ describe('generated OpenAPI document', () => {
   });
 
   it("declares PATCH /users/{id}/status's 404 response with the same Problem Details schema component", async () => {
-    // A second route, reusing the same component — proves the schema is
+    // A second route, reusing the same component, proves the schema is
     // registered once and referenced (per openapi.ts's design), not
     // hand-written per route as the spec forbids.
     const res = await fetchDoc();

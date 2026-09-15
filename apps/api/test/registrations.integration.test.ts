@@ -272,7 +272,7 @@ describe('GET /events/:eventId/registrations', () => {
 
     // Spec 6.1 excludes Marketing from attendee personal data outright, and
     // gives club Operations the roster only for an event they are assigned
-    // to — a standing club appointment is not enough.
+    // to: a standing club appointment is not enough.
     const refusedMarketing = await roster(marketing.sessionCookie);
     expect(refusedMarketing.status).toBe(403);
     expect(refusedMarketing.body.detail).toBe('You do not have permission to do that.');

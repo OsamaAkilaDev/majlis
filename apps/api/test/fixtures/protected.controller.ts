@@ -8,7 +8,7 @@ import type { User } from '../../src/generated/prisma/client';
  * reuses the same controller to prove PermissionsGuard.
  *
  * Registered only in the test modules that need it (see
- * `createTestApp({ imports: [ProtectedTestModule] })`) — never in
+ * `createTestApp({ imports: [ProtectedTestModule] })`), never in
  * AppModule. SessionGuard still applies: it is a global APP_GUARD from
  * AuthModule, which every test app compiles via AppModule regardless of
  * which module adds this controller.

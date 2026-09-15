@@ -21,7 +21,7 @@ describe(`GET ${API_PREFIX}/health`, () => {
     expect(typeof res.body.uptimeSeconds).toBe('number');
   });
 
-  it('exposes nothing sensitive — no connection string, no secret', async () => {
+  it('exposes nothing sensitive: no connection string, no secret', async () => {
     const res = await request(app.getHttpServer()).get(`${API_PREFIX}/health`).expect(200);
     const body = JSON.stringify(res.body);
     expect(body).not.toMatch(/postgres/i);
@@ -40,7 +40,7 @@ describe(`GET ${API_PREFIX}/health`, () => {
     // That assumption does not hold, and this is a real, separate finding,
     // not just a stale comment: a path outside the global prefix entirely
     // (no "/api/v1") never reaches Nest's routing or exception-filter
-    // pipeline at all — Express's own bare fallback handler answers first,
+    // pipeline at all: Express's own bare fallback handler answers first,
     // with "Cannot GET /health" as HTML. This is unrelated to whether
     // ZodValidationPipe/ProblemExceptionFilter are registered; it reproduces
     // identically with or without configureApp, because the request never

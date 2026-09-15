@@ -23,7 +23,7 @@ export function configureApp(app: INestApplication): void {
   app.use(cookieParser());
 
   // Ambient per-request facts (requestId, ip, userAgent), read via
-  // RequestContext.current anywhere downstream — Task 4's AuditService reads
+  // RequestContext.current anywhere downstream. Task 4's AuditService reads
   // it in the same transaction as the action it's recording. Registered with
   // app.use(), not consumer.apply(...).forRoutes('*'): Express 5 + path-to-
   // regexp 8 no longer accept a bare '*' route pattern, and app.use() does no
@@ -34,18 +34,18 @@ export function configureApp(app: INestApplication): void {
   // nestjs-pino's genReqId already set. Verified by running the real
   // bootstrap: direct app.use() calls (this one, cookieParser) land on
   // Express's middleware stack immediately, but nestjs-pino's own middleware
-  // is bound via NestModule.configure(), which Nest defers to app.init() —
+  // is bound via NestModule.configure(), which Nest defers to app.init(),
   // called strictly after configureApp() returns, in main.ts and in every
   // integration test's setup alike. So a middleware added here always runs
   // BEFORE pino-http, however it's ordered relative to cookieParser in this
   // file; req.id would still be undefined at this point. Assigning it here
-  // instead — and letting pino-http adopt the value already on the request
-  // (its own logic is `req.id = req.id || genReqId(req, res)`) — is what
+  // instead, and letting pino-http adopt the value already on the request
+  // (its own logic is `req.id = req.id || genReqId(req, res)`), is what
   // actually makes a log line and an audit row for one request share an id.
   //
   // app.module.ts's LoggerModule config keeps its own genReqId as a
   // defensive fallback for a bootstrap entry point that never calls
-  // configureApp() — deliberately redundant with this, not dead: pino-http's
+  // configureApp(), deliberately redundant with this, not dead: pino-http's
   // `req.id || genReqId(...)` makes the fallback completely inert whenever
   // this middleware has already run, but req.id still ends up populated (and
   // RequestContext's absence is the only gap) if it hasn't.
