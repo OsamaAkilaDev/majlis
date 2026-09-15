@@ -4,7 +4,7 @@
   "private": true,
   "engines": { "node": "22.x" },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
     "start:dev": "node --watch -r @swc-node/register src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern src test prisma",
