@@ -3,10 +3,12 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
 import {
+  ADMIN_ALREADY_EXISTS,
   forgotPasswordBodySchema,
   loginBodySchema,
   resetPasswordBodySchema,
   signupBodySchema,
+  type BootstrapStatus,
   type SessionUser,
 } from '@majlis/contracts';
 import type { Request, Response } from 'express';
@@ -28,6 +30,11 @@ import { Public } from './public.decorator';
 import type { Env } from '../config/env.schema';
 
 class SignupDto extends createZodDto(signupBodySchema) {}
+// The same three fields under the same rules, deliberately not a second
+// schema: the first admin is created with exactly the body a signup
+// carries, and the two must never drift apart on password length or email
+// normalisation.
+class BootstrapAdminDto extends createZodDto(signupBodySchema) {}
 class LoginDto extends createZodDto(loginBodySchema) {}
 class ForgotPasswordDto extends createZodDto(forgotPasswordBodySchema) {}
 class ResetPasswordDto extends createZodDto(resetPasswordBodySchema) {}
@@ -54,6 +61,36 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'An account with this email already exists.', type: ProblemDetailsDto })
   async signup(@Body() body: SignupDto, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const result = await this.auth.signup(body);
+    this.setAuthCookies(res, result);
+    return result.user;
+  }
+
+  /**
+   * @Public(): read by the create-admin screen, which by definition is shown
+   * to somebody who has no account to sign in with.
+   */
+  @Public()
+  @Get('bootstrap')
+  bootstrapStatus(): Promise<BootstrapStatus> {
+    return this.auth.bootstrapStatus();
+  }
+
+  /**
+   * @Public() and unauthenticated on purpose: it is what creates the first
+   * admin on a fresh deployment, so there is no admin to authorize it. The
+   * "no admin exists yet" check in AuthService.bootstrapAdmin is the whole
+   * of the authorization, and it is enforced under an advisory lock rather
+   * than by this decorator's absence.
+   */
+  @Public()
+  @Post('bootstrap')
+  @HttpCode(201)
+  @ApiResponse({ status: 409, description: ADMIN_ALREADY_EXISTS, type: ProblemDetailsDto })
+  async bootstrap(
+    @Body() body: BootstrapAdminDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SessionUser> {
+    const result = await this.auth.bootstrapAdmin(body);
     this.setAuthCookies(res, result);
     return result.user;
   }

@@ -94,3 +94,26 @@ export const resetPasswordBodySchema = z.object({
 
 export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;
 export type ResetPasswordBody = z.infer<typeof resetPasswordBodySchema>;
+
+/**
+ * GET /auth/bootstrap. One bit, and deliberately only one: the setup screen
+ * needs to know whether a platform admin exists, and an unauthenticated
+ * caller has no business learning anything else about the account table.
+ *
+ * `true` means the deployment has never had an admin and the create-admin
+ * screen is open. It flips to `false` for good the moment one exists, and
+ * no route anywhere flips it back.
+ */
+export const bootstrapStatusSchema = z.object({ needsAdmin: z.boolean() });
+export type BootstrapStatus = z.infer<typeof bootstrapStatusSchema>;
+
+/**
+ * The 409 detail POST /auth/bootstrap answers with once the platform has an
+ * admin. Shared rather than duplicated because the setup screen matches on
+ * it: that 409 means the screen the visitor is looking at no longer exists,
+ * which is a redirect, while the OTHER 409 that route can answer (the email
+ * is taken) is a message on the email field. A second copy of this string
+ * in the web app would turn a one-word server-side edit into a silent
+ * mis-routing of both.
+ */
+export const ADMIN_ALREADY_EXISTS = 'This platform already has an administrator.';

@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: see below.
 import { ConfigService } from '@nestjs/config';
-import type {
-  ForgotPasswordBody,
-  LoginBody,
-  ResetPasswordBody,
-  SessionUser,
-  SignupBody,
+import {
+  ADMIN_ALREADY_EXISTS,
+  type BootstrapStatus,
+  type ForgotPasswordBody,
+  type LoginBody,
+  type ResetPasswordBody,
+  type SessionUser,
+  type SignupBody,
 } from '@majlis/contracts';
 import { Algorithm, hash, verify, type Options } from '@node-rs/argon2';
 import { v7 as uuidv7 } from 'uuid';
@@ -47,6 +49,22 @@ export const RESET_LINK_INVALID = 'That password reset link is no longer valid.'
  * literal rather than a second copy that could drift from this one.
  */
 export const SESSION_EXPIRED = 'Session expired.';
+
+/**
+ * Advisory lock key for the create-first-admin path, an arbitrary constant
+ * that means nothing except "whoever holds it is bootstrapping".
+ *
+ * Every other serialised write in this codebase locks the row it is about
+ * to change (`SELECT ... FOR UPDATE`, see UsersService.updateStatus). That
+ * is not available here: the whole point of the guard is that no admin row
+ * exists yet, and an empty result set locks nothing. Two concurrent
+ * requests would both count zero admins, both pass the guard, and both
+ * insert — handing the deployment a second platform owner. A
+ * transaction-scoped advisory lock is the one thing Postgres offers that
+ * serialises on the absence of a row. Released on commit or rollback
+ * without an unlock call, so a failed bootstrap cannot wedge the endpoint.
+ */
+const BOOTSTRAP_LOCK_KEY = 8_273_645_521;
 
 /**
  * OWASP's current minimum for argon2id. Exported so the exact same
@@ -122,6 +140,86 @@ export class AuthService {
       }
       return this.issueSession(user);
     });
+  }
+
+  /**
+   * GET /auth/bootstrap. Drives the create-admin screen, and is the only
+   * unauthenticated route that reports anything about the account table:
+   * one boolean, nothing else.
+   */
+  async bootstrapStatus(): Promise<BootstrapStatus> {
+    return { needsAdmin: !(await this.adminExists()) };
+  }
+
+  /**
+   * POST /auth/bootstrap. Creates the platform's first ADMIN, and only
+   * while there is none.
+   *
+   * This exists because nothing else can produce an admin. There is no
+   * route anywhere that writes `platformRole` (UsersController exposes
+   * status changes only), and the seed is development-only, so a fresh
+   * deployment would otherwise have no reachable path to an admin account
+   * and therefore none to a club, since only an admin can create one.
+   *
+   * The guard reads the database rather than a flag this endpoint sets, so
+   * an admin created by any other means (the seed, hand-written SQL)
+   * closes the endpoint just as firmly as one created here.
+   *
+   * Deliberately open: anyone who reaches a deployment that has no admin
+   * can claim the account. That is the accepted trade (decided 2026-09-15,
+   * see spec §3) and the window closes on first use, so claim it
+   * immediately after a deploy rather than leaving it open.
+   */
+  async bootstrapAdmin(input: SignupBody): Promise<AuthResult> {
+    // Hashed before the transaction opens, same reasoning as signup: ~100ms
+    // of argon2 has no business holding a pooled connection, and here it
+    // would hold the advisory lock along with it.
+    const passwordHash = await hash(input.password, ARGON2_OPTIONS);
+
+    return this.host.run(async () => {
+      await this.host.tx.$executeRaw`SELECT pg_advisory_xact_lock(${BOOTSTRAP_LOCK_KEY}::bigint)`;
+
+      if (await this.adminExists()) throw new ConflictError(ADMIN_ALREADY_EXISTS);
+
+      let user: User;
+      try {
+        user = await this.host.tx.user.create({
+          data: {
+            email: input.email,
+            passwordHash,
+            fullName: input.fullName,
+            platformRole: 'ADMIN',
+          },
+        });
+      } catch (e) {
+        // Same treatment as signup's lost race on the unique email index:
+        // reachable here when the address already belongs to a student who
+        // signed up before anyone claimed the admin account.
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          throw new ConflictError('An account with this email already exists.');
+        }
+        throw e;
+      }
+
+      // No actorUserId: nobody was signed in to do this, and AuditLog's
+      // actor column is nullable for exactly this kind of action. The
+      // subject is the new admin. Written inside the same transaction as
+      // the insert, so there is no committed admin without its audit row.
+      await this.audit.record({
+        action: 'user.admin_bootstrapped',
+        entityType: 'User',
+        entityId: user.id,
+        outcome: 'SUCCESS',
+        after: { email: user.email, fullName: user.fullName, platformRole: user.platformRole },
+      });
+
+      return this.issueSession(user);
+    });
+  }
+
+  /** Whether the platform has an admin. The bootstrap guard, both halves. */
+  private async adminExists(): Promise<boolean> {
+    return (await this.host.tx.user.count({ where: { platformRole: 'ADMIN' } })) > 0;
   }
 
   async login(input: LoginBody): Promise<AuthResult> {

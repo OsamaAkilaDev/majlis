@@ -23,8 +23,13 @@ const PUBLIC_PREFIXES = ['/verify'];
  * /login and /signup call `bounceIfSignedIn` themselves, using a session they
  * validated; the reset routes stay reachable with a live session, because a
  * visitor signed in on this device may still hold a link for another.
+ *
+ * /setup is here for a sharper version of the same reason: on a deployment
+ * with no admin, /login redirects to it, so gating it from here bounces the
+ * visitor straight back and the two loop forever. It is also the one route
+ * whose whole purpose is to create the account that signs you in.
  */
-const AUTH_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+const AUTH_ROUTES = ['/login', '/signup', '/setup', '/forgot-password', '/reset-password'];
 
 export function landingFor(user: SessionUser): string {
   if (user.platformRole === 'ADMIN') return '/admin';

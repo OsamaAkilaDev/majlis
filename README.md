@@ -57,6 +57,15 @@ The web app proxies `/api/v1/*` to the API, so browse the product at
 <http://localhost:3000>. Generated OpenAPI docs are at
 <http://localhost:3001/api/v1/docs> outside production.
 
+### First admin on a fresh deployment
+
+A database with no admin sends `/login` to `/setup`, which creates one and signs you in.
+Nothing else in the product can: no route writes `platformRole`, and the seed below is
+development-only. The screen closes for good once an admin exists.
+
+It is unauthenticated, so on a public deployment claim the account immediately after the
+first deploy. Until you do, whoever reaches the URL can.
+
 ### Seeded accounts
 
 Development only. Password `Passw0rd!`.

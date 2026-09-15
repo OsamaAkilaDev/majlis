@@ -1220,3 +1220,43 @@ IPv6-only and unreachable from a build machine, the runtime Node was too old, an
 build cache skipped `postinstall` so the Prisma client was never generated. The last two
 fixes are kept because they are correct regardless of host: `prisma generate` belongs to the
 build rather than to `postinstall`, and the Node floor belongs in `engines`.
+
+### First-run admin bootstrap (2026-09-15)
+
+A deployed Majlis had no reachable path to an admin account, and therefore none to a club,
+since only an admin can create one. Nothing in the product writes `platformRole`:
+`UsersController` exposes `/me`, `/users`, `/clubs/{id}/user-search` and
+`/users/{id}/status`, and that last one changes `status`, never the role. The seed is
+development-only. So the first Render deploy came up healthy, with a working database and an
+empty `user` table, and stayed permanently unusable. Stages 1 to 8 never surfaced this
+because every environment was seeded.
+
+Added `GET /auth/bootstrap` (`{ needsAdmin }`) and `POST /auth/bootstrap`, both `@Public()`,
+and a `/setup` screen. `/login` and `/signup` redirect to it while `needsAdmin`; it redirects
+to `/login` once an admin exists, so it disappears after first use and no route brings it
+back.
+
+**The endpoint is deliberately unauthenticated and ungated.** Whoever reaches a deployment
+that has no admin can claim the account, so it must be claimed immediately after a deploy. A
+setup token held in an env var was offered and declined: it would have closed the window
+entirely at the cost of one pasted secret. Recorded here because the trade is invisible in
+the code, which simply looks like a public endpoint that creates an admin.
+
+Two things make it safe within that trade. The guard reads the database rather than a flag the
+endpoint sets, so an admin created by the seed or by hand closes it just as firmly. And it
+serialises on `pg_advisory_xact_lock`, not on a row: the guard's whole premise is that no
+admin row exists, and an empty result set locks nothing, so two concurrent requests would both
+count zero and both insert. Verified by deleting the lock and watching two parallel requests
+both answer 201.
+
+`/setup` had to join `AUTH_ROUTES` in `apps/web/src/lib/routing.ts`. Middleware bounces an
+anonymous visitor on an unknown path to `/login`, which now redirects to `/setup`, which
+bounced back: `ERR_TOO_MANY_REDIRECTS`, and the only screen that can create an admin
+unreachable for good. The same loop the file already warns about, in the one state no seeded
+test can reach. Caught by walking the flow against an empty database, not by the suite.
+
+The body reuses `signupBodySchema` rather than a second schema, so the admin is created under
+the same password and email rules as any account, and the form takes a full name alongside
+email and password because `User.fullName` is required and renders in the shell and on every
+audit row. The audit row is written in the same transaction with a null actor: nobody was
+signed in to do this, which is what `AuditLog.actorUserId` being nullable is for.

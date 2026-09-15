@@ -185,3 +185,13 @@ test('/login and /signup reach each other', async ({ page }) => {
   await page.getByRole('link', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test('/setup is closed once the platform has an admin', async ({ page }) => {
+  // The seeded database has one, so this is the state every deployment is in
+  // after first use, forever. Catches a create-admin screen that stays
+  // reachable: it is unauthenticated by design, and the redirect is the only
+  // thing standing between a visitor and that form.
+  await page.goto('/setup');
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+});

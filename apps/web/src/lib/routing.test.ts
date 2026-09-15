@@ -87,6 +87,20 @@ describe('decideRedirect', () => {
     expect(decideRedirect({ pathname: '/login', ...anon })).toBeNull();
   });
 
+  it('never gates /setup, which exists to create the account that signs you in', () => {
+    // ERR_TOO_MANY_REDIRECTS again, in the one state no seeded test can
+    // reach. On a deployment with no admin, /login redirects to /setup; if
+    // middleware sends an anonymous visitor from /setup back to /login, the
+    // two bounce forever and the only screen that can create an admin is
+    // unreachable for good. Drop '/setup' from AUTH_ROUTES and this goes red.
+    expect(decideRedirect({ pathname: '/setup', ...anon })).toBeNull();
+    // And it must not bounce a stale or live cookie either, for the same
+    // reason /login does not: presence is not a session, and /setup validates
+    // one itself before deciding.
+    expect(decideRedirect({ pathname: '/setup', ...stale })).toBeNull();
+    expect(decideRedirect({ pathname: '/setup', ...live })).toBeNull();
+  });
+
   it('never gates the password reset routes, signed in or not', () => {
     // Somebody asking for a reset link cannot sign in by definition. Gating
     // these sends exactly the visitor who needs them to the form they are

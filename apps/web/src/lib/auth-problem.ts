@@ -10,6 +10,7 @@ export type RoutedProblem = {
 const FIELDS = {
   login: ['email', 'password'],
   signup: ['fullName', 'email', 'password'],
+  setup: ['fullName', 'email', 'password'],
   forgot: ['email'],
   reset: ['token', 'password'],
 } as const;
@@ -23,6 +24,8 @@ const FIELDS = {
 const UNAUTHORIZED_FIELD: Record<keyof typeof FIELDS, string> = {
   login: 'password',
   signup: 'password',
+  // Unreachable in practice: POST /auth/bootstrap has no 401 to answer with.
+  setup: 'password',
   forgot: 'email',
   reset: 'token',
 };
