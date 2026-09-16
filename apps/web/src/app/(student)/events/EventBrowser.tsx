@@ -30,7 +30,7 @@ function EventCard({ event, viewerZone }: { event: EventSummary; viewerZone: str
   return (
     <Link
       href={`/events/${event.id}`}
-      className="flex h-full flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-surface-2"
+      className="flex h-full flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors duration-(--dur-fast) ease-(--ease-out) hover:bg-surface-2"
     >
       <span className="flex items-center gap-2">
         <img src={event.clubLogoUrl} alt="" className="size-5 shrink-0 rounded-control object-cover" />

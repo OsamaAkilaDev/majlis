@@ -4,7 +4,6 @@ import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
-import { clubNav } from '../nav';
 import { TeamManager } from './TeamManager';
 
 export const metadata: Metadata = { title: 'Team' };
@@ -18,7 +17,7 @@ export default async function TeamPage({ params }: { params: Promise<{ clubId: s
   ]);
 
   return (
-    <ConsoleShell items={clubNav(clubId)} title="Team" context={null}>
+    <ConsoleShell title="Team">
       <TeamManager
         clubId={clubId}
         viewerUserId={user.id}

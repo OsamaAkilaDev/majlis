@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
-import { ADMIN_NAV } from '../nav';
 import { ClubsManager } from './ClubsManager';
 
 export const metadata: Metadata = { title: 'Clubs' };
@@ -15,7 +14,7 @@ export default async function ClubsPage() {
   ]);
 
   return (
-    <ConsoleShell items={ADMIN_NAV} title="Clubs" context={null}>
+    <ConsoleShell title="Clubs">
       <ClubsManager initialClubs={clubs} initialDepartments={departments?.items ?? null} />
     </ConsoleShell>
   );

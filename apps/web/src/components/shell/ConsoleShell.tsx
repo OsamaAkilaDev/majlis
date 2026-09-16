@@ -1,77 +1,43 @@
-import { List } from '@phosphor-icons/react/ssr';
+'use client';
+
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { cn } from '@/lib/cn';
-import { ICON_WEIGHT } from '@/lib/icons';
-import { requireUser } from '@/lib/session';
-import { ShellBrand } from './ShellBrand';
-import { SideNav, type NavItem } from './SideNav';
-import { UserMenu } from './UserMenu';
+import { ProfileButton } from './ProfileButton';
+import { useShellSession } from './shell-session';
 
-export async function ConsoleShell({
-  items,
-  title,
-  context,
-  dark,
-  children,
-}: {
-  items: readonly NavItem[];
-  title: string;
-  context: ReactNode;
-  /**
-   * Forces the dark palette on this screen whatever the viewer's theme is. One
-   * screen asks for it, /scan: an operator standing in a lit hall holding a
-   * viewfinder needs the surround dark for the feed to read, and needs not to
-   * be blinded by a white bar between two people. The use scene decides it, not
-   * the toggle. Overlays render in a portal on <body> and so keep following the
-   * viewer's theme, which is the one seam this leaves.
-   */
-  dark?: boolean;
-  children: ReactNode;
-}) {
-  // Memoised by getSessionUser, so this shares the layout's /auth/me call.
-  const user = await requireUser();
-
-  const nav = (
-    <div className="flex flex-col gap-3">
-      <ShellBrand />
-      {context}
-      <SideNav items={items} />
-    </div>
-  );
+/**
+ * A console's header and content area: the part that belongs to a page rather
+ * than to the console around it.
+ *
+ * Deliberately not async, for the same reason `StudentShell` is not. A route's
+ * `loading.tsx` renders this header the instant a link is clicked, and a shell
+ * that awaited `/auth/me` would suspend inside the fallback and put the
+ * blocking navigation back.
+ *
+ * The `context` prop it used to take was `null` at every call site and has
+ * been dropped. `dark` has moved to `ConsoleFrame`, which derives it from the
+ * path, because the frame now lives in the layout where the page cannot reach.
+ */
+export function ConsoleShell({ title, children }: { title: string; children: ReactNode }) {
+  const { user } = useShellSession();
 
   return (
-    <div className={cn('min-h-dvh bg-bg lg:grid lg:grid-cols-[14rem_1fr]', dark && 'dark')}>
-      <aside className="hidden border-r border-border bg-surface-2 p-3 lg:block lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
-        {nav}
-      </aside>
+    <>
+      {/* pl-14 below lg leaves room for the hamburger, which the frame pins to
+          the top left because it opens navigation the frame owns. */}
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-bg py-3 pl-14 pr-4 lg:px-8">
+        <h1 className="min-w-0 flex-1 truncate font-display text-title text-ink">{title}</h1>
+        {/* The consoles keep the header toggle. A desktop operator flips the
+            theme far more often than they visit /profile, and unlike the phone
+            there is room for it beside the title. */}
+        <ThemeToggle />
+        <ProfileButton user={user} />
+      </header>
 
-      <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-bg px-4 py-3 lg:px-8">
-          <Sheet>
-            <SheetTrigger
-              aria-label="Open navigation"
-              className="grid size-11 place-items-center rounded-control text-ink-2 hover:bg-surface-2 lg:hidden"
-            >
-              <List size={20} weight={ICON_WEIGHT} aria-hidden />
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 bg-surface-2 p-3">
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
-              {nav}
-            </SheetContent>
-          </Sheet>
-
-          <h1 className="min-w-0 flex-1 truncate font-display text-title text-ink">{title}</h1>
-          <ThemeToggle />
-          <UserMenu user={user} />
-        </header>
-
-        {/* Capped so a table does not run the full width of a 27-inch display. */}
-        <main id="main" className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-5 lg:px-8 lg:py-6">
-          {children}
-        </main>
-      </div>
-    </div>
+      {/* Capped so a table does not run the full width of a 27-inch display. */}
+      <main id="main" className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-5 lg:px-8 lg:py-6">
+        {children}
+      </main>
+    </>
   );
 }

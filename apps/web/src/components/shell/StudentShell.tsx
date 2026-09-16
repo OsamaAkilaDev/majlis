@@ -1,46 +1,46 @@
-import type { NotificationPage } from '@majlis/contracts';
-import type { ReactNode } from 'react';
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { UNREAD_CAP } from '@/lib/page-size';
-import { serverFetch } from '@/lib/server-api';
-import { requireUser } from '@/lib/session';
-import { ShellBrand } from './ShellBrand';
-import { StudentSideNav, TabBar } from './TabBar';
-import { UserMenu } from './UserMenu';
+'use client';
 
-export async function StudentShell({ title, children }: { title: string; children: ReactNode }) {
-  // Memoised by getSessionUser, so this shares the layout's /auth/me call.
-  // The unread page is read here rather than in the tab bar so the badge is
-  // right on first paint and refreshes with the route: the inbox calls
-  // router.refresh() after marking one read, which re-renders this.
-  const [user, unread] = await Promise.all([
-    requireUser(),
-    serverFetch<NotificationPage>(`/me/notifications?unread=true&limit=${UNREAD_CAP}`),
-  ]);
-  const unreadCount = unread?.items.length ?? 0;
+import type { ReactNode } from 'react';
+import { NotificationBell } from './NotificationBell';
+import { ProfileButton } from './ProfileButton';
+import { useShellSession } from './shell-session';
+
+/**
+ * The header and the scroll area: the part of the student shell that belongs
+ * to a page rather than to the shell around it.
+ *
+ * Deliberately not async. It reads the viewer from the layout's context
+ * instead of awaiting `/auth/me`, so a route's `loading.tsx` can render this
+ * exact header the instant a link is tapped. An async shell here would suspend
+ * inside the Suspense fallback and put the blocking navigation straight back.
+ *
+ * It returns two siblings, not a wrapper: they are the two rows of the grid
+ * `StudentFrame` sets up, with the dock positioned over the second.
+ */
+export function StudentShell({ title, children }: { title: string; children: ReactNode }) {
+  const { user, unread } = useShellSession();
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-bg">
-      {/* Replaces the tab bar from lg up rather than centring a phone column on
-          a desktop screen. Same destinations, same order. */}
-      <aside className="hidden w-56 shrink-0 flex-col gap-3 border-r border-border bg-surface-2 p-3 pt-[calc(0.75rem+var(--safe-t))] lg:flex">
-        <ShellBrand />
-        <StudentSideNav unread={unreadCount} />
-      </aside>
+    <>
+      <header className="flex items-center gap-1 border-b border-border px-4 pb-3 pt-[calc(0.75rem+var(--safe-t))] lg:px-8">
+        <h1 className="min-w-0 flex-1 truncate pr-2 font-display text-title text-ink">{title}</h1>
+        <NotificationBell unread={unread} />
+        <ProfileButton user={user} />
+      </header>
 
-      <div className="grid min-w-0 flex-1 grid-rows-[auto_1fr_auto] overflow-hidden">
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 pb-3 pt-[calc(0.75rem+var(--safe-t))] lg:px-8">
-          <h1 className="min-w-0 flex-1 truncate font-display text-title text-ink">{title}</h1>
-          <ThemeToggle />
-          <UserMenu user={user} />
-        </header>
-
-        <main id="main" className="overflow-y-auto overscroll-contain px-4 py-4 lg:px-8 lg:py-6">
-          <div className="mx-auto w-full max-w-5xl">{children}</div>
-        </main>
-
-        <TabBar unread={unreadCount} />
-      </div>
-    </div>
+      {/* pb-28 clears the floating dock. It is not decoration: without it the
+          last row of every list on every student screen sits under the dock
+          and cannot be reached. The sidebar replaces the dock at lg, so the
+          padding goes with it. */}
+      <main
+        id="main"
+        className="overflow-y-auto overscroll-contain px-4 py-4 pb-28 lg:px-8 lg:py-6"
+      >
+        {/* h-full so a screen that wants to centre itself in the viewport has a
+            definite height to centre against. Block children do not stretch, so
+            every other page is unaffected. */}
+        <div className="mx-auto h-full w-full max-w-5xl">{children}</div>
+      </main>
+    </>
   );
 }

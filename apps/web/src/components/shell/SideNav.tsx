@@ -26,7 +26,7 @@ export function SideNav({ items }: { items: readonly NavItem[] }) {
             href={href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex min-h-9 items-center gap-2.5 rounded-control px-2.5 py-2 text-sm transition-colors duration-[--dur-fast] ease-[--ease-out]',
+              'flex min-h-9 items-center gap-2.5 rounded-control px-2.5 py-2 text-sm transition-colors duration-(--dur-fast) ease-(--ease-out)',
               active ? 'bg-primary-soft font-semibold text-primary-soft-fg' : 'text-ink-2 hover:bg-surface hover:text-ink',
             )}
           >

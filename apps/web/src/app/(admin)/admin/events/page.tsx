@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
-import { ADMIN_NAV } from '../nav';
 import { EventsOverview } from './EventsOverview';
 
 export const metadata: Metadata = { title: 'Events' };
@@ -15,7 +14,7 @@ export default async function EventsPage() {
   ]);
 
   return (
-    <ConsoleShell items={ADMIN_NAV} title="Events" context={null}>
+    <ConsoleShell title="Events">
       <EventsOverview initialEvents={events} initialClubs={clubs?.items ?? null} />
     </ConsoleShell>
   );

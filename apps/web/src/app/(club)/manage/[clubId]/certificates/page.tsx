@@ -4,7 +4,6 @@ import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
-import { clubNav } from '../nav';
 import { CertificatesManager } from './CertificatesManager';
 
 export const metadata: Metadata = { title: 'Certificates' };
@@ -21,7 +20,7 @@ export default async function CertificatesPage({
   ]);
 
   return (
-    <ConsoleShell items={clubNav(clubId)} title="Certificates" context={null}>
+    <ConsoleShell title="Certificates">
       <CertificatesManager
         clubId={clubId}
         platformRole={user.platformRole}

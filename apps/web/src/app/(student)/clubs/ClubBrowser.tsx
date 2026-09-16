@@ -19,7 +19,7 @@ function ClubCard({ club }: { club: ClubSummary }) {
   return (
     <Link
       href={`/clubs/${club.slug}`}
-      className="flex h-full items-center gap-3 rounded-card border border-border bg-surface p-3 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-surface-2"
+      className="flex h-full items-center gap-3 rounded-card border border-border bg-surface p-3 transition-colors duration-(--dur-fast) ease-(--ease-out) hover:bg-surface-2"
     >
       <img src={club.logoUrl} alt="" className="size-12 shrink-0 rounded-control object-cover" />
       <span className="min-w-0 flex-1">

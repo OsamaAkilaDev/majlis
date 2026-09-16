@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
-import { clubNav } from '../nav';
 import { MembersManager } from './MembersManager';
 
 export const metadata: Metadata = { title: 'Members' };
@@ -17,7 +16,7 @@ export default async function MembersPage({ params }: { params: Promise<{ clubId
   ]);
 
   return (
-    <ConsoleShell items={clubNav(clubId)} title="Members" context={null}>
+    <ConsoleShell title="Members">
       <MembersManager
         clubId={clubId}
         initialClub={club}

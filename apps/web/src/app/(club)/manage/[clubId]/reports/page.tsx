@@ -4,7 +4,6 @@ import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
-import { clubNav } from '../nav';
 import { ClubReports } from './ClubReports';
 
 export const metadata: Metadata = { title: 'Reports' };
@@ -26,7 +25,7 @@ export default async function ReportsPage({ params }: { params: Promise<{ clubId
     user.clubRoles.some((role) => role.clubId === clubId && role.role === 'LEAD');
 
   return (
-    <ConsoleShell items={clubNav(clubId)} title="Reports" context={null}>
+    <ConsoleShell title="Reports">
       <ClubReports
         clubId={clubId}
         initialReport={report}
