@@ -495,7 +495,7 @@ export class AuthService {
   private async buildSessionUser(user: User): Promise<SessionUser> {
     const appointments = await this.host.tx.clubTeamAppointment.findMany({
       where: { userId: user.id, status: 'ACTIVE' },
-      select: { clubId: true, role: true },
+      select: { clubId: true, role: true, club: { select: { name: true } } },
     });
 
     return {
@@ -504,7 +504,11 @@ export class AuthService {
       fullName: user.fullName,
       avatarUrl: user.avatarUrl,
       platformRole: user.platformRole,
-      clubRoles: appointments.map((a) => ({ clubId: a.clubId, role: a.role })),
+      clubRoles: appointments.map((a) => ({
+        clubId: a.clubId,
+        clubName: a.club.name,
+        role: a.role,
+      })),
     };
   }
 }

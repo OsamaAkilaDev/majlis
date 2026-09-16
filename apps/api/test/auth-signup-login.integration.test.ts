@@ -256,8 +256,13 @@ describe('POST /auth/login', () => {
 
     // Catches a session-user builder that ignores appointments entirely, or
     // one that forgets the ACTIVE-only filter and would also surface a
-    // DECLINED/INVITED appointment as live authority.
-    expect(res.body.clubRoles).toEqual([{ clubId: club.id, role: 'LEAD' }]);
+    // DECLINED/INVITED appointment as live authority. `clubName` is asserted
+    // against the club the appointment points at, with a second club in the
+    // table holding a different name, so a builder that joins the wrong club
+    // or echoes the first club it finds goes red.
+    expect(res.body.clubRoles).toEqual([
+      { clubId: club.id, clubName: club.name, role: 'LEAD' },
+    ]);
   });
 
   it('writes no audit row for a routine login', async () => {

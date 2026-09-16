@@ -43,7 +43,10 @@ export const loginBodySchema = z.object({
 });
 
 /**
- * A club role held by the acting user, scoped to one club. `role` is a plain
+ * A club role held by the acting user, scoped to one club. `clubName` rides
+ * along so the shell can name the console it is offering: an officer of two
+ * clubs otherwise sees two rows both reading "Officer", with the club ID the
+ * only thing telling them apart. `role` is a plain
  * string rather than a strict enum: this schema is a response shape, not an
  * authorization decision (that's permissions.ts's job, which already pays
  * the cost of keeping a local role union in sync with Prisma's generated
@@ -52,6 +55,7 @@ export const loginBodySchema = z.object({
  */
 export const sessionClubRoleSchema = z.object({
   clubId: z.string(),
+  clubName: z.string(),
   role: z.string(),
 });
 
