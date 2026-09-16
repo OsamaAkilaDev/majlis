@@ -215,6 +215,43 @@
   box-shadow: 0 0 0 2px var(--color-focus-contrast);
 }
 
+/* The rotating ring around the QR pass.
+   A conic gradient on an oversized child, rotated by transform and clipped by
+   the parent's radius. Deliberately not `@property --angle` with an animated
+   angle: that version renders a completely motionless gradient wherever the
+   property is unsupported, with nothing to signal it. A transform rotation is
+   composited and turns in every engine.
+   The ring lives in the element's own padding, outside the white plate, so it
+   never intrudes on the code's quiet zone. */
+.qr-ring {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.qr-ring::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 170%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  z-index: 0;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 200deg,
+    var(--color-primary) 300deg,
+    var(--color-primary-hover) 340deg,
+    transparent 360deg
+  );
+  animation: qr-ring-spin 5s linear infinite;
+}
+
+@keyframes qr-ring-spin {
+  to { rotate: 360deg; }
+}
+
 @utility lattice {
   background-image:
     repeating-linear-gradient(45deg, rgb(var(--lattice) / var(--lattice-alpha)) 0 1px, transparent 1px 22px),
