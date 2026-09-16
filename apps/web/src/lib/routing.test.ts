@@ -28,7 +28,7 @@ describe('landingFor', () => {
   });
 
   it('sends an officer to their club console', () => {
-    expect(landingFor(user({ clubRoles: [{ clubId: 'c1', role: 'LEAD' }] }))).toBe('/manage/c1');
+    expect(landingFor(user({ clubRoles: [{ clubId: 'c1', clubName: 'Club c1', role: 'LEAD' }] }))).toBe('/manage/c1');
   });
 
   it('prefers /admin for a user who is BOTH admin and officer', () => {
@@ -36,7 +36,7 @@ describe('landingFor', () => {
     // passes every single-role test above, and only an admin who also happens
     // to lead a club is ever misrouted, which is the demo account.
     expect(
-      landingFor(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', role: 'LEAD' }] })),
+      landingFor(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', clubName: 'Club c1', role: 'LEAD' }] })),
     ).toBe('/admin');
   });
 
@@ -44,9 +44,9 @@ describe('landingFor', () => {
     // Catches clubRoles[0], which follows whatever order the API returned and
     // can land the same person on a different console between two page loads.
     const roles = [
-      { clubId: 'c9', role: 'LEAD' },
-      { clubId: 'c2', role: 'OPERATIONS' },
-      { clubId: 'c5', role: 'MARKETING' },
+      { clubId: 'c9', clubName: 'Club c9', role: 'LEAD' },
+      { clubId: 'c2', clubName: 'Club c2', role: 'OPERATIONS' },
+      { clubId: 'c5', clubName: 'Club c5', role: 'MARKETING' },
     ];
     expect(landingFor(user({ clubRoles: roles }))).toBe('/manage/c2');
     expect(landingFor(user({ clubRoles: [...roles].reverse() }))).toBe('/manage/c2');
@@ -185,11 +185,30 @@ describe('shellDestinations', () => {
     // reachable path to /manage/*. An implementation returning only the
     // landingFor destination passes every single-role case and fails this one.
     expect(
-      shellDestinations(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', role: 'VICE_LEAD' }] })),
+      shellDestinations(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', clubName: 'Club c1', role: 'VICE_LEAD' }] })),
     ).toEqual([
       { href: '/admin', label: 'Admin' },
-      { href: '/manage/c1/overview', label: 'Vice lead' },
+      { href: '/manage/c1/overview', label: 'Club c1', meta: 'Vice Lead' },
       { href: '/home', label: 'Home' },
+    ]);
+  });
+
+  it('names a club destination by the club, with the role as its meta line', () => {
+    // Catches the label the switcher shipped before: the role alone, which
+    // gave an officer of two clubs two rows both reading "Officer". The two
+    // fixtures share a role on purpose, so an implementation that still
+    // labels by role produces two identical labels and goes red.
+    const rows = shellDestinations(
+      user({
+        clubRoles: [
+          { clubId: 'ca', clubName: 'Robotics Club', role: 'OPERATIONS' },
+          { clubId: 'cb', clubName: 'Debate Society', role: 'OPERATIONS' },
+        ],
+      }),
+    );
+    expect(rows.slice(0, 2)).toEqual([
+      { href: '/manage/ca/overview', label: 'Robotics Club', meta: 'Operations' },
+      { href: '/manage/cb/overview', label: 'Debate Society', meta: 'Operations' },
     ]);
   });
 
@@ -197,7 +216,7 @@ describe('shellDestinations', () => {
     // Catches a map over clubRoles as given: the menu would reshuffle between
     // requests whenever the API returns the roles in a different order.
     const byIdOrder = shellDestinations(
-      user({ clubRoles: [{ clubId: 'cb', role: 'LEAD' }, { clubId: 'ca', role: 'OPERATIONS' }] }),
+      user({ clubRoles: [{ clubId: 'cb', clubName: 'Club cb', role: 'LEAD' }, { clubId: 'ca', clubName: 'Club ca', role: 'OPERATIONS' }] }),
     );
     expect(byIdOrder.map((d) => d.href)).toEqual([
       '/manage/ca/overview',
@@ -208,24 +227,37 @@ describe('shellDestinations', () => {
 });
 
 describe('activeNavHref', () => {
-  const TABS = ['/home', '/clubs', '/events', '/me/qr', '/me'];
+  const TABS = ['/home', '/clubs', '/events', '/profile/qr'];
 
   it('lights the tab for its own route', () => {
     expect(activeNavHref('/home', TABS)).toBe('/home');
-    expect(activeNavHref('/me', TABS)).toBe('/me');
+    expect(activeNavHref('/profile/qr', TABS)).toBe('/profile/qr');
   });
 
-  it('lights My QR, not Me, on /me/qr', () => {
-    // Catches a plain prefix match: /me is a prefix of /me/qr, so a naive
-    // implementation lights two tabs at once.
-    expect(activeNavHref('/me/qr', TABS)).toBe('/me/qr');
+  it('lights a tab on its deep routes', () => {
+    // The defect this replaces: an exact match left a club page and an event
+    // page with no tab lit at all, so the viewer lost their sense of place.
+    expect(activeNavHref('/clubs/robotics-club', TABS)).toBe('/clubs');
+    expect(activeNavHref('/events/e9', TABS)).toBe('/events');
   });
 
-  it('lights Me on its sub-routes', () => {
-    // The defect this replaces: excluding /me from prefix matching to protect
-    // /me/qr left these two screens with no tab lit at all.
-    expect(activeNavHref('/me/registrations', TABS)).toBe('/me');
-    expect(activeNavHref('/me/certificates', TABS)).toBe('/me');
+  it('lights the longest matching href, not the first', () => {
+    // No pair in the shipped navigations nests any more, but the algorithm
+    // still has to prefer the deeper href: a console nav that ever gains a
+    // child entry would otherwise light its parent and the child at once.
+    const NESTED = ['/manage/c1', '/manage/c1/events'];
+    expect(activeNavHref('/manage/c1/events/e9', NESTED)).toBe('/manage/c1/events');
+    expect(activeNavHref('/manage/c1/members', NESTED)).toBe('/manage/c1');
+  });
+
+  it('lights no tab on the profile screens, which left the tab bar', () => {
+    // Catches a tab list that still carries /profile: the screens reached by
+    // the avatar deliberately light nothing, because the avatar is lit
+    // instead. A stray '/profile' entry here would also swallow /profile/qr.
+    expect(activeNavHref('/profile', TABS)).toBeNull();
+    expect(activeNavHref('/profile/registrations', TABS)).toBeNull();
+    expect(activeNavHref('/profile/notifications', TABS)).toBeNull();
+    expect(activeNavHref('/profile/qr', TABS)).toBe('/profile/qr');
   });
 
   it('lights nothing for a route that is not under any tab', () => {

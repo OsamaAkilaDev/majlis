@@ -1,4 +1,5 @@
 import type { SessionUser } from '@majlis/contracts';
+import { enumLabel } from './enum-label';
 
 /**
  * The API adds the `__Host-` prefix to both cookies in production only (see
@@ -39,9 +40,9 @@ export function landingFor(user: SessionUser): string {
 }
 
 /** The nav destination a path belongs to: the longest href that is a prefix of
- *  it, so `/me` owns `/me/registrations` while `/me/qr` keeps its own entry, and
- *  a console's `.../events` stays lit on `.../events/{id}`. Shared by the tab
- *  bar and both side navs so a deep route cannot light nothing in one of them. */
+ *  it, so a console's `.../events` stays lit on `.../events/{id}` while a
+ *  sibling entry nested under it would keep its own. Shared by the tab bar and
+ *  both side navs so a deep route cannot light nothing in one of them. */
 export function activeNavHref(pathname: string, hrefs: readonly string[]): string | null {
   let best: string | null = null;
   for (const href of hrefs) {
@@ -51,19 +52,25 @@ export function activeNavHref(pathname: string, hrefs: readonly string[]): strin
   return best;
 }
 
-export type ShellDestination = { href: string; label: string };
+export type ShellDestination = { href: string; label: string; meta?: string };
 
 /** Every shell this viewer may reach, derived from the session the server
- *  already fetched. A club ID from the browser is a claim, never a destination. */
+ *  already fetched. A club ID from the browser is a claim, never a destination.
+ *
+ *  A club destination is named by the club and carries the role as its meta
+ *  line, not the other way round: an officer of two clubs used to see two rows
+ *  both reading "Officer", with the club ID the only thing telling them apart. */
 export function shellDestinations(user: SessionUser): ShellDestination[] {
   const destinations: ShellDestination[] = [];
   if (user.platformRole === 'ADMIN') destinations.push({ href: '/admin', label: 'Admin' });
 
   const clubs = [...user.clubRoles].sort((a, b) => a.clubId.localeCompare(b.clubId));
-  for (const { clubId, role } of clubs) {
-    // Club names arrive in Stage 4; the session carries only the role today.
-    const label = role.charAt(0) + role.slice(1).toLowerCase().replace(/_/g, ' ');
-    destinations.push({ href: `/manage/${clubId}/overview`, label });
+  for (const { clubId, clubName, role } of clubs) {
+    destinations.push({
+      href: `/manage/${clubId}/overview`,
+      label: clubName,
+      meta: enumLabel(role),
+    });
   }
 
   destinations.push({ href: '/home', label: 'Home' });

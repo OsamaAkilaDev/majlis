@@ -50,7 +50,7 @@ export function notificationLine(notification: Notification): NotificationLine {
   switch (notification.type) {
     case 'team.invited': {
       const role = text(p, 'role');
-      return { title: clubName, detail: role ? `Invited as ${enumLabel(role)}` : 'Invited to the team', href: '/me' };
+      return { title: clubName, detail: role ? `Invited as ${enumLabel(role)}` : 'Invited to the team', href: '/profile' };
     }
     case 'membership.decided': {
       const status = text(p, 'status');
@@ -60,7 +60,7 @@ export function notificationLine(notification: Notification): NotificationLine {
           : status === 'REJECTED'
             ? 'Membership declined'
             : 'Membership decided';
-      return { title: clubName, detail, href: '/me' };
+      return { title: clubName, detail, href: '/profile' };
     }
     case 'event.published':
       return { title: eventTitle, detail: `Published by ${clubName}`, href: eventHref };
@@ -85,14 +85,14 @@ export function notificationLine(notification: Notification): NotificationLine {
       return {
         title: eventTitle,
         detail: serial ? `Certificate issued, ${serial}` : 'Certificate issued',
-        href: '/me/certificates',
+        href: '/profile/certificates',
       };
     }
     case 'certificate.revoked':
       return {
         title: eventTitle,
         detail: reason ? `Certificate revoked: ${reason}` : 'Certificate revoked',
-        href: '/me/certificates',
+        href: '/profile/certificates',
       };
     // Never listed by the API, which excludes it from the inbox because its
     // payload is a live credential. Present so the switch stays exhaustive.

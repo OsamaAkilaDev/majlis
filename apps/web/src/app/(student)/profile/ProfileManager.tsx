@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
+import { cn } from '@/lib/cn';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { acceptInvitation, declineInvitation, leaveClub, myClubs, myInvitations } from '@/lib/clubs';
@@ -16,13 +17,13 @@ import { useAsyncError } from '@/lib/use-async-error';
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-display text-title text-ink">{title}</h2>
+      <h2 className="font-display text-h1 text-ink">{title}</h2>
       {children}
     </section>
   );
 }
 
-export function MeManager({
+export function ProfileManager({
   initialClubs,
   initialInvitations,
 }: {
@@ -33,6 +34,9 @@ export function MeManager({
   const [invitations, setInvitations] = useState<Invitation[] | null>(initialInvitations);
   const [busy, setBusy] = useState<string | null>(null);
   const seeded = initialClubs !== null && initialInvitations !== null;
+  // Null is "still loading", which keeps the skeleton; only a loaded, empty
+  // list drops the section.
+  const showInvitations = invitations === null || invitations.length > 0;
 
   const load = useCallback(async () => {
     const [c, i] = await Promise.all([myClubs({ limit: PAGE }), myInvitations({ limit: PAGE })]);
@@ -60,27 +64,23 @@ export function MeManager({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* The tab bar has five destinations and these are not two of them, so
-          without this row /me/registrations and /me/certificates are routes
-          nothing in the product links to. */}
-      <div className="flex flex-wrap gap-2">
-        <Button asChild variant="outline">
-          <Link href="/me/registrations">My registrations</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/me/certificates">My certificates</Link>
-        </Button>
-      </div>
-
       {/* Two independent lists, so they sit side by side once there is room
           for both rather than making the viewer scroll past one to reach the
-          other. */}
-      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
+          other. Only when there are two: with no invitations the pair became a
+          half-width clubs list beside a reserved empty column. */}
+      <div
+        className={cn(
+          'flex flex-col gap-6',
+          showInvitations && 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-8',
+        )}
+      >
+      {/* An invitation expires and a club membership does not, so invitations
+          lead. With none outstanding the section is gone rather than showing
+          an empty card above the list the viewer actually came for. */}
+      {showInvitations ? (
       <Section title="Invitations">
         {invitations === null ? (
           <Skeleton className="h-16" />
-        ) : invitations.length === 0 ? (
-          <EmptyState title="No invitations" />
         ) : (
           <ul className="flex flex-col gap-2">
             {invitations.map((inv) => (
@@ -112,7 +112,8 @@ export function MeManager({
             ))}
           </ul>
         )}
-      </Section>
+        </Section>
+      ) : null}
 
       <Section title="My clubs">
         {clubs === null ? (
