@@ -28,7 +28,7 @@ async function signIn(page: Page, email: string) {
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
-test('a registration reaches the inbox, badges the nav, and marking it read clears both', async ({
+test('a registration reaches the inbox, badges the header bell, and marking it read clears both', async ({
   page,
 }) => {
   // A fresh account, not student@: this registers for a seeded event, and
@@ -42,8 +42,10 @@ test('a registration reaches the inbox, badges the nav, and marking it read clea
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/home$/);
 
-  const nav = page.getByRole('navigation', { name: 'Sections' });
-  await expect(nav.getByText(/unread/)).toHaveCount(0);
+  // The count rides on the bell's accessible name, so a badge that renders
+  // the number in pixels alone and never announces it goes red here.
+  const bell = page.getByRole('link', { name: /^Notifications/ });
+  await expect(bell).toHaveAccessibleName('Notifications');
 
   await page.goto('/events');
   await page.getByRole('link', { name: /Introduction to ROS 2/ }).click();
@@ -52,12 +54,12 @@ test('a registration reaches the inbox, badges the nav, and marking it read clea
 
   // The notification row is written in the same transaction as the seat, so
   // it is there the moment the registration is, with no sweep in between.
-  await page.goto('/me/notifications');
+  await page.goto('/profile/notifications');
   const row = page.getByRole('listitem').filter({ hasText: 'Introduction to ROS 2' });
   await expect(row).toHaveText(/Registration confirmed/);
   // Unread is carried by more than a colour: the row announces it.
   await expect(row.getByText('Unread.')).toBeVisible();
-  await expect(nav.getByText('1 unread')).toBeVisible();
+  await expect(bell).toHaveAccessibleName('Notifications, 1 unread');
 
   // The optimistic update's other half first. Without the rollback the row
   // stays looking read forever and nothing tells the reader it did not save.
@@ -74,7 +76,7 @@ test('a registration reaches the inbox, badges the nav, and marking it read clea
   // The control goes, and the badge follows, which only happens if the server
   // actually took it.
   await expect(row.getByRole('button', { name: /Mark .* read/ })).toHaveCount(0);
-  await expect(nav.getByText(/unread/)).toHaveCount(0);
+  await expect(bell).toHaveAccessibleName('Notifications');
 
   await page.reload();
   await expect(

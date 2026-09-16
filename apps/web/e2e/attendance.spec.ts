@@ -269,8 +269,9 @@ test('an admin issues, and the student reaches the document', async ({ page }) =
   await expect(page.getByText(/^Issued \d+\. \d+ active\.$/)).toBeVisible();
 
   await signIn(page, STUDENT);
-  await page.goto('/me');
-  await page.getByRole('link', { name: 'My certificates' }).click();
+  await page.goto('/profile');
+  // The tile's accessible name carries its count, so this is matched loosely.
+  await page.getByRole('link', { name: /Certificates$/ }).click();
   // .first(): every reissue in this file leaves the holder one more revoked
   // document, and they all name the same event.
   await expect(page.getByText('Line Follower Sprint').first()).toBeVisible();
@@ -412,14 +413,14 @@ for (const theme of ['light', 'dark'] as const) {
 
     test('the QR pass has no violations', async ({ page }) => {
       await signIn(page, STUDENT);
-      await page.goto('/me/qr');
+      await page.goto('/profile/qr');
       await expect(page.getByRole('img', { name: 'Your check-in pass' })).toBeVisible();
       await axe(page);
     });
 
     test('the student certificate list has no violations', async ({ page }) => {
       await signIn(page, STUDENT);
-      await page.goto('/me/certificates');
+      await page.goto('/profile/certificates');
       await expect(page.getByRole('button', { name: 'Download' }).first()).toBeVisible();
       await axe(page);
     });

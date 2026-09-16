@@ -32,7 +32,7 @@ export function PasswordRule({ length }: { length: number }) {
           <span
             key={i}
             className={cn(
-              'h-1 w-3.5 rounded-full transition-colors duration-[--dur-fast] ease-[--ease-out]',
+              'h-1 w-3.5 rounded-full transition-colors duration-(--dur-fast) ease-(--ease-out)',
               i >= filled ? 'bg-surface-2' : met ? 'bg-primary' : 'bg-border-control',
             )}
           />

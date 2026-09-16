@@ -149,15 +149,19 @@ for (const theme of ['light', 'dark'] as const) {
       // two events so the scanner and the certificates have something to work
       // on, and a list with rows in it is the harder scan anyway.
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/me/registrations');
+      await page.goto('/profile/registrations');
       await expect(page.getByRole('link', { name: /Drone Build Night/ })).toBeVisible();
       await scan(page);
     });
 
-    test('the student me page has no violations', async ({ page }) => {
+    test('the student profile page has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/me');
+      await page.goto('/profile');
       await expect(page.getByRole('heading', { name: 'My clubs' })).toBeVisible();
+      // The identity banner puts text on a tinted ground the rest of the
+      // product never uses, and the theme control is three toggle buttons
+      // whose only label is their own text. Both are in this scan.
+      await expect(page.getByRole('group', { name: 'Theme' })).toBeVisible();
       await scan(page);
     });
 
@@ -221,7 +225,7 @@ for (const theme of ['light', 'dark'] as const) {
 
     test('the student inbox has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/me/notifications');
+      await page.goto('/profile/notifications');
       await expect(page.getByRole('button', { name: 'Unread' })).toBeVisible();
       await scan(page);
     });
@@ -272,12 +276,31 @@ test('sign-in is reachable by keyboard alone', async ({ page }) => {
   await expect(page).toHaveURL(/\/home$/);
 });
 
-test('the account menu has no violations while open', async ({ page }) => {
-  // A dropdown is where focus management and aria wiring break, and a scan of
-  // the closed shell never renders the menu at all.
+test('the header pair name themselves and announce which one is lit', async ({ page }) => {
+  // Replaces the scan of the account dropdown, which no longer exists: the
+  // avatar is a link to /profile and the bell a link to the inbox. Their risk
+  // moved with them. Both are an icon or an image with no text, so the whole
+  // accessible name is an aria-label, and the lit state is a tinted ground,
+  // which is colour alone unless aria-current carries it too.
   await signIn(page, 'student@uni.ac.ae');
-  await page.getByRole('button', { name: 'Account' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
+  const bell = page.getByRole('link', { name: /^Notifications/ });
+  const avatar = page.getByRole('link', { name: 'Profile' });
+
+  await expect(bell).toBeVisible();
+  await expect(avatar).toBeVisible();
+  await expect(bell).not.toHaveAttribute('aria-current', 'page');
+  await expect(avatar).not.toHaveAttribute('aria-current', 'page');
+
+  await avatar.click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(avatar).toHaveAttribute('aria-current', 'page');
+  // Exactly one of the pair is ever lit, and the bell is not it here.
+  await expect(bell).not.toHaveAttribute('aria-current', 'page');
+
+  await bell.click();
+  await expect(page).toHaveURL(/\/profile\/notifications$/);
+  await expect(bell).toHaveAttribute('aria-current', 'page');
+  await expect(avatar).not.toHaveAttribute('aria-current', 'page');
   await scan(page);
 });
 
@@ -326,10 +349,16 @@ test('the student shell keeps the tab bar below the breakpoint', async ({ page }
   const nav = page.getByRole('navigation', { name: 'Sections' });
   await expect(nav).toHaveCount(1);
 
-  // The mirror image: a bar spanning the foot, not a column at the side.
+  // The mirror image of the sidebar test: across the foot, not a column at
+  // the side. And a dock, not a bar welded to the bottom edge, which is what
+  // the tab bar was before: inset from both sides, centred, with clear space
+  // under it. An edge-to-edge bar is 390 wide and ends at 844.
   const box = await nav.boundingBox();
-  expect(box!.width).toBe(390);
   expect(box!.y).toBeGreaterThan(844 / 2);
+  expect(box!.width).toBeLessThan(390);
+  expect(box!.width).toBeGreaterThan(280);
+  expect(box!.x).toBeCloseTo(390 - (box!.x + box!.width), 0);
+  expect(box!.y + box!.height).toBeLessThan(844);
   await scan(page);
 });
 
@@ -361,6 +390,13 @@ test('the console navigation sheet has no violations while open', async ({ page 
   // one interactive overlay this suite did not cover.
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, 'admin@uni.ac.ae');
+  // /admin is a redirect to /admin/metrics, and signIn only waits for "not
+  // /login", which /admin already satisfies. Scanning from there caught the
+  // document mid-redirect: no title, no landmarks, forty-odd violations that
+  // said nothing about the sheet. Wait for the console the test is about.
+  await page.waitForURL(/\/admin\/metrics$/);
+  await expect(page.getByRole('heading', { name: 'Metrics' })).toBeVisible();
+
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await scan(page);

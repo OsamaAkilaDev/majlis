@@ -1260,3 +1260,59 @@ the same password and email rules as any account, and the form takes a full name
 email and password because `User.fullName` is required and renders in the shell and on every
 audit row. The audit row is written in the same transaction with a null actor: nobody was
 signed in to do this, which is what `AuditLog.actorUserId` being nullable is for.
+
+### The student shell loses two tabs, and CI is removed (2026-09-16)
+
+Four changes to §3's "three app shells" decision and one to deployment, all by the product
+owner. The shells themselves are unchanged; what moved is where the student reaches two of
+them from.
+
+**GitHub Actions is removed.** The workflow added on 2026-09-15 ran once and failed two jobs,
+`Migrations match schema` and the e2e suite. Neither was triaged. Deployment is Render and
+Vercel and both run their own build, so the workflow is deleted rather than fixed. This
+restores the state the 2026-09-13 entry above describes: every suite has only ever run on one
+Windows machine, and that remains this project's largest untested assumption. The two
+failures are now unexplained rather than pending.
+
+**`/me` becomes `/profile`, and the profile absorbs the account controls.** The whole route
+segment moved, so `/profile/qr`, `/profile/notifications`, `/profile/registrations` and
+`/profile/certificates` follow and nothing is left at `/me`. The API's `/me/*` endpoints are
+untouched; only the web routes moved. The screen now opens with the viewer's identity and
+carries the theme control, the shell switcher and sign-out, all three of which used to live
+in the avatar's dropdown.
+
+**The avatar is a link, not a menu, in all three shells.** A dropdown that was the only route
+to a full screen made that screen read as a submenu, and put the theme switch two taps deep on
+a phone. The consoles keep their header theme toggle, since a desktop operator flips it far
+more often than they open `/profile`.
+
+**The tab bar drops to four: Home, Clubs, Events, My QR.** The inbox moved to a bell beside
+the avatar, at every width, so the phone tab bar and the desktop side nav still cannot drift
+apart. A screen under `/profile` lights the avatar rather than a tab; `/profile/qr` and
+`/profile/notifications` keep their own lit control instead, and `ProfileButton` derives that
+from the pathname rather than taking a prop, so a new profile screen cannot forget to declare
+itself.
+
+**`sessionClubRole` gains `clubName`.** The switcher labelled each console by role alone, so
+an officer of two clubs saw two rows both reading "Officer" with the club ID the only thing
+telling them apart. The name now rides on every auth response beside `clubId` and `role`.
+
+**The tab bar is a floating dock.** Chosen from four mocked directions by the product owner.
+Inset from all three edges, rounded full, translucent over a blurred backdrop, with the active
+destination in a filled `--primary` pill. It is positioned over the scroll area rather than
+taking a row in the shell's grid, which makes `main`'s `pb-28` load-bearing: without it the
+last row of every student list sits under the dock and cannot be reached. A gradient veil
+fades the page into its own background behind the dock, because content read through glass is
+noise rather than depth.
+
+**The bell and the avatar are lit by a soft teal ground, not an outline.** The avatar's
+previous lit state was `ring-2 ring-primary`, which is the same picture `:focus-visible`
+draws: the current-page state and the keyboard state were indistinguishable. Both controls are
+now round, both take `--primary-soft` when lit, and the avatar's fallback goes to `--primary`
+with it, because initials on `--surface-2` against `--primary-soft` is barely a step and the
+halo disappears.
+
+**`DropdownMenu` now has no consumer.** It was the avatar menu's component and nothing else in
+the product uses it. `apps/web/src/components/ui/dropdown-menu.tsx` and the `menu-in` /
+`menu-out` keyframes in `globals.css` are dead, and are left in place rather than deleted
+pending a decision.
