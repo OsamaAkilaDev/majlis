@@ -21,11 +21,8 @@ export default async function ManageLayout({
     return <PageError title="You do not have access to this club" />;
   }
 
-  // No unread count: a console header carries the theme toggle and the avatar,
-  // and no bell, so fetching one would be a round trip on every console mount
-  // that nothing reads.
   return (
-    <ConsoleFrame items={clubNav(clubId)} session={{ user, unread: 0 }}>
+    <ConsoleFrame items={clubNav(clubId)} session={{ user }}>
       {children}
     </ConsoleFrame>
   );

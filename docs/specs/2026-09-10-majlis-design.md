@@ -1312,7 +1312,10 @@ now round, both take `--primary-soft` when lit, and the avatar's fallback goes t
 with it, because initials on `--surface-2` against `--primary-soft` is barely a step and the
 halo disappears.
 
-**`DropdownMenu` now has no consumer.** It was the avatar menu's component and nothing else in
-the product uses it. `apps/web/src/components/ui/dropdown-menu.tsx` and the `menu-in` /
-`menu-out` keyframes in `globals.css` are dead, and are left in place rather than deleted
-pending a decision.
+**`DropdownMenu` is deleted.** It was the avatar menu's component and nothing else in the
+product used it, so `apps/web/src/components/ui/dropdown-menu.tsx` went, along with the
+`menu-in` / `menu-out` keyframes and the two `data-slot` rules in `globals.css` that only
+ever drove it. `ui/label.tsx` went with it: a `git log -S` shows nothing ever imported it,
+so it was shadcn scaffolding that never entered the product. `NavItem` also loses its
+`trailing` slot, which existed for the unread badge that now lives on the header bell.
+`radix-ui` stays: avatar, dialog, select and sheet all still use it.

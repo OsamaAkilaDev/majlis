@@ -18,7 +18,7 @@ const TABS = [
   { href: '/home', label: 'Home', icon: House },
   { href: '/clubs', label: 'Clubs', icon: Users },
   { href: '/events', label: 'Events', icon: CalendarDots },
-  { href: '/profile/qr', label: 'My QR', icon: QrCode },
+  { href: '/profile/qr', label: 'QR', icon: QrCode },
 ] as const;
 
 const HREFS = TABS.map((t) => t.href);
@@ -71,11 +71,15 @@ export function TabBar() {
               href={href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'relative z-10 flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-full text-label transition-colors duration-(--dur) ease-(--ease-out)',
+                // The glyph leads and the word is a caption under it: at a
+                // glance on a phone the icon is what is read, so it takes the
+                // room. Not text-label, whose 0.07em tracking is meant for
+                // uppercase eyebrows and pulls a four-letter word apart.
+                'relative z-10 flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-full text-[0.6875rem] leading-none tracking-normal transition-colors duration-(--dur) ease-(--ease-out)',
                 active ? 'font-semibold text-primary-fg' : 'text-ink-3 hover:text-ink-2',
               )}
             >
-              <Icon size={20} weight={ICON_WEIGHT} aria-hidden />
+              <Icon size={22} weight={ICON_WEIGHT} aria-hidden />
               {label}
             </Link>
           );

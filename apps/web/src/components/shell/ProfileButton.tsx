@@ -34,19 +34,27 @@ export function ProfileButton({ user }: { user: SessionUser }) {
       aria-current={current ? 'page' : undefined}
       className={cn(
         'grid size-11 place-items-center rounded-full text-ink-2 transition-colors duration-(--dur)',
-        current ? 'bg-primary-soft' : 'hover:bg-surface-2',
+        !current && 'hover:bg-surface-2',
       )}
     >
-      {/* The 32px avatar in a 44px target leaves a ring of the button's own
-          ground showing, so the lit state is a soft teal halo, matching the
-          bell. The fallback goes deep teal with it: initials on surface-2
-          against primary-soft is barely a step, and the halo disappears. */}
-      <Avatar>
-        {user.avatarUrl ? <AvatarImage src={user.avatarUrl} alt="" /> : null}
-        <AvatarFallback className={cn(current && 'bg-primary text-primary-fg')}>
-          {initials(user.fullName)}
-        </AvatarFallback>
-      </Avatar>
+      {/* The halo is a 2px collar on its own element rather than the whole
+          44px button's ground, so it hugs the avatar instead of filling the
+          touch target. The fallback goes deep teal with it: initials on
+          surface-2 against primary-soft is barely a step, and the collar
+          disappears against them. */}
+      <span
+        className={cn(
+          'grid place-items-center rounded-full transition-colors duration-(--dur)',
+          current && 'bg-primary-soft p-0.5',
+        )}
+      >
+        <Avatar>
+          {user.avatarUrl ? <AvatarImage src={user.avatarUrl} alt="" /> : null}
+          <AvatarFallback className={cn(current && 'bg-primary text-primary-fg')}>
+            {initials(user.fullName)}
+          </AvatarFallback>
+        </Avatar>
+      </span>
     </Link>
   );
 }

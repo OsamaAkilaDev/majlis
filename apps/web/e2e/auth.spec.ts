@@ -126,8 +126,8 @@ test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
   await signIn(page, 'student@uni.ac.ae');
   const nav = page.getByRole('navigation', { name: 'Sections' });
   await expect(nav).toBeVisible();
-  await page.getByRole('link', { name: 'My QR' }).click();
-  await expect(page.getByRole('link', { name: 'My QR' })).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('link', { name: 'QR', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'QR', exact: true })).toHaveAttribute('aria-current', 'page');
   // The profile left the tab bar for the avatar in the header, and /profile/qr
   // is a tab in its own right, so standing on it must not light the avatar too.
   const avatar = page.getByRole('link', { name: 'Profile' });
@@ -135,7 +135,7 @@ test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
 
   await page.goto('/profile/registrations');
   await expect(avatar).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'My QR' })).not.toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'QR', exact: true })).not.toHaveAttribute('aria-current', 'page');
   // And nothing in the tab bar is lit there at all: a stray /profile entry in
   // TABS would light a tab and swallow /profile/qr with it.
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);

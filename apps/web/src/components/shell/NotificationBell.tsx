@@ -22,11 +22,10 @@ export function NotificationBell({ unread = 0 }: { unread?: number }) {
   const badge = unread > 0;
   const count = cappedCount(unread, UNREAD_CAP);
 
-  // Round, and lit by a soft teal ground rather than a teal outline. The
-  // outline this replaces was two pixels of --primary at the button's edge,
-  // which is exactly what :focus-visible draws: the lit state and the
-  // keyboard state were the same picture. The avatar beside it is lit the
-  // same way, so the two read as one pair.
+  // Lit by colouring the glyph, nothing else. Not an outline, which is what
+  // :focus-visible draws and would make the lit state and the keyboard state
+  // the same picture; and not a filled ground, which put a weighty block next
+  // to the avatar for a control that is only ever one of two things.
   return (
     <Link
       href={INBOX}
@@ -34,9 +33,7 @@ export function NotificationBell({ unread = 0 }: { unread?: number }) {
       aria-current={current ? 'page' : undefined}
       className={cn(
         'relative grid size-11 place-items-center rounded-full transition-colors duration-(--dur)',
-        current
-          ? 'bg-primary-soft text-primary-soft-fg'
-          : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
+        current ? 'text-primary' : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
       )}
     >
       {/* The badge is positioned off the icon, not off the 44px hit area: the

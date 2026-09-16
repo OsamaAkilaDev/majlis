@@ -3,7 +3,10 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { SessionUser } from '@majlis/contracts';
 
-export type ShellSession = { user: SessionUser; unread: number };
+/** `unread` is student-only: a console header carries the theme toggle and the
+ *  avatar, and no bell, so its layout supplies no count rather than a zero
+ *  standing in for one. */
+export type ShellSession = { user: SessionUser; unread?: number };
 
 const Ctx = createContext<ShellSession | null>(null);
 

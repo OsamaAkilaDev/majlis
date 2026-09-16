@@ -28,18 +28,25 @@ export function StudentShell({ title, children }: { title: string; children: Rea
         <ProfileButton user={user} />
       </header>
 
-      {/* pb-28 clears the floating dock. It is not decoration: without it the
-          last row of every list on every student screen sits under the dock
-          and cannot be reached. The sidebar replaces the dock at lg, so the
-          padding goes with it. */}
+      {/* Phone only, and load-bearing: the dock floats over this scroll area,
+          so without the clearance the last row of every student screen sits
+          under it and cannot be reached.
+
+          The number is derived, not guessed. The dock is 68px tall (a 56px tab
+          row plus 6px of padding either side), sits 1rem above the safe-area
+          inset, and wants a 1rem breath above it: 68 + 16 + 16 = 100px, plus
+          whatever the device reserves at the bottom edge. The sidebar replaces
+          the dock from lg up, where the padding drops back to the normal rhythm. */}
       <main
         id="main"
-        className="overflow-y-auto overscroll-contain px-4 py-4 pb-28 lg:px-8 lg:py-6"
+        className="overflow-y-auto overscroll-contain px-4 pt-4 pb-[calc(7rem+var(--safe-b))] lg:px-8 lg:py-6 lg:pb-6"
       >
-        {/* h-full so a screen that wants to centre itself in the viewport has a
-            definite height to centre against. Block children do not stretch, so
-            every other page is unaffected. */}
-        <div className="mx-auto h-full w-full max-w-5xl">{children}</div>
+        {/* min-h-full, never h-full. A screen that centres itself needs a
+            height to centre against, but a fixed one caps the scroll area at
+            one viewport: main then reports nothing to scroll while the content
+            spills out underneath the dock. The inbox and the certificate list
+            were both doing exactly that. */}
+        <div className="mx-auto min-h-full w-full max-w-5xl">{children}</div>
       </main>
     </>
   );

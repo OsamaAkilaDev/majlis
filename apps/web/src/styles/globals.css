@@ -274,14 +274,11 @@
   background-image: radial-gradient(115% 85% at 50% 8%, rgb(var(--lattice) / .34), transparent 62%);
 }
 
-/* Motion for Sheet and DropdownMenu, replacing the tailwindcss-animate classes
+/* Motion for Sheet and Dialog, replacing the tailwindcss-animate classes
    shadcn ships by default. Real @keyframes, not transitions: Radix only defers
    unmount on close when it detects a running CSS animation. */
 @keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
-
-@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes menu-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-4px); } }
 
 @keyframes sheet-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes sheet-out-right { from { transform: translateX(0); } to { transform: translateX(100%); } }
@@ -305,11 +302,6 @@
 [data-slot="sheet-content"][data-state="closed"][data-side="left"] { animation-name: sheet-out-left; }
 [data-slot="sheet-content"][data-state="closed"][data-side="top"] { animation-name: sheet-out-top; }
 [data-slot="sheet-content"][data-state="closed"][data-side="bottom"] { animation-name: sheet-out-bottom; }
-
-[data-slot="dropdown-menu-content"][data-state="open"],
-[data-slot="dropdown-menu-sub-content"][data-state="open"] { animation: menu-in var(--dur) var(--ease-out); }
-[data-slot="dropdown-menu-content"][data-state="closed"],
-[data-slot="dropdown-menu-sub-content"][data-state="closed"] { animation: menu-out var(--dur) var(--ease-out); }
 
 /* Motion for Dialog: a centred scale-fade, not a slide, since it has no side. */
 @keyframes dialog-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
