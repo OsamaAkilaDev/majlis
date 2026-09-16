@@ -206,13 +206,13 @@ Stated as facts. None of these is a bug report.
 | Limit | Detail |
 | --- | --- |
 | **No rate limiting, anywhere** | Dropped from the build by the product owner on 2026-09-13, not an oversight. Login, signup, scan, `/verify/{code}`, `forgot-password` and both sweep endpoints are all unlimited. Argon2id's cost is the only brake on password guessing |
-| **CI is red** | It ran for the first time on 2026-09-15 and failed on two jobs, `Migrations match schema` and the e2e suite. Nobody has triaged it. Eight stages of green suites on one Windows machine is not the same claim as green on a clean Linux runner |
+| **There is no CI** | The GitHub Actions workflow was removed on 2026-09-15 by the product owner: deployment is Render and Vercel, and both run their own build. Every suite runs locally, on one Windows machine. Before it was removed the workflow had run once and failed two jobs, `Migrations match schema` and the e2e suite on a clean Linux runner. Neither was triaged, so both failures are still unexplained |
 | **Email delivery is unverified** | See above. No key has ever existed, so no message has ever been sent |
 | **Both buckets are hand-made** | See the top of this document |
 | **The QR scanner needs a secure context** | It uses `BarcodeDetector` and `navigator.mediaDevices.getUserMedia`, and browsers withhold both outside a secure context. Over plain HTTP on a LAN address the camera will not open. `localhost` counts as secure; `http://192.168.x.x` does not. Where the scanner is unavailable it says so once and hands over to manual check-in by email, which works everywhere |
 | **No offline support** | Majlis is an installable PWA but scanning and every other action require connectivity |
 | **The web app has no deployment config in this repository** | `render.yaml` covers the API. The Vercel project for `apps/web` is configured in the dashboard: root directory `apps/web`, and `API_ORIGIN` pointing at the Render service |
-| **Nothing schedules the sweeps** | Certificates issue and queued email sends only when something calls the two `/internal/*-sweep` endpoints. A scheduled GitHub Actions workflow is the intended backstop and is not built |
+| **Nothing schedules the sweeps** | Certificates issue and queued email sends only when something calls the two `/internal/*-sweep` endpoints. A scheduled caller is the intended backstop and is not built |
 | **Orphaned uploads accumulate** | Replacing a club logo or event poster leaves the previous object in the bucket, and no image can be deleted through the API at all |
 | **`GET /clubs/{id}/audit` scans up to 500 event ids per page** | `AuditLog` deliberately has no foreign keys, so a club's audit is assembled from the club id plus its event ids. The upgrade path is a `club_id` column written at record time |
 | **No CSP on the web app** | Deliberate. Inline styles and a server-generated inline SVG mean a policy tight enough to be worth having breaks rendering, and one loose enough not to buys nothing. `X-Content-Type-Options`, `Referrer-Policy` and `X-Frame-Options: DENY` are set |
@@ -223,7 +223,7 @@ Stated as facts. None of these is a bug report.
 ### Migrations
 
 ```bash
-pnpm --filter @majlis/api prisma:deploy     # apply, production and CI
+pnpm --filter @majlis/api prisma:deploy     # apply, production
 pnpm --filter @majlis/api prisma:migrate    # create and apply, development only
 ```
 
