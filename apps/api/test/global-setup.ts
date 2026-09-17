@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { testDatabaseUrl } from './db';
+import { testDirectDatabaseUrl } from './db';
 
 /**
  * Applies all migrations to the test database once, before any test file runs.
@@ -11,7 +11,10 @@ import { testDatabaseUrl } from './db';
  * there is something to apply.
  */
 export default function setup(): void {
-  const url = testDatabaseUrl();
+  // The unpooled URL, deliberately. `prisma migrate` through pgBouncer hangs
+  // with no error and no timeout, which wedged this step forever the moment
+  // DATABASE_URL became Supabase's pooled :6543 endpoint.
+  const url = testDirectDatabaseUrl();
   const dir = join(__dirname, '..', 'prisma', 'migrations');
 
   const hasMigrations =

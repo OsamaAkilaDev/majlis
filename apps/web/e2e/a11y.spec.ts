@@ -85,7 +85,7 @@ for (const theme of ['light', 'dark'] as const) {
     test('an authorization refusal page has no violations', async ({ page }) => {
       // PageError previously rendered no main landmark at all.
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/admin/metrics');
+      await page.goto('/admin/users');
       await expect(page.getByRole('heading', { name: /do not have access/i })).toBeVisible();
       await scan(page);
     });
@@ -216,10 +216,13 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
-    test('the new password form has no violations', async ({ page }) => {
-      // Carries the segment meter on a label, on the deep auth ground.
+    test('a spent reset link has no violations', async ({ page }) => {
+      // The form behind a live token is unreachable from here: the raw token
+      // exists only in an inbox, so this scans the state a bad link lands on.
+      // The password meter and the confirm field it would have covered are
+      // the same markup the signup scan above already renders.
       await page.goto('/reset-password?token=whatever');
-      await expect(page.getByText('12+ characters')).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Request a new link' })).toBeVisible();
       await scan(page);
     });
 
@@ -230,19 +233,10 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
-    test('the admin metrics charts have no violations', async ({ page }) => {
-      // An inline SVG chart is where a graphic ends up with no accessible
-      // name at all, which is a 1.1.1 failure a 'renders' test never sees.
+    test('the admin user list has no violations', async ({ page }) => {
       await signIn(page, 'admin@uni.ac.ae');
-      await page.goto('/admin/metrics');
-      await expect(page.getByRole('img', { name: /Clubs by status/ })).toBeVisible();
-      await scan(page);
-    });
-
-    test('the admin exports screen has no violations', async ({ page }) => {
-      await signIn(page, 'admin@uni.ac.ae');
-      await page.goto('/admin/exports');
-      await expect(page.getByRole('button', { name: 'Events' })).toBeVisible();
+      await page.goto('/admin/users');
+      await expect(page.getByRole('columnheader', { name: 'Name' })).toBeVisible();
       await scan(page);
     });
 
@@ -390,14 +384,40 @@ test('the console navigation sheet has no violations while open', async ({ page 
   // one interactive overlay this suite did not cover.
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, 'admin@uni.ac.ae');
-  // /admin is a redirect to /admin/metrics, and signIn only waits for "not
+  // /admin is a redirect to /admin/users, and signIn only waits for "not
   // /login", which /admin already satisfies. Scanning from there caught the
   // document mid-redirect: no title, no landmarks, forty-odd violations that
   // said nothing about the sheet. Wait for the console the test is about.
-  await page.waitForURL(/\/admin\/metrics$/);
-  await expect(page.getByRole('heading', { name: 'Metrics' })).toBeVisible();
+  await page.waitForURL(/\/admin\/users$/);
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await scan(page);
+});
+
+test('a dialog stays centred for the whole of its open animation', async ({ page }) => {
+  // Sampled during the animation, never after it. Tailwind v4 compiles
+  // `-translate-x-1/2` to the individual `translate` property, so a keyframe
+  // that also put `translate(-50%, -50%)` inside `transform` composed with it
+  // instead of replacing it: the dialog played its entire entrance a second
+  // -50% up and to the left, then snapped to the middle when the animation
+  // ended and `transform` reverted. Measured at 224px off-centre. A test that
+  // waited for the dialog to settle saw nothing wrong.
+  await signIn(page, 'admin@uni.ac.ae');
+  await page.waitForURL(/\/admin\/users$/);
+  await page.getByRole('button', { name: /Suspend|Reactivate/ }).first().click();
+
+  const dialog = page.getByRole('dialog');
+  const viewport = page.viewportSize()!;
+  const offsets: number[] = [];
+
+  for (let i = 0; i < 12; i++) {
+    const box = await dialog.boundingBox();
+    if (box) offsets.push(Math.abs(box.x + box.width / 2 - viewport.width / 2));
+    await page.waitForTimeout(16);
+  }
+
+  expect(offsets.length).toBeGreaterThan(6);
+  expect(Math.max(...offsets)).toBeLessThan(4);
 });

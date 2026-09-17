@@ -12,8 +12,37 @@ import { pgAdapter } from '../src/prisma/pg-adapter';
  * table in a production database's public schema.
  */
 export function testDatabaseUrl(): string {
-  const url = process.env.TEST_DATABASE_URL ?? deriveFromDatabaseUrl();
+  return assertTestDb(process.env.TEST_DATABASE_URL ?? derive(process.env.DATABASE_URL, 'DATABASE_URL'));
+}
 
+/**
+ * The same test database, reached without the connection pooler.
+ *
+ * `prisma migrate` cannot run through pgBouncer: it takes an advisory lock and
+ * issues DDL, and in transaction pooling mode it simply hangs, with no error
+ * and no timeout. Supabase's `DATABASE_URL` is the pooled `:6543` endpoint, so
+ * deriving the migrate URL from it wedged `global-setup.ts` forever and the
+ * integration suite could not start at all.
+ *
+ * Only the migration step needs this. The Prisma client the tests themselves
+ * run on stays on the pooled URL, which is what the app uses in production.
+ */
+export function testDirectDatabaseUrl(): string {
+  return assertTestDb(
+    process.env.TEST_DIRECT_URL ??
+      process.env.TEST_DATABASE_URL ??
+      derive(process.env.DIRECT_URL ?? process.env.DATABASE_URL, 'DIRECT_URL or DATABASE_URL'),
+  );
+}
+
+/**
+ * The database name is parsed out of the URL rather than matched as a
+ * substring of the whole string. A substring check on
+ * `postgresql://majlis_test_ro:pw@prod-host/majlis_prod` would pass (the
+ * marker matches the username) and truncateAll would then TRUNCATE every
+ * table in a production database's public schema.
+ */
+function assertTestDb(url: string): string {
   const { pathname } = new URL(url);
   if (pathname !== '/majlis_test') {
     throw new Error(`Refusing to run integration tests against a non-test database: ${url}`);
@@ -23,9 +52,8 @@ export function testDatabaseUrl(): string {
 
 // Same server and credentials as the development database, different name.
 // CI overrides it with TEST_DATABASE_URL.
-function deriveFromDatabaseUrl(): string {
-  const base = process.env.DATABASE_URL;
-  if (!base) throw new Error('DATABASE_URL is not set. Copy .env.example to .env.');
+function derive(base: string | undefined, name: string): string {
+  if (!base) throw new Error(`${name} is not set. Copy .env.example to .env.`);
 
   const url = new URL(base);
   url.pathname = '/majlis_test';
