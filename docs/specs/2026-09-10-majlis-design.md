@@ -600,7 +600,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 4 | ✅ **Done** — Clubs, team & membership | Departments, club CRUD + status machine, image upload via signed URL, Lead appointment, in-app team invitations, the four membership policies, requests and decisions, member lists, leaving. Designed in [`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md) |
 | 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
-| 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, CSV exports, audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
+| 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, ~~CSV exports~~ (deleted 2026-09-16), audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
 | 8 | ✅ **Done**: Hardening | Whole-codebase security audit and nine fixes, six performance fixes, the em dash sweep, the README rewrite and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13. Planned in [`2026-09-13-stage-8-hardening.md`](../superpowers/plans/2026-09-13-stage-8-hardening.md) |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
@@ -1319,3 +1319,212 @@ ever drove it. `ui/label.tsx` went with it: a `git log -S` shows nothing ever im
 so it was shadcn scaffolding that never entered the product. `NavItem` also loses its
 `trailing` slot, which existed for the unread badge that now lives on the header bell.
 `radix-ui` stays: avatar, dialog, select and sheet all still use it.
+
+### The admin console loses two screens, and archiving becomes reversible (2026-09-16)
+
+Five changes, all by the product owner after walking the admin console. Three were reported
+as bugs and only one of them was: the other two were screens that had never been built and a
+CSS default nobody had looked at.
+
+**Archiving a club is no longer terminal.** `club-status.ts`'s `ALLOWED` table gains
+`ARCHIVED: ['ACTIVE', 'SUSPENDED']`, so every club status now reaches every other and
+`assertTransition` asserts only that the transition is not a no-op. This reverses the rule the
+table was built around. It was reported as "I set the status to archived and I cannot edit it
+back", which was the domain working exactly as designed and the UI faithfully mirroring it:
+`NEXT_STATUSES.ARCHIVED` was `[]`, so the control disappeared and the screen could not say
+why. A one-way door reachable by a two-click dialog is a misclick away from a club nobody can
+recover, and nothing about the archive is expensive to undo.
+
+The table is kept rather than collapsed into `from !== to`, which is all it now asserts. A
+future restriction is written in a table, and a predicate would have to be rebuilt into one
+first. `assertAcceptsEdits` is untouched, so an archived club is still frozen for profile
+edits, team changes and new activity: the route back is reactivate, then edit. The
+`club-status.spec.ts` test that asserted the terminal rule is inverted rather than deleted,
+and the no-op test now covers all three statuses, because with a fully connected table the
+no-op guard is the only rule left for a test to catch.
+
+**The Metrics screen is deleted.** Three platform totals and two bar charts that answered no
+question an admin actually had. `/admin` redirected to it, so the redirect now points at
+`/admin/users`, the first entry of `ADMIN_NAV`. The API's `/reports/overview` stays, as do
+`BarChart` and `lib/chart.ts`: the officer console's own report renders the same charts, and
+the a11y suite's inline-SVG coverage moved onto that screen rather than being lost.
+
+**CSV exports are deleted outright, screen and API.** `exports.controller.ts`, `csv.ts` and
+`csv.spec.ts` are gone, along with `EXPORT_ROW_CAP`, `EXPORT_CAP_NOTICE`, `isCapped` and
+`eventExportQuerySchema` in the contracts, the four `*Rows` methods on `ReportingService`, and
+the export half of `reporting.integration.test.ts`. This removes a Stage 7 deliverable and
+**fifteen passing unit tests**, recorded here rather than left to be discovered in a diff. The
+decision was explicit: the feature was not wanted, and dead endpoints behind a deleted screen
+are worse than no endpoints. `/reports/overview` and `/clubs/:clubId/reports` are unaffected.
+
+**The admin Users screen is built.** It was never implemented: `users/page.tsx` had been an
+`EmptyState` placeholder since Stage 3 scaffolded the three shells, sitting next to a
+`loading.tsx` that already rendered a five-column table skeleton. `GET /users` and
+`PATCH /users/:id/status` had been finished and unreachable since Stage 2. The screen is a
+table with search, a status filter, and suspend/reactivate behind a required reason.
+
+`GET /users` gains `q` and `status`, mirroring `GET /clubs`. `q` spans `fullName` **and**
+`email`: an admin chasing a support request holds one or the other, and a name-only match
+answers "no such user" for every address pasted in. `mode: 'insensitive'` is load-bearing, not
+cosmetic, because Postgres `LIKE` is case-sensitive and a capital letter would otherwise
+return nothing. Both facts have a test built to fail against the narrower implementation: the
+`q` test uses three rows so each half of the `OR` is the only thing that can satisfy it, and
+the case test would pass every lowercase assertion without the flag.
+
+The row for the signed-in admin shows "You" instead of an action. That is presentation only.
+The API's own 422 on changing your own status is the protection, per spec 9.1.
+
+**`OverviewManager` becomes `components/ClubProfileForm.tsx`, shared by both consoles.** The
+admin club detail screen had no edit form at all, only status-change and appoint-Lead, which
+is what "I cannot edit all info" meant. The officer console's overview already was that form,
+carrying the `CLUB_FIELDS` rules and spec 6.1's override reason for an Admin holding no role
+in the club, so it moved into `components/` rather than being written a second time. It is
+keyed on `club.status` in the admin screen, because it gates editing on the status and would
+otherwise stay live after the panel below it archived the club.
+
+`name` and `slug` remain absent from `patchClubBodySchema`, so no one can rename a club. That
+is unchanged and was flagged to the product owner as its own item.
+
+**The status pill was stretching to the full column width.** `StatusBadge` is `inline-flex`,
+and both sites rendered it as a direct child of a `flex flex-col`, whose `align-items`
+defaults to `stretch`. `self-start` on both. The second site, the student club detail header,
+renders only for a non-active club, which is why nobody had seen it.
+
+### Admins can edit accounts, and a dialog stopped flying in from the corner (2026-09-17)
+
+**`PATCH /users/{id}` is added, behind a new `user:edit` rule.** An admin can now change
+another account's `fullName`, `email`, `avatarUrl` and `platformRole`, any subset in one call,
+always with a required `reason`, always audited in the same transaction. The product owner
+asked for all four explicitly after being shown what each one costs.
+
+This reverses the note in the 2026-09-15 bootstrap entry that "nothing in the product writes
+`platformRole`". It does now, and that is the whole reason the rest of this entry exists.
+
+`user:edit` is `{ platform: ['ADMIN'] }` with no club half at any level. A club-scoped version
+would let a Lead mint a platform admin out of a club role, which is the permission model
+inverted rather than extended.
+
+**Three guards, and only one of them is obvious.**
+
+*Self-role.* An admin cannot change their own `platformRole` (422), mirroring the existing rule
+on `/status`. They may still edit their own name and address through the same route, so the
+guard is written against the role field rather than against the target id. There is a test for
+each half: a rule written as "no self edits at all" passes the first and fails the second.
+
+*Last admin.* Demoting the final admin leaves a platform with no route back, which is the
+2026-09-15 bootstrap failure reached from the other direction: only an admin creates a club,
+and `/auth/bootstrap` shuts as soon as the first admin exists. Sequentially this is already
+unreachable, because the self-role guard keeps the caller an admin. **The hole is concurrent:**
+two admins demoting each other both read two admins before either commits, and the platform
+commits its way to zero. The count therefore runs under `pg_advisory_xact_lock`, not a row
+lock: the question is about a count across the table, and two admins demoting each other lock
+two different rows. `ADMIN_COUNT_LOCK_KEY` is deliberately a different key from
+`BOOTSTRAP_LOCK_KEY`; the two guard the same invariant from opposite ends and must not block
+each other. The test runs both calls through `Promise.all` and asserts exactly one wins, which
+a guard written as a plain count outside a lock fails and every sequential test passes.
+
+*Email is a credential.* Changing an address revokes that user's live refresh tokens, the same
+reasoning suspension already revokes on the way down: an admin repointing the address somebody
+signs in with must not leave a live 30-day token behind on the old one.
+
+**Only the keys actually present are written,** and the web form sends only the fields that
+changed. Spreading the parsed body into Prisma's `data` looks equivalent and is not: an absent
+key arrives as `undefined`, which Prisma treats as no-change, but that is indistinguishable
+from an explicit `null` on `avatarUrl`. Sending the unchanged fields anyway would also write a
+`user.updated` audit row for an admin who opened the dialog and saved without typing, and take
+the email column through a no-op update that still revoked the person's sessions.
+
+**The audit row's before/after is an allow-list, not the row minus `passwordHash`.** An audit
+row is read by a human in the console and outlives the account, so a new column on `User` is
+invisible to it until somebody adds it to `AUDITED_FIELDS` on purpose. The action is
+`user.role_changed` whenever the role moved and `user.updated` otherwise, so a privilege grant
+is filterable rather than buried among name corrections.
+
+**Dialogs were playing their entire entrance 224px up and to the left.** Reported as "I see
+them first at top left and then they appear in middle of screen". `DialogContent` centres
+itself with `-translate-x-1/2 -translate-y-1/2`, and **Tailwind v4 compiles those to the
+individual `translate` property, not to `transform`** (verified by compiling the utilities:
+`translate: var(--tw-translate-x) var(--tw-translate-y)`). The `dialog-in` keyframe also
+carried `translate(-50%, -50%)` inside `transform`. The two properties compose rather than
+override, so the box sat at -100% on both axes for the whole animation and snapped to the
+middle the instant it ended and `transform` reverted to `none`.
+
+The keyframes now animate the individual `scale` property and say nothing about position, so
+the centring is the positioning code's business alone. The individual properties apply in the
+order translate, rotate, scale, so `scale` grows the box about its own centre with the
+centring untouched. Sheet is unaffected: it has no translate utility, and its keyframes own
+`transform` outright.
+
+The regression test samples the bounding box every 16ms **during** the animation rather than
+after it, because a test that waits for the dialog to settle sees a perfectly centred dialog
+either way. Proven by restoring the old keyframe and watching it report 224px.
+
+### The security review of the account-edit route, and what it found (2026-09-17)
+
+`/security-review` on `PATCH /users/{id}` before it landed. Two real defects, both in the new
+code, both fixed with a test apiece. Recorded because neither is visible from reading the
+guards on their own: each one is a guard that looks correct and is not.
+
+**The self guards compared a uuid as a JavaScript string.** `actor.id === targetId`, where
+`targetId` is a path parameter. Postgres compares `uuid` case-insensitively and Prisma hands
+ids back lowercased, so `PATCH /users/3F2B…` with the caller's own id upper-cased read as a
+different user to the guard and resolved to the caller's own row everywhere after it:
+`UUID_SHAPE` carries `/i`, and `${id}::uuid` normalises. An admin could demote themselves, the
+one thing the guard exists to prevent.
+
+Fixed with an `isSelf` helper comparing lowercased, applied to **both** call sites. The one in
+`updateStatus` predates this work and had the same hole; fixing only the new one would have
+left the same bypass a route away.
+
+**The last-admin guard counted admins who cannot sign in.**
+`count({ where: { platformRole: 'ADMIN' } })` ignores `status`, and `SessionGuard` refuses
+anyone whose status is not ACTIVE. So a suspended admin propped the count up while being
+unable to administer anything: suspend the other admin, then demote yourself through the
+case-variant id above, and the platform reaches zero usable admins.
+`AuthService.adminExists` counts by role alone and so stays shut, leaving no recovery short of
+database access. Now `ACTIVE_ADMIN`, and the same guard is applied to `updateStatus`, because
+suspending the last active admin reaches the identical end state.
+
+**Both last-admin guards are unreachable sequentially**, which is why the first tests written
+for them were wrong and were rewritten. The caller is themselves an active admin, so any
+single demotion or suspension leaves at least one. The hole is concurrent: two admins acting
+on each other both read two before either commits. Both tests therefore drive the pair through
+`Promise.all` and assert exactly one succeeds. A guard written as a plain count outside the
+advisory lock passes every sequential test and fails these.
+
+**An email change ended the refresh tokens but not the live access token.** The first version
+revoked `refreshToken` rows, which stops a new access token being minted but leaves the one
+already in the browser valid for the rest of its 15 minutes. `sessionsInvalidatedAt` is the
+field `SessionGuard` compares each request's `iat` against, and is what password reset and
+logout already use. Now stamped in the same transaction.
+
+**The review also cleared, explicitly:** unknown-key smuggling into `data: fields` (the global
+`ZodValidationPipe` replaces the body with the parsed object, and `status` and `passwordHash`
+are stripped), route ordering between `/users/:id` and `/users/:id/status`, SQL injection in
+the two new raw statements (both Prisma tagged templates with bound parameters), the
+`pickAudited` allow-list, and `test/db.ts`'s refuse-to-truncate-a-non-test-database guard,
+which still holds on every branch after the change below.
+
+### The integration suite could not run at all (2026-09-17)
+
+Unrelated to the above and found while trying to verify it. `test/global-setup.ts` ran
+`prisma migrate deploy` with `DIRECT_URL` set to a URL derived from `DATABASE_URL`, which on
+Supabase is the **pooled** `:6543` endpoint. `prisma.config.ts` has carried the warning since
+Stage 1: migrations cannot run through pgBouncer. They do not fail there, they hang, with no
+error and no timeout, so the whole suite sat in setup forever and the test database was left
+with zero tables.
+
+`test/db.ts` gains `testDirectDatabaseUrl()`, which derives from `DIRECT_URL` before falling
+back to `DATABASE_URL`, and `global-setup.ts` uses it for the migrate step only. The client the
+tests themselves run on stays pooled, which is what the app uses in production. Both functions
+route every branch through the same `assertTestDb`, so the guard that refuses to TRUNCATE
+anything not named `majlis_test` is unchanged.
+
+This is very likely the "Migrations match schema" CI failure recorded as untriaged in the
+2026-09-16 entry.
+
+**A caution for whoever runs these next:** two integration runs against the one test database
+deadlock each other. `truncateAll` takes ACCESS EXCLUSIVE on every table while the other run
+holds row locks, and the losing side reports `40P01 deadlock detected` from `beforeEach`, after
+which every assertion in that file fails on stale data. A full-suite result collected while a
+single file was being re-run alongside it showed 63 spurious failures. Run one at a time.
