@@ -3,7 +3,6 @@ import type { ClubReport, OverviewReport } from '@majlis/contracts';
 import { NotFoundError } from '../common/problem/domain-error';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
-import { EXPORT_ROW_CAP } from './csv';
 
 /**
  * The same set AttendanceService counts as `expected`: a waitlisted student
@@ -12,9 +11,6 @@ import { EXPORT_ROW_CAP } from './csv';
  */
 const EXPECTED = ['CONFIRMED', 'CHECKED_IN', 'ATTENDED', 'NO_SHOW'] as const;
 const ATTENDED = ['CHECKED_IN', 'ATTENDED'] as const;
-
-/** One more than the cap, so the cap is detectable without a second COUNT. */
-const TAKE = EXPORT_ROW_CAP + 1;
 
 function tally<T extends string>(rows: { status: T; _count: number }[]): Record<string, number> {
   return Object.fromEntries(rows.map((r) => [r.status, r._count]));
@@ -71,104 +67,6 @@ export class ReportingService {
       // report, and a NaN would fail the response schema.
       attendanceRate: expected === 0 ? 0 : attended / expected,
       certificatesIssued,
-    };
-  }
-
-  async eventRows(): Promise<{ headers: string[]; rows: unknown[][] }> {
-    const rows = await this.host.tx.event.findMany({
-      orderBy: { id: 'asc' },
-      take: TAKE,
-      include: { club: { select: { name: true } } },
-    });
-
-    return {
-      headers: [
-        'id',
-        'club',
-        'title',
-        'status',
-        'startsAt',
-        'endsAt',
-        'timezone',
-        'venue',
-        'capacity',
-        'confirmedCount',
-      ],
-      rows: rows.map((e) => [
-        e.id,
-        e.club.name,
-        e.title,
-        e.status,
-        e.startsAt,
-        e.endsAt,
-        e.timezone,
-        e.venue,
-        e.capacity,
-        e.confirmedCount,
-      ]),
-    };
-  }
-
-  async registrationRows(eventId: string): Promise<{ headers: string[]; rows: unknown[][] }> {
-    const rows = await this.host.tx.eventRegistration.findMany({
-      where: { eventId },
-      orderBy: { id: 'asc' },
-      take: TAKE,
-      include: { user: { select: { fullName: true, email: true } } },
-    });
-
-    return {
-      headers: ['id', 'fullName', 'email', 'status', 'waitlistPosition', 'registeredAt', 'source'],
-      rows: rows.map((r) => [
-        r.id,
-        r.user.fullName,
-        r.user.email,
-        r.status,
-        r.waitlistPosition,
-        r.registeredAt,
-        r.source,
-      ]),
-    };
-  }
-
-  async attendanceRows(eventId: string): Promise<{ headers: string[]; rows: unknown[][] }> {
-    const rows = await this.host.tx.attendanceRecord.findMany({
-      where: { eventId },
-      orderBy: { id: 'asc' },
-      take: TAKE,
-      include: { user: { select: { fullName: true, email: true } } },
-    });
-
-    return {
-      headers: ['id', 'fullName', 'email', 'checkedInAt', 'method', 'correctedAt'],
-      rows: rows.map((a) => [
-        a.id,
-        a.user.fullName,
-        a.user.email,
-        a.checkedInAt,
-        a.method,
-        a.correctedAt,
-      ]),
-    };
-  }
-
-  async certificateRows(eventId: string): Promise<{ headers: string[]; rows: unknown[][] }> {
-    const rows = await this.host.tx.certificate.findMany({
-      where: { eventId },
-      orderBy: { id: 'asc' },
-      take: TAKE,
-    });
-
-    return {
-      headers: ['serialNumber', 'holderName', 'eventTitle', 'status', 'issuedAt', 'revokedAt'],
-      rows: rows.map((c) => [
-        c.serialNumber,
-        c.holderNameSnapshot,
-        c.eventTitleSnapshot,
-        c.status,
-        c.issuedAt,
-        c.revokedAt,
-      ]),
     };
   }
 }

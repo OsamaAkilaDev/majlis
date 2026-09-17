@@ -75,13 +75,24 @@ describe('PATCH /clubs/:clubId/status', () => {
     expect(rows[0]!.reason).toBe('Inactive all semester.');
   });
 
-  it('refuses any transition out of ARCHIVED, leaving status unchanged', async () => {
+  it('revives an ARCHIVED club, which is no longer terminal', async () => {
+    // Reversed on 2026-09-16: an archive reached by misclick had no route
+    // back. Asserts the row, not just the status code, so a handler that
+    // answers 200 without writing still fails.
     const admin = await loginAsAdmin(app);
     const club = await makeClub({ status: 'ARCHIVED' });
 
-    expect((await patchClubStatus(admin.sessionCookie, club.id, 'ACTIVE', 'Revive.')).status).toBe(422);
-    // Catches a handler that writes the row and only denies the response,
-    // which a status-code-only assertion would still pass.
+    expect((await patchClubStatus(admin.sessionCookie, club.id, 'ACTIVE', 'Revive.')).status).toBe(200);
+    expect((await prisma.club.findUniqueOrThrow({ where: { id: club.id } })).status).toBe('ACTIVE');
+  });
+
+  it('still refuses a transition to the status it already holds', async () => {
+    // The one rule left now that the table is fully connected, and the only
+    // thing standing between `assertTransition` and a no-op audit row.
+    const admin = await loginAsAdmin(app);
+    const club = await makeClub({ status: 'ARCHIVED' });
+
+    expect((await patchClubStatus(admin.sessionCookie, club.id, 'ARCHIVED', 'Again.')).status).toBe(422);
     expect((await prisma.club.findUniqueOrThrow({ where: { id: club.id } })).status).toBe('ARCHIVED');
   });
 

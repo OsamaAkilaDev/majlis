@@ -1,4 +1,4 @@
-import type { AppointmentPage, ClubDetail } from '@majlis/contracts';
+import type { AppointmentPage, ClubDetail, DepartmentPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
 import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { serverFetch } from '@/lib/server-api';
@@ -6,16 +6,26 @@ import { ClubDetailManager } from './ClubDetailManager';
 
 export const metadata: Metadata = { title: 'Club' };
 
-export default async function AdminClubDetailPage({ params }: { params: Promise<{ clubId: string }> }) {
+export default async function AdminClubDetailPage({
+  params,
+}: {
+  params: Promise<{ clubId: string }>;
+}) {
   const { clubId } = await params;
-  const [club, team] = await Promise.all([
+  const [club, team, departments] = await Promise.all([
     serverFetch<ClubDetail>(`/clubs/${clubId}`),
     serverFetch<AppointmentPage>(`/clubs/${clubId}/team?limit=100`),
+    serverFetch<DepartmentPage>('/departments?limit=100'),
   ]);
 
   return (
     <ConsoleShell title="Club">
-      <ClubDetailManager clubId={clubId} initialClub={club} initialTeam={team?.items ?? null} />
+      <ClubDetailManager
+        clubId={clubId}
+        initialClub={club}
+        initialTeam={team?.items ?? null}
+        initialDepartments={departments?.items ?? null}
+      />
     </ConsoleShell>
   );
 }

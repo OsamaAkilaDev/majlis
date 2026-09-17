@@ -261,6 +261,6 @@ describe('activeNavHref', () => {
   });
 
   it('lights nothing for a route that is not under any tab', () => {
-    expect(activeNavHref('/admin/metrics', TABS)).toBeNull();
+    expect(activeNavHref('/admin/users', TABS)).toBeNull();
   });
 });

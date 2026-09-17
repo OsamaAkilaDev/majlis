@@ -18,16 +18,25 @@ import { useAsyncError } from '@/lib/use-async-error';
 
 const POLICIES: MembershipPolicy[] = ['OPEN', 'APPROVAL_REQUIRED', 'INVITE_ONLY', 'CLOSED'];
 
-export function OverviewManager({
+/**
+ * A club's profile, read or edited depending on what the viewer holds. Shared
+ * by the officer console's overview and the admin console's club detail, so
+ * the field-level edit rules and spec 6.1's override reason are written once
+ * and cannot drift between the two screens.
+ */
+export function ClubProfileForm({
   clubId,
   platformRole,
   initialClub,
   initialDepartments,
+  onChanged,
 }: {
   clubId: string;
   platformRole: 'STUDENT' | 'ADMIN';
   initialClub: ClubDetail | null;
   initialDepartments: { id: string; name: string }[] | null;
+  /** Lets a parent holding its own copy of the club follow a save. */
+  onChanged?: (club: ClubDetail) => void;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>(
@@ -80,6 +89,7 @@ export function OverviewManager({
 
   async function refresh(next: ClubDetail) {
     setClub(next);
+    onChanged?.(next);
   }
 
   async function save() {
@@ -114,9 +124,15 @@ export function OverviewManager({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="font-display text-h1 text-ink">{club.name}</h2>
         <StatusBadge status={club.status} />
+        {/* Carried here so it survives both branches. The admin club screen
+            used to show it in a read-only list this form replaced, and the
+            edit branch has no field for it: it is a count, not a setting. */}
+        <span className="tabular text-sm text-ink-2">
+          {club.memberCount} {club.memberCount === 1 ? 'member' : 'members'}
+        </span>
       </div>
 
       <div className="flex gap-4">

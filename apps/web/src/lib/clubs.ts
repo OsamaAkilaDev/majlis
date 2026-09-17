@@ -24,9 +24,13 @@ import type {
   PatchClubBody,
   PatchClubStatusBody,
   PatchDepartmentBody,
+  PatchUserBody,
+  PatchUserStatusBody,
   RemoveMemberBody,
   SignedUpload,
   UserListPage,
+  UserListQuery,
+  UserProfile,
   UserSearchResult,
 } from '@majlis/contracts';
 import { apiFetch, json, qs } from './api';
@@ -140,8 +144,20 @@ export const removeDepartment = (id: string): Promise<void> =>
 
 // -- Users (search, for Lead appointment and team invitations) --------------
 
-export const listUsers = (query: CursorPageQuery): Promise<UserListPage> =>
-  apiFetch(`/users${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+export const listUsers = (query: UserListQuery): Promise<UserListPage> =>
+  apiFetch(
+    `/users${qs({ cursor: query.cursor, limit: String(query.limit), status: query.status, q: query.q })}`,
+  );
+
+/** Name, address, avatar and platform role. Admin only, reason audited. */
+export const updateUser = (userId: string, body: PatchUserBody): Promise<UserProfile> =>
+  apiFetch(`/users/${userId}`, { ...json(body), method: 'PATCH' });
+
+/** Suspends or reactivates an account. Admin only, and the reason is audited. */
+export const updateUserStatus = (
+  userId: string,
+  body: PatchUserStatusBody,
+): Promise<UserProfile> => apiFetch(`/users/${userId}/status`, { ...json(body), method: 'PATCH' });
 
 /**
  * The club-scoped lookup the officer consoles use. `GET /users` is Admin

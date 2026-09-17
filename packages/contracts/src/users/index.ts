@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { cursorPageSchema } from '../common/pagination';
+import { emailSchema } from '../auth';
+import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 
 /**
  * Mirrors Prisma's `UserStatus` enum (schema.prisma). Declared locally rather
@@ -77,6 +78,16 @@ export const userListItemSchema = z.object({
 export const userListPageSchema = cursorPageSchema(userListItemSchema);
 
 /**
+ * `GET /users`' filters. `q` matches name or address, because an admin
+ * looking a person up has whichever of the two they were given, and a
+ * name-only search silently answers "no such user" for the other half.
+ */
+export const userListQuerySchema = cursorPageQuerySchema.extend({
+  status: userStatusSchema.optional(),
+  q: z.string().trim().min(1).max(120).optional(),
+});
+
+/**
  * One row of `GET /clubs/{clubId}/user-search`, the club-scoped directory
  * lookup an officer uses to pick a person to invite, add or assign.
  *
@@ -116,12 +127,35 @@ export const patchUserStatusBodySchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
+/**
+ * `PATCH /users/{id}`'s body, the admin's edit of somebody else's account.
+ *
+ * Every field is optional and `reason` is required, the reverse of `PATCH
+ * /me`: this is one person acting on another's record, which spec 11 audits
+ * with a reason every time. An empty patch is refused by the service rather
+ * than here, so the message can say what was missing.
+ *
+ * `email` reuses `emailSchema`, so an address written here is lowercased and
+ * trimmed exactly as signup's is. `user.email` carries a
+ * `CHECK (email = lower(email))`, and a second spelling of the rule here
+ * would be a 500 waiting for the first capital letter.
+ */
+export const patchUserBodySchema = z.object({
+  fullName: z.string().trim().min(1).max(120).optional(),
+  email: emailSchema.optional(),
+  avatarUrl: httpsUrlSchema.nullable().optional(),
+  platformRole: z.enum(['STUDENT', 'ADMIN']).optional(),
+  reason: z.string().trim().min(1).max(500),
+});
+
 export type UserStatus = z.infer<typeof userStatusSchema>;
+export type PatchUserBody = z.infer<typeof patchUserBodySchema>;
 export type UserProfile = z.infer<typeof userProfileSchema>;
 export type Me = UserProfile;
 export type PatchMeBody = z.infer<typeof patchMeBodySchema>;
 export type UserListItem = z.infer<typeof userListItemSchema>;
 export type UserListPage = z.infer<typeof userListPageSchema>;
+export type UserListQuery = z.infer<typeof userListQuerySchema>;
 export type UserSearchItem = z.infer<typeof userSearchItemSchema>;
 export type UserSearchResult = z.infer<typeof userSearchResultSchema>;
 export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;

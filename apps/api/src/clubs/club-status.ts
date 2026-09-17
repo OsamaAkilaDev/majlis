@@ -1,11 +1,19 @@
 import type { ClubStatus } from '@majlis/contracts';
 import { UnprocessableError } from '../common/problem/domain-error';
 
-/** ARCHIVED is terminal and appears in no value list. */
+/**
+ * Every status reaches every other. ARCHIVED was terminal until 2026-09-16,
+ * when the product owner reversed it: an archive reached by misclick left no
+ * route back, and the club's own screen could not say so.
+ *
+ * Kept as a table rather than collapsed into `from !== to`, which is all it
+ * currently asserts. The table is the thing a future restriction is written
+ * in, and a one-line predicate would have to be rebuilt into one first.
+ */
 const ALLOWED: Record<ClubStatus, ClubStatus[]> = {
   ACTIVE: ['SUSPENDED', 'ARCHIVED'],
   SUSPENDED: ['ACTIVE', 'ARCHIVED'],
-  ARCHIVED: [],
+  ARCHIVED: ['ACTIVE', 'SUSPENDED'],
 };
 
 /**

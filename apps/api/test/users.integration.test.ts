@@ -142,6 +142,59 @@ describe('GET /users', () => {
     const secondIds = (second.body.items as { id: string }[]).map((u) => u.id);
     expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
   });
+
+  it('matches q against the address as well as the name', async () => {
+    // Three rows chosen so each half of the OR is load-bearing: `zahra` is
+    // in one row's name only and another row's address only, and the third
+    // carries it in neither. A name-only `contains` passes on the first row
+    // and fails here; an address-only one fails the other way; a query that
+    // forgot the filter altogether returns the decoy and fails too.
+    const admin = await loginAsAdmin(app);
+    const byName = await mkUser({ fullName: 'Zahra Al Marzouqi', email: 'sm7781@uni.ac.ae' });
+    const byEmail = await mkUser({ fullName: 'Noura Al Blooshi', email: 'zahra.b@uni.ac.ae' });
+    const decoy = await mkUser({ fullName: 'Omar Haddad', email: 'oh2200@uni.ac.ae' });
+
+    const res = await get(`${USERS_PATH}?q=zahra`, admin.sessionCookie);
+    expect(res.status).toBe(200);
+
+    const ids = (res.body.items as { id: string }[]).map((u) => u.id);
+    expect(ids).toContain(byName.id);
+    expect(ids).toContain(byEmail.id);
+    expect(ids).not.toContain(decoy.id);
+  });
+
+  it('matches q without regard to case', async () => {
+    // Postgres `LIKE` is case-sensitive by default, so a `contains` written
+    // without `mode: 'insensitive'` passes every lowercase test above and
+    // then finds nobody the moment an admin types a capital letter.
+    const admin = await loginAsAdmin(app);
+    const user = await mkUser({ fullName: 'Zahra Al Marzouqi', email: 'sm7781@uni.ac.ae' });
+
+    const res = await get(`${USERS_PATH}?q=ZAHRA`, admin.sessionCookie);
+    expect(res.status).toBe(200);
+    expect((res.body.items as { id: string }[]).map((u) => u.id)).toContain(user.id);
+  });
+
+  it('filters by status, returning neither everybody nor nobody', async () => {
+    const admin = await loginAsAdmin(app);
+    const active = await mkUser({ status: 'ACTIVE' });
+    const suspended = await mkUser({ status: 'SUSPENDED' });
+
+    const res = await get(`${USERS_PATH}?status=SUSPENDED`, admin.sessionCookie);
+    expect(res.status).toBe(200);
+
+    const ids = (res.body.items as { id: string }[]).map((u) => u.id);
+    // Both assertions matter: the first fails an over-narrow filter, the
+    // second fails an ignored one. The signed-in admin is ACTIVE, so an
+    // ignored filter is always visible here.
+    expect(ids).toContain(suspended.id);
+    expect(ids).not.toContain(active.id);
+  });
+
+  it('rejects an unknown status rather than ignoring it', async () => {
+    const admin = await loginAsAdmin(app);
+    expect((await get(`${USERS_PATH}?status=DELETED`, admin.sessionCookie)).status).toBe(400);
+  });
 });
 
 describe('PATCH /users/{id}/status', () => {
@@ -371,5 +424,308 @@ describe('GET /clubs/:clubId/user-search', () => {
     expect(
       await prisma.eventAssignment.count({ where: { eventId: event.id, userId: operator.id } }),
     ).toBe(1);
+  });
+});
+
+describe('PATCH /users/{id}', () => {
+  function patchUser(id: string, cookie: string, body: Record<string, unknown>) {
+    return request(app.getHttpServer())
+      .patch(`${USERS_PATH}/${id}`)
+      .set('Cookie', cookie)
+      .send(body);
+  }
+
+  it('refuses a student, who may edit only themselves through /me', async () => {
+    const me = await loginAsStudent(app);
+    const other = await mkUser();
+    expect((await patchUser(other.id, me.sessionCookie, { fullName: 'X', reason: 'r' })).status).toBe(403);
+  });
+
+  it('edits name, email, avatar and role in one call', async () => {
+    const admin = await loginAsAdmin(app);
+    const target = await mkUser({ fullName: 'Old Name', email: 'old@uni.ac.ae' });
+
+    const res = await patchUser(target.id, admin.sessionCookie, {
+      fullName: 'New Name',
+      email: 'New@Uni.ac.ae',
+      avatarUrl: 'https://cdn.uni.ac.ae/a.png',
+      platformRole: 'ADMIN',
+      reason: 'Registry correction',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.fullName).toBe('New Name');
+    // Lowercased by emailSchema. The column carries CHECK (email = lower(email)),
+    // so an implementation that writes the raw string is a 500, not a 400.
+    expect(res.body.email).toBe('new@uni.ac.ae');
+    expect(res.body.avatarUrl).toBe('https://cdn.uni.ac.ae/a.png');
+    expect(res.body.platformRole).toBe('ADMIN');
+    // Never the hash, on any response carrying a user.
+    expect(res.body.passwordHash).toBeUndefined();
+  });
+
+  it('leaves untouched fields alone rather than nulling them', async () => {
+    // Catches an update built from the whole body, which writes undefined
+    // over every field the admin did not type and wipes the account.
+    const admin = await loginAsAdmin(app);
+    const target = await mkUser({ fullName: 'Keep Me', email: 'keep@uni.ac.ae' });
+
+    const res = await patchUser(target.id, admin.sessionCookie, { fullName: 'Renamed', reason: 'r' });
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe('keep@uni.ac.ae');
+    expect(res.body.platformRole).toBe('STUDENT');
+  });
+
+  it('refuses an email already held by another account', async () => {
+    const admin = await loginAsAdmin(app);
+    await mkUser({ email: 'taken@uni.ac.ae' });
+    const target = await mkUser({ email: 'free@uni.ac.ae' });
+
+    const res = await patchUser(target.id, admin.sessionCookie, {
+      email: 'taken@uni.ac.ae',
+      reason: 'r',
+    });
+    // A conflict, never the bare 500 an unhandled P2002 produces.
+    expect(res.status).toBe(409);
+  });
+
+  it('revokes the target live refresh tokens when their email changes', async () => {
+    // The address is the credential they sign in with. An admin repointing it
+    // must not leave a live 30-day session behind on the old one.
+    const admin = await loginAsAdmin(app);
+    const victim = await signupAndKeepCookies(app, { email: 'victim@uni.ac.ae' });
+
+    expect((await refresh(app, victim.refreshCookie)).status).toBe(200);
+
+    const res = await patchUser(victim.userId, admin.sessionCookie, {
+      email: 'moved@uni.ac.ae',
+      reason: 'r',
+    });
+    expect(res.status).toBe(200);
+    expect((await refresh(app, victim.refreshCookie)).status).toBe(401);
+  });
+
+  it('refuses an admin changing their own platform role', async () => {
+    // The self-demotion footgun, and the mirror of the existing rule on
+    // /status. Catches a guard that checks only the status route.
+    const admin = await loginAsAdmin(app);
+    const res = await patchUser(admin.userId, admin.sessionCookie, {
+      platformRole: 'STUDENT',
+      reason: 'r',
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it('lets an admin edit their own name, which is not a privilege', async () => {
+    // The positive control for the guard above: a rule written as "no self
+    // edits at all" passes that test and fails this one.
+    const admin = await loginAsAdmin(app);
+    const res = await patchUser(admin.userId, admin.sessionCookie, {
+      fullName: 'Renamed Admin',
+      reason: 'r',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.fullName).toBe('Renamed Admin');
+  });
+
+  it('demotes another admin while a second one remains', async () => {
+    const admin = await loginAsAdmin(app);
+    const second = await mkUser({ platformRole: 'ADMIN' });
+
+    const res = await patchUser(second.id, admin.sessionCookie, {
+      platformRole: 'STUDENT',
+      reason: 'r',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.platformRole).toBe('STUDENT');
+  });
+
+  it('never lets two admins demote each other down to none', async () => {
+    // The only way to reach zero admins. Sequentially it is unreachable: the
+    // self-role guard keeps the caller an admin, so any single demotion
+    // leaves at least them. Two concurrent calls are the hole, because both
+    // read two admins before either commits, and a platform with no admin
+    // has no route back: only an admin creates a club, and /auth/bootstrap
+    // shuts the moment the first admin exists (spec 3, 2026-09-15).
+    //
+    // Catches a guard written as a plain count outside a lock, which passes
+    // every sequential test above and fails exactly here.
+    const a = await loginAsAdmin(app, { email: 'admin.a@uni.ac.ae' });
+    const b = await loginAsAdmin(app, { email: 'admin.b@uni.ac.ae' });
+
+    const [ab, ba] = await Promise.all([
+      patchUser(b.userId, a.sessionCookie, { platformRole: 'STUDENT', reason: 'r' }),
+      patchUser(a.userId, b.sessionCookie, { platformRole: 'STUDENT', reason: 'r' }),
+    ]);
+
+    const admins = await prisma.user.count({ where: { platformRole: 'ADMIN' } });
+    expect(admins).toBeGreaterThanOrEqual(1);
+    // One of the two has to have lost, by whichever gate answered first.
+    expect([ab.status, ba.status].filter((s) => s === 200)).toHaveLength(1);
+  });
+
+  it('refuses a patch carrying nothing but a reason', async () => {
+    const admin = await loginAsAdmin(app);
+    const target = await mkUser();
+    expect((await patchUser(target.id, admin.sessionCookie, { reason: 'r' })).status).toBe(422);
+  });
+
+  it('requires a reason', async () => {
+    const admin = await loginAsAdmin(app);
+    const target = await mkUser();
+    expect((await patchUser(target.id, admin.sessionCookie, { fullName: 'X' })).status).toBe(400);
+  });
+
+  it('refuses an avatar URL that is not https', async () => {
+    const admin = await loginAsAdmin(app);
+    const target = await mkUser();
+    const res = await patchUser(target.id, admin.sessionCookie, {
+      avatarUrl: 'javascript:alert(1)',
+      reason: 'r',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('answers 404 for a well-formed id that matches nobody', async () => {
+    const admin = await loginAsAdmin(app);
+    const res = await patchUser('0199a0a0-0000-7000-8000-000000000000', admin.sessionCookie, {
+      fullName: 'X',
+      reason: 'r',
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('writes one audit row carrying the reason and the role change', async () => {
+    const admin = await loginAsAdmin(app);
+    const target = await mkUser({ platformRole: 'STUDENT' });
+
+    await patchUser(target.id, admin.sessionCookie, {
+      platformRole: 'ADMIN',
+      reason: 'Appointed registrar',
+    }).expect(200);
+
+    const rows = await prisma.auditLog.findMany({ where: { entityId: target.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.action).toBe('user.role_changed');
+    expect(rows[0]!.reason).toBe('Appointed registrar');
+    expect(rows[0]!.actorUserId).toBe(admin.userId);
+    // before/after carry the transition, so the log reads without joining.
+    expect(rows[0]!.before).toMatchObject({ platformRole: 'STUDENT' });
+    expect(rows[0]!.after).toMatchObject({ platformRole: 'ADMIN' });
+  });
+});
+
+describe('the platform can never lose its last usable admin', () => {
+  function patchUser(id: string, cookie: string, body: Record<string, unknown>) {
+    return request(app.getHttpServer())
+      .patch(`${USERS_PATH}/${id}`)
+      .set('Cookie', cookie)
+      .send(body);
+  }
+
+  function patchUserStatus(id: string, cookie: string, body: Record<string, unknown>) {
+    return request(app.getHttpServer())
+      .patch(`${USERS_PATH}/${id}/status`)
+      .set('Cookie', cookie)
+      .send(body);
+  }
+
+  it('refuses a self role change sent with an upper-cased id', async () => {
+    // Postgres compares uuid case-insensitively and UUID_SHAPE carries /i, so
+    // an id off the URL reaches the caller's own row whatever its case. A
+    // self guard written as `actor.id === targetId` passes here and demotes
+    // the caller, which is the first half of a permanent lockout.
+    const admin = await loginAsAdmin(app);
+    const shouty = admin.userId.toUpperCase();
+    expect(shouty).not.toBe(admin.userId);
+
+    const res = await patchUser(shouty, admin.sessionCookie, {
+      platformRole: 'STUDENT',
+      reason: 'r',
+    });
+    expect(res.status).toBe(422);
+
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: admin.userId } });
+    expect(row.platformRole).toBe('ADMIN');
+  });
+
+  it('refuses a self status change sent with an upper-cased id', async () => {
+    const admin = await loginAsAdmin(app);
+    const res = await patchUserStatus(admin.userId.toUpperCase(), admin.sessionCookie, {
+      status: 'SUSPENDED',
+      reason: 'r',
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it('does not count a suspended admin as one who could still sign in', async () => {
+    // SessionGuard refuses anyone not ACTIVE, so a suspended admin cannot
+    // administer anything. A count filtered on role alone reads two here and
+    // lets the only usable admin be demoted.
+    const admin = await loginAsAdmin(app);
+    const other = await loginAsAdmin(app, { email: 'second.admin@uni.ac.ae' });
+
+    await patchUserStatus(other.userId, admin.sessionCookie, {
+      status: 'SUSPENDED',
+      reason: 'r',
+    }).expect(200);
+
+    // `admin` is now the only ACTIVE admin. Another admin row exists, so a
+    // role-only count would wave this through.
+    const third = await loginAsAdmin(app, { email: 'third.admin@uni.ac.ae' });
+    await patchUserStatus(third.userId, admin.sessionCookie, {
+      status: 'SUSPENDED',
+      reason: 'r',
+    }).expect(200);
+
+    const demote = await patchUser(admin.userId, third.sessionCookie, {
+      platformRole: 'STUDENT',
+      reason: 'r',
+    });
+    // third is suspended, so their session is refused outright.
+    expect(demote.status).toBe(401);
+
+    const active = await prisma.user.count({
+      where: { platformRole: 'ADMIN', status: 'ACTIVE' },
+    });
+    expect(active).toBeGreaterThanOrEqual(1);
+  });
+
+  it('never lets two admins suspend each other down to none', async () => {
+    // Suspension reaches the same end as demotion, so it needs the same guard
+    // under the same lock, and it is unreachable the same way sequentially:
+    // the caller is an active admin, so any single suspend leaves them.
+    // Concurrently both read two active admins before either commits.
+    const a = await loginAsAdmin(app, { email: 'susp.a@uni.ac.ae' });
+    const b = await loginAsAdmin(app, { email: 'susp.b@uni.ac.ae' });
+
+    const [ab, ba] = await Promise.all([
+      patchUserStatus(b.userId, a.sessionCookie, { status: 'SUSPENDED', reason: 'r' }),
+      patchUserStatus(a.userId, b.sessionCookie, { status: 'SUSPENDED', reason: 'r' }),
+    ]);
+
+    const active = await prisma.user.count({
+      where: { platformRole: 'ADMIN', status: 'ACTIVE' },
+    });
+    expect(active).toBeGreaterThanOrEqual(1);
+    expect([ab.status, ba.status].filter((s) => s === 200)).toHaveLength(1);
+  });
+
+  it('ends live sessions, not just refresh tokens, when an email changes', async () => {
+    // Revoking the refresh token alone leaves the access token already in the
+    // browser valid for the rest of its 15 minutes. sessionsInvalidatedAt is
+    // what SessionGuard compares each request's iat against, and it is the
+    // mechanism password reset and logout already use.
+    const admin = await loginAsAdmin(app);
+    const victim = await loginAsStudent(app, { email: 'session.victim@uni.ac.ae' });
+
+    expect((await get(ME_PATH, victim.sessionCookie)).status).toBe(200);
+
+    await patchUser(victim.userId, admin.sessionCookie, {
+      email: 'session.moved@uni.ac.ae',
+      reason: 'r',
+    }).expect(200);
+
+    expect((await get(ME_PATH, victim.sessionCookie)).status).toBe(401);
   });
 });

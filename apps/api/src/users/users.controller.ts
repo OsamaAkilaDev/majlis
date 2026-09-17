@@ -1,9 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { ApiResponse } from '@nestjs/swagger';
 import {
-  cursorPageQuerySchema,
   patchMeBodySchema,
+  patchUserBodySchema,
   patchUserStatusBodySchema,
+  userListQuerySchema,
   userSearchQuerySchema,
   type Me,
   type UserListPage,
@@ -19,8 +20,9 @@ import type { User } from '../generated/prisma/client';
 import { UsersService } from './users.service';
 
 class PatchMeDto extends createZodDto(patchMeBodySchema) {}
+class PatchUserDto extends createZodDto(patchUserBodySchema) {}
 class PatchUserStatusDto extends createZodDto(patchUserStatusBodySchema) {}
-class UsersQueryDto extends createZodDto(cursorPageQuerySchema) {}
+class UsersQueryDto extends createZodDto(userListQuerySchema) {}
 class UserSearchQueryDto extends createZodDto(userSearchQuerySchema) {}
 
 /**
@@ -67,6 +69,26 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   search(@Query() query: UserSearchQueryDto): Promise<UserSearchResult> {
     return this.users.search(query);
+  }
+
+  /**
+   * Deliberately declared before `users/:id/status`. Nest matches in
+   * declaration order, and the two never collide because the paths differ by
+   * a segment, but keeping the broader edit above the narrower status route
+   * mirrors how the two read in the permission matrix.
+   */
+  @Patch('users/:id')
+  @RequirePermission('user:edit')
+  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 404, description: 'No such user.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 409, description: 'That email is already taken.', type: ProblemDetailsDto })
+  @ApiResponse({ status: 422, description: 'Nothing to change, your own role, or the last admin.', type: ProblemDetailsDto })
+  update(
+    @Actor() actor: User,
+    @Param('id') id: string,
+    @Body() body: PatchUserDto,
+  ): Promise<UserProfile> {
+    return this.users.update(actor, id, body);
   }
 
   @Patch('users/:id/status')

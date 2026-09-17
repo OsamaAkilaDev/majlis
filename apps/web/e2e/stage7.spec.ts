@@ -38,7 +38,8 @@ test('a registration reaches the inbox, badges the header bell, and marking it r
   await page.goto('/signup');
   await page.getByLabel('Full name').fill('Inbox Student');
   await page.getByLabel('University email').fill(`inbox-${Date.now()}@uni.ac.ae`);
-  await page.getByLabel('Password').fill(LONG_PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(LONG_PASSWORD);
+  await page.getByLabel('Confirm password').fill(LONG_PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/home$/);
 
@@ -84,24 +85,13 @@ test('a registration reaches the inbox, badges the header bell, and marking it r
   ).toHaveCount(0);
 });
 
-test('an admin reads the metrics charts, exports a CSV and reads the audit log', async ({
-  page,
-}) => {
+test('an admin reads the audit log', async ({ page }) => {
+  // The metrics and CSV-export halves of this test went with those two
+  // screens on 2026-09-16. The charts they covered still run on the officer
+  // console's own report, which 'a club lead reads their own club report'
+  // below asserts.
   await signIn(page, 'admin@uni.ac.ae');
-  await expect(page).toHaveURL(/\/admin\/metrics$/);
-
-  // A chart, not a table of the same numbers: the accessible name carries the
-  // series, so this fails against an empty <svg> as well as against no chart.
-  const clubs = page.getByRole('img', { name: /Clubs by status/ });
-  await expect(clubs).toBeVisible();
-  await expect(clubs).toHaveAttribute('aria-label', /Active \d+/);
-  await expect(page.getByRole('img', { name: /Events by status/ })).toBeVisible();
-  await expect(page.getByText('Active memberships')).toBeVisible();
-
-  await page.goto('/admin/exports');
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Events' }).click();
-  expect((await download).suggestedFilename()).toBe('events.csv');
+  await expect(page).toHaveURL(/\/admin\/users$/);
 
   await page.goto('/admin/audit');
   await expect(page.getByRole('columnheader', { name: 'When (UTC)' })).toBeVisible();
@@ -149,36 +139,74 @@ test('forgot-password answers the same for a real address and an unknown one', a
   expect(said[0]).toContain('If that address has an account');
 });
 
-test('a reset link that is no longer valid reports on the token, in the API words', async ({
-  page,
-}) => {
-  // The 401 this form answers must not be mistaken for a dead session: the
+test('a reset link that is no longer valid is a dead end, in the API words', async ({ page }) => {
+  // The 401 this page answers must not be mistaken for a dead session: the
   // visitor cannot sign in, and being sent to /login throws away the only
   // message that explains why.
+  //
+  // The link now resolves on the server, so the refusal arrives before the
+  // form does. That is the point: choosing a password twice and only then
+  // being told the link was spent is work thrown away.
   await page.context().clearCookies();
   await page.goto('/reset-password?token=not-a-real-token');
-  await expect(page.getByLabel('Reset token')).toHaveValue('not-a-real-token');
-
-  await page.getByLabel('New password').fill(LONG_PASSWORD);
-  await page.getByRole('button', { name: 'Set password' }).click();
 
   await expect(page.getByText('That password reset link is no longer valid.')).toBeVisible();
-  await expect(page.getByLabel('Reset token')).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.getByLabel('New password')).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByRole('link', { name: 'Request a new link' })).toBeVisible();
+  await expect(page.getByLabel('New password')).toHaveCount(0);
   await expect(page).toHaveURL(/\/reset-password/);
 });
 
-test('a signed-in visitor can still use a reset link', async ({ page }) => {
+test('the reset screen never puts the token in a form control', async ({ page }) => {
+  // The defect this change exists to remove: the token used to be the value
+  // of a visible, editable field. Reverting that puts it back, and this goes
+  // red on the input value rather than on anything cosmetic.
+  //
+  // Scoped to controls and to visible text on purpose, not to the whole
+  // document. The App Router serialises the route's own query string into
+  // the RSC flight payload, so a token that travels in the URL is in the
+  // page source no matter what this screen renders. That is the cost of the
+  // link being a link, and it is not what "shown to the user" means.
+  const token = 'a-token-that-should-never-be-rendered';
+  await page.context().clearCookies();
+  await page.goto(`/reset-password?token=${token}`);
+
+  await expect(page.getByText('That password reset link is no longer valid.')).toBeVisible();
+
+  const inControls = await page.evaluate(
+    (t) =>
+      [...document.querySelectorAll('input, textarea, select')].some(
+        (el) => (el as HTMLInputElement).value === t,
+      ),
+    token,
+  );
+  expect(inControls).toBe(false);
+  await expect(page.getByText(token)).toHaveCount(0);
+});
+
+test('a signed-in visitor is not bounced off a reset link', async ({ page }) => {
   // Requested on a phone, opened on the laptop the holder is still signed in
   // on. Bounced to their landing page, the token is never consumed and there
   // is no change-password screen anywhere else to reach.
+  //
+  // The token here is not a real one, so what this proves is the redirect
+  // that must not happen: the visitor stays on /reset-password and is told
+  // about the link, rather than landing on /home with no explanation.
   await signIn(page, 'student@uni.ac.ae');
 
   await page.goto('/reset-password?token=a-token-from-another-device');
 
   await expect(page).toHaveURL(/\/reset-password/);
-  await expect(page.getByLabel('New password')).toBeVisible();
-  await expect(page.getByLabel('Reset token')).toHaveValue('a-token-from-another-device');
+  await expect(page.getByText('That password reset link is no longer valid.')).toBeVisible();
+});
+
+test('a reset URL with no token at all goes back to the start of the flow', async ({ page }) => {
+  // There is no token field to type one into any more, so a bare
+  // /reset-password is a screen that could do nothing but sit there.
+  await page.context().clearCookies();
+  await page.goto('/reset-password');
+
+  await expect(page).toHaveURL(/\/forgot-password$/);
+  await expect(page.getByRole('button', { name: 'Send reset link' })).toBeVisible();
 });
 
 test('the sign-in form reaches the reset flow', async ({ page }) => {

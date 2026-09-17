@@ -100,6 +100,10 @@ export const PERMISSIONS = {
   // why the route is nested under /clubs/:clubId.
   'user:search': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
   'user:suspend': { platform: ['ADMIN'] },
+  // Platform-only and deliberately not club-scoped at any level. It writes
+  // `platformRole`, so a club officer holding it could mint a platform
+  // admin out of a club role, which is the whole permission model inverted.
+  'user:edit': { platform: ['ADMIN'] },
   'department:manage': { platform: ['ADMIN'] },
   'club:create': { platform: ['ADMIN'] },
   'club:status': { platform: ['ADMIN'] },

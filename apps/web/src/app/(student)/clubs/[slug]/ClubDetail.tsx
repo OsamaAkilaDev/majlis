@@ -47,7 +47,7 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
           <p className="text-sm text-ink-2">
             {club.departmentName} · {club.category}
           </p>
-          {club.status === 'ACTIVE' ? null : <StatusBadge status={club.status} />}
+          {club.status === 'ACTIVE' ? null : <StatusBadge status={club.status} className="self-start" />}
         </div>
       </div>
 

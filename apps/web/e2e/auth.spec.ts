@@ -31,7 +31,7 @@ test('a student is refused the admin console', async ({ page }) => {
   // The IDOR case from spec 12. Hiding the link is presentation, never
   // protection, so this navigates directly.
   await signIn(page, 'student@uni.ac.ae');
-  await page.goto('/admin/metrics');
+  await page.goto('/admin/users');
   await expect(page.getByRole('heading', { name: /do not have access/i })).toBeVisible();
 });
 
@@ -59,10 +59,16 @@ test('a short password reports the rule the contract enforces, on the password f
 
   await page.getByLabel('Full name').fill('Too Short');
   await page.getByLabel('University email').fill(`short-${Date.now()}@uni.ac.ae`);
-  await page.getByLabel('Password').fill('Passw0rd!');
+  // exact, here and everywhere below: "Confirm password" also contains the
+  // word "Password", and getByLabel matches on substring.
+  await page.getByLabel('Password', { exact: true }).fill('Passw0rd!');
+  await page.getByLabel('Confirm password').fill('Passw0rd!');
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  await expect(page.getByLabel('Password')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
   await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
   await expect(page).toHaveURL(/\/signup$/);
 });
@@ -71,13 +77,17 @@ test('an existing account reports on the email field, not the password field', a
   await page.goto('/signup');
   await page.getByLabel('Full name').fill('Duplicate Student');
   await page.getByLabel('University email').fill('student@uni.ac.ae');
-  await page.getByLabel('Password').fill('a-long-enough-password');
+  await page.getByLabel('Password', { exact: true }).fill('a-long-enough-password');
+  await page.getByLabel('Confirm password').fill('a-long-enough-password');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // Catches a status map that sends every auth failure to the password field:
   // the email is the value the user actually has to change.
   await expect(page.getByLabel('University email')).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.getByLabel('Password')).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel('Password', { exact: true })).not.toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
   await expect(page.getByText('An account with this email already exists.')).toBeVisible();
 });
 
@@ -100,7 +110,8 @@ test('a new account can be created and lands in the student shell', async ({ pag
   await page.goto('/signup');
   await page.getByLabel('Full name').fill('New Student');
   await page.getByLabel('University email').fill(email);
-  await page.getByLabel('Password').fill('a-long-enough-password');
+  await page.getByLabel('Password', { exact: true }).fill('a-long-enough-password');
+  await page.getByLabel('Confirm password').fill('a-long-enough-password');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/home$/);
 });
@@ -160,7 +171,8 @@ test('signing out ends the session server-side, not only in the browser', async 
   await page.goto('/signup');
   await page.getByLabel('Full name').fill('Sign Out');
   await page.getByLabel('University email').fill(email);
-  await page.getByLabel('Password').fill('a-long-enough-password');
+  await page.getByLabel('Password', { exact: true }).fill('a-long-enough-password');
+  await page.getByLabel('Confirm password').fill('a-long-enough-password');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/home$/);
 
@@ -220,4 +232,27 @@ test('/setup is closed once the platform has an admin', async ({ page }) => {
   await page.goto('/setup');
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+});
+
+test('signup refuses a mistyped confirmation without ever calling the API', async ({ page }) => {
+  // The comparison has to happen in the browser: the contract carries one
+  // password field, so the server has nothing to compare against and never
+  // will. Counting requests is what separates a real check from one that
+  // submits anyway and happens to look right.
+  let calls = 0;
+  await page.route('**/api/v1/auth/signup', (route) => {
+    calls += 1;
+    return route.abort('failed');
+  });
+
+  await page.goto('/signup');
+  await page.getByLabel('Full name').fill('Typo Student');
+  await page.getByLabel('University email').fill(`typo-${Date.now()}@uni.ac.ae`);
+  await page.getByLabel('Password', { exact: true }).fill('a-long-enough-password');
+  await page.getByLabel('Confirm password').fill('a-long-enough-passwodr');
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page.getByText('Both passwords must match.')).toBeVisible();
+  await expect(page.getByLabel('Confirm password')).toHaveAttribute('aria-invalid', 'true');
+  expect(calls).toBe(0);
 });

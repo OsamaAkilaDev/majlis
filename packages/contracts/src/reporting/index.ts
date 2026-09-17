@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
-import { EXPORT_CAP_NOTICE, EXPORT_ROW_CAP, isCapped } from '../constants';
 
 /** GET /reports/overview. Platform totals, Admin only. */
 export const overviewReportSchema = z.object({
@@ -54,14 +53,8 @@ export const auditListQuerySchema = cursorPageQuerySchema.extend({
   actorUserId: z.uuid().optional(),
 });
 
-export { EXPORT_ROW_CAP, EXPORT_CAP_NOTICE, isCapped };
-
-/** The one query parameter every per-event export requires. */
-export const eventExportQuerySchema = z.object({ eventId: z.uuid() });
-
 export type OverviewReport = z.infer<typeof overviewReportSchema>;
 export type ClubReport = z.infer<typeof clubReportSchema>;
 export type AuditEntry = z.infer<typeof auditEntrySchema>;
 export type AuditPage = z.infer<typeof auditPageSchema>;
 export type AuditListQuery = z.infer<typeof auditListQuerySchema>;
-export type EventExportQuery = z.infer<typeof eventExportQuerySchema>;

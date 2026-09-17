@@ -2,7 +2,7 @@
 
 import type { Appointment, ClubDetail, ClubStatus } from '@majlis/contracts';
 import { useEffect, useState } from 'react';
-import { StatusBadge } from '@/components/StatusBadge';
+import { ClubProfileForm } from '@/components/ClubProfileForm';
 import { UserPickerDialog } from '@/components/UserPickerDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,11 +22,11 @@ import { appointLead, getClub, listTeam, updateClubStatus } from '@/lib/clubs';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import { useAsyncError } from '@/lib/use-async-error';
 
-/** Mirrors club-status.ts's ALLOWED table: ARCHIVED is terminal. */
+/** Mirrors club-status.ts's ALLOWED table: every status reaches every other. */
 const NEXT_STATUSES: Record<ClubStatus, ClubStatus[]> = {
   ACTIVE: ['SUSPENDED', 'ARCHIVED'],
   SUSPENDED: ['ACTIVE', 'ARCHIVED'],
-  ARCHIVED: [],
+  ARCHIVED: ['ACTIVE', 'SUSPENDED'],
 };
 
 function StatusControl({ club, onChanged }: { club: ClubDetail; onChanged: (c: ClubDetail) => void }) {
@@ -137,10 +137,12 @@ export function ClubDetailManager({
   clubId,
   initialClub,
   initialTeam,
+  initialDepartments,
 }: {
   clubId: string;
   initialClub: ClubDetail | null;
   initialTeam: Appointment[] | null;
+  initialDepartments: { id: string; name: string }[] | null;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const [leadAppointments, setLeadAppointments] = useState<Appointment[]>(
@@ -169,43 +171,20 @@ export function ClubDetailManager({
   const invitedLead = leadAppointments.find((a) => a.status === 'INVITED');
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex items-start gap-4">
-        <img src={club.logoUrl} alt="" className="size-16 shrink-0 rounded-card border border-border object-cover" />
-        <div className="flex flex-col gap-1">
-          <h2 className="font-display text-h1 text-ink">{club.name}</h2>
-          <StatusBadge status={club.status} />
-        </div>
-      </div>
-
-      {club.bannerUrl ? (
-        <img src={club.bannerUrl} alt="" className="h-32 w-full rounded-card border border-border object-cover" />
-      ) : null}
-
-      <dl className="grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <dt className="text-ink-2">Department</dt>
-          <dd className="text-ink">{club.departmentName}</dd>
-        </div>
-        <div>
-          <dt className="text-ink-2">Category</dt>
-          <dd className="text-ink">{club.category}</dd>
-        </div>
-        <div>
-          <dt className="text-ink-2">Academic year</dt>
-          <dd className="text-ink tabular">{club.academicYear}</dd>
-        </div>
-        <div>
-          <dt className="text-ink-2">Members</dt>
-          <dd className="text-ink tabular">{club.memberCount}</dd>
-        </div>
-        <div>
-          <dt className="text-ink-2">Membership policy</dt>
-          <dd className="text-ink">{club.membershipPolicy.replace('_', ' ')}</dd>
-        </div>
-      </dl>
-
-      <p className="text-sm text-ink">{club.description}</p>
+    <div className="flex max-w-3xl flex-col gap-6">
+      {/* The officer console's own profile screen, which already carries the
+          field-level rules and spec 6.1's override reason. Keyed on the
+          status, because it gates editing on it: without the key a club
+          archived from the panel below would keep its form live until the
+          next full load. */}
+      <ClubProfileForm
+        key={club.status}
+        clubId={clubId}
+        platformRole="ADMIN"
+        initialClub={club}
+        initialDepartments={initialDepartments}
+        onChanged={setClub}
+      />
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <h3 className="font-display text-h2 text-ink">Lead</h3>
