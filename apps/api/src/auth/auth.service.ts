@@ -7,6 +7,8 @@ import {
   type ForgotPasswordBody,
   type LoginBody,
   type ResetPasswordBody,
+  type ResetPasswordPreview,
+  type ResetPasswordPreviewQuery,
   type SessionUser,
   type SignupBody,
 } from '@majlis/contracts';
@@ -155,11 +157,12 @@ export class AuthService {
    * POST /auth/bootstrap. Creates the platform's first ADMIN, and only
    * while there is none.
    *
-   * This exists because nothing else can produce an admin. There is no
-   * route anywhere that writes `platformRole` (UsersController exposes
-   * status changes only), and the seed is development-only, so a fresh
-   * deployment would otherwise have no reachable path to an admin account
-   * and therefore none to a club, since only an admin can create one.
+   * This exists because nothing else can produce the FIRST admin. Since
+   * 2026-09-17 `PATCH /users/{id}` does write `platformRole`, but only for a
+   * caller who already holds `user:edit`, i.e. an admin: it multiplies admins
+   * and cannot mint one from nothing. The seed is development-only, so a
+   * fresh deployment would otherwise have no reachable path to an admin
+   * account and therefore none to a club, since only an admin can create one.
    *
    * The guard reads the database rather than a flag this endpoint sets, so
    * an admin created by any other means (the seed, hand-written SQL)
@@ -419,6 +422,32 @@ export class AuthService {
         outcome: 'SUCCESS',
       });
     });
+  }
+
+  /**
+   * GET /auth/reset-password. Names the account a link belongs to, so the
+   * screen can show whose password it is about to change without ever
+   * rendering the token.
+   *
+   * Read-only by design. It repeats resetPassword's predicate rather than
+   * sharing a lookup with it, because the two must not converge: this one
+   * may never write `usedAt`, and a shared helper that grew a write would
+   * spend the token on page load and break every reset silently.
+   *
+   * The predicate itself is the same in every other respect, and that is the
+   * point: a link this answers for is a link the POST will accept, so the
+   * user is never told a link is good and then refused after typing a
+   * password twice.
+   */
+  async previewReset(query: ResetPasswordPreviewQuery): Promise<ResetPasswordPreview> {
+    const tokenHash = this.tokens.hashOpaqueToken(query.token);
+    const row = await this.host.tx.passwordResetToken.findFirst({
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+      select: { user: { select: { email: true, status: true } } },
+    });
+    // Suspended answers exactly like expired, as it does on the POST.
+    if (!row || row.user.status !== 'ACTIVE') throw new UnauthorizedError(RESET_LINK_INVALID);
+    return { email: row.user.email };
   }
 
   /**

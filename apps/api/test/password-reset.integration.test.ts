@@ -58,6 +58,10 @@ function reset(token: string, password = NEW_PASSWORD) {
     .send({ token, password });
 }
 
+function preview(token: string) {
+  return request(app.getHttpServer()).get(`${API_PREFIX}/auth/reset-password`).query({ token });
+}
+
 function login(email: string, password: string) {
   return request(app.getHttpServer()).post(`${API_PREFIX}/auth/login`).send({ email, password });
 }
@@ -126,6 +130,77 @@ describe('POST /auth/forgot-password', () => {
     await forgot(email).expect(202);
 
     expect(await prisma.passwordResetToken.count()).toBe(0);
+  });
+});
+
+describe('GET /auth/reset-password', () => {
+  async function requestReset() {
+    const email = `${uniq('reset')}@uni.ac.ae`;
+    const res = await signup(app, { email, password: PASSWORD }).expect(201);
+    await forgot(email).expect(202);
+    return { email, userId: (res.body as { id: string }).id };
+  }
+
+  it('names the account a live link belongs to', async () => {
+    const { email } = await requestReset();
+
+    const res = await preview(tokenFromEmail()).expect(200);
+
+    expect(res.body).toEqual({ email });
+  });
+
+  it('does not consume the link, so the reset still works afterwards', async () => {
+    // The defect this whole endpoint could introduce. The reset screen calls
+    // it on every page load; if it spent the token the way the POST does,
+    // every reset would fail the moment the user pressed the button, and the
+    // test above would still pass.
+    const { email } = await requestReset();
+    const token = tokenFromEmail();
+
+    await preview(token).expect(200);
+    await preview(token).expect(200);
+    await reset(token).expect(204);
+
+    await login(email, NEW_PASSWORD).expect(200);
+  });
+
+  it('refuses an unknown, an expired, a used and a suspended link in the same words', async () => {
+    // One message for four causes. A preview that distinguished them would
+    // be the oracle the POST deliberately is not, and it is reachable
+    // without even submitting a form.
+    const unknown = await preview('not-a-real-token');
+
+    const expiredSetup = await requestReset();
+    const expiredToken = tokenFromEmail();
+    await prisma.passwordResetToken.updateMany({
+      where: { userId: expiredSetup.userId },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    const expired = await preview(expiredToken);
+
+    await requestReset();
+    const usedToken = tokenFromEmail();
+    await reset(usedToken).expect(204);
+    const used = await preview(usedToken);
+
+    const suspendedSetup = await requestReset();
+    const suspendedToken = tokenFromEmail();
+    await suspendAsAdmin(app, suspendedSetup.userId, 'testing');
+    const suspended = await preview(suspendedToken);
+
+    for (const res of [unknown, expired, used, suspended]) {
+      expect(res.status).toBe(401);
+      expect((res.body as { detail: string }).detail).toBe(RESET_LINK_INVALID);
+    }
+  });
+
+  it('never echoes the token back', async () => {
+    await requestReset();
+    const token = tokenFromEmail();
+
+    const res = await preview(token).expect(200);
+
+    expect(res.text).not.toContain(token);
   });
 });
 

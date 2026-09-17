@@ -1,7 +1,6 @@
 'use client';
 
 import type { SessionUser } from '@majlis/contracts';
-import { PASSWORD_MIN } from '@majlis/contracts/constants';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -12,34 +11,51 @@ import { apiFetch, ProblemError } from '@/lib/api';
 import { routeProblem } from '@/lib/auth-problem';
 import { BRAND } from '@/lib/brand';
 import { cn } from '@/lib/cn';
+import { passwordStrength, STRENGTH_STEPS } from '@/lib/password-strength';
 import { landingFor } from '@/lib/routing';
 
-const SEGMENTS = 4;
+export const PASSWORD_MISMATCH = 'Both passwords must match.';
 const NO_RESPONSE = 'Could not reach the server. Check your connection and try again.';
 
 /**
- * The one rule that is invisible until submit, shown on the label instead.
- * Exported for the reset form, which sets a new password under the same rule.
+ * The rule that is otherwise invisible until submit, shown on the label row
+ * rather than as a sentence under the control. Exported for the reset and
+ * first-admin forms, which set a password under the same rule.
+ *
+ * The label carries two different things by design. Below the minimum the
+ * only thing worth saying is the rule, because nothing else the field could
+ * report would let the user submit. Once the rule is met the rule is settled,
+ * and the grade is the only thing left to say.
  */
-export function PasswordRule({ length }: { length: number }) {
-  const met = length >= PASSWORD_MIN;
-  const filled = Math.min(Math.ceil((length / PASSWORD_MIN) * SEGMENTS), SEGMENTS);
+export function PasswordRule({ password }: { password: string }) {
+  const { score, label, met } = passwordStrength(password);
+  // Weak and Fair are accepted by the API, so they cannot be shown in the
+  // error colour. Amber says "this will go through, and you can do better".
+  const tone = !met ? 'text-ink-2' : score <= 2 ? 'text-warn-fg' : 'text-primary';
+  const fill = !met ? 'bg-border-control' : score <= 2 ? 'bg-warn-fg' : 'bg-primary';
 
   return (
     <span className="flex items-center gap-2">
       <span className="flex gap-0.5" aria-hidden>
-        {Array.from({ length: SEGMENTS }, (_, i) => (
+        {Array.from({ length: STRENGTH_STEPS }, (_, i) => (
           <span
             key={i}
             className={cn(
               'h-1 w-3.5 rounded-full transition-colors duration-(--dur-fast) ease-(--ease-out)',
-              i >= filled ? 'bg-surface-2' : met ? 'bg-primary' : 'bg-border-control',
+              i >= score ? 'bg-surface-2' : fill,
             )}
           />
         ))}
       </span>
-      <span className={cn('text-label tabular font-medium', met ? 'text-primary' : 'text-ink-2')}>
-        {PASSWORD_MIN}+ characters
+      {/* Not aria-hidden, unlike the bars: the grade is the only form the
+          meter takes for a screen reader, and it is polite so that typing a
+          password is not narrated one character at a time. */}
+      <span
+        role="status"
+        aria-live="polite"
+        className={cn('text-label tabular font-medium', tone)}
+      >
+        {label}
       </span>
     </span>
   );
@@ -51,14 +67,30 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
   const [problem, setProblem] = useState<ProblemError | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [mismatch, setMismatch] = useState<string | null>(null);
+  const signup = mode === 'signup';
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // Before the request, not after it. The API has no second password to
+    // compare against and never will: a typo caught here costs nothing, and
+    // one that gets through creates an account nobody can sign in to.
+    if (signup && password !== confirm) {
+      setMismatch(PASSWORD_MISMATCH);
+      return;
+    }
+
     setPending(true);
     setProblem(null);
     setNetworkError(null);
 
-    const data = Object.fromEntries(new FormData(event.currentTarget));
+    // confirm never leaves the browser. The contract has no field for it, so
+    // sending it would lean on Zod stripping unknown keys to stay correct.
+    const body = new FormData(event.currentTarget);
+    body.delete('confirm');
+    const data = Object.fromEntries(body);
     try {
       const user = await apiFetch<SessionUser>(`/auth/${mode}`, {
         method: 'POST',
@@ -76,7 +108,6 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
   }
 
   const { fields, form } = routeProblem(mode, problem, networkError);
-  const signup = mode === 'signup';
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate>
@@ -95,7 +126,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
       <Field
         label="Password"
         error={fields.password}
-        constraint={signup ? <PasswordRule length={password.length} /> : undefined}
+        constraint={signup ? <PasswordRule password={password} /> : undefined}
       >
         <Input
           name="password"
@@ -104,9 +135,31 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
           required
           className="h-11"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setMismatch(null);
+          }}
         />
       </Field>
+
+      {signup ? (
+        <Field label="Confirm password" error={mismatch ?? undefined}>
+          <Input
+            name="confirm"
+            type="password"
+            autoComplete="new-password"
+            required
+            className="h-11"
+            value={confirm}
+            onChange={(e) => {
+              setConfirm(e.target.value);
+              // Cleared on edit, not re-checked: re-checking every keystroke
+              // reports a mismatch against a value still being typed.
+              setMismatch(null);
+            }}
+          />
+        </Field>
+      ) : null}
 
       {form ? (
         <p role="alert" className="rounded-control bg-bad-soft px-3 py-2 text-sm text-bad-fg">

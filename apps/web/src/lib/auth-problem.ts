@@ -12,22 +12,28 @@ const FIELDS = {
   signup: ['fullName', 'email', 'password'],
   setup: ['fullName', 'email', 'password'],
   forgot: ['email'],
-  reset: ['token', 'password'],
+  // No token. It left the reset form when the link started being resolved on
+  // the server, and a path listed here that nothing renders is a message
+  // written to a control the user cannot see.
+  reset: ['password'],
 } as const;
 
 /**
- * Which control a bare 401 belongs on. On the sign-in form it is the
- * password; on the reset form it is the link, and putting "This reset link is
- * no longer valid" under the new password sends the user to change a field
- * that was never the problem.
+ * Which control a bare 401 belongs on, or null for the form itself.
+ *
+ * On the sign-in form it is the password. On the reset form it is nothing:
+ * the failing credential is the link, which is no longer a control, and
+ * putting "This reset link is no longer valid" under the new password sends
+ * the user to change a field that was never the problem. null sends it to the
+ * form-level alert, which is the only place left that can carry it.
  */
-const UNAUTHORIZED_FIELD: Record<keyof typeof FIELDS, string> = {
+const UNAUTHORIZED_FIELD: Record<keyof typeof FIELDS, string | null> = {
   login: 'password',
   signup: 'password',
   // Unreachable in practice: POST /auth/bootstrap has no 401 to answer with.
   setup: 'password',
   forgot: 'email',
-  reset: 'token',
+  reset: null,
 };
 
 /**
@@ -55,7 +61,8 @@ export function routeProblem(
   // A 401 and a 409 carry no errors[], but each still names one control.
   const detail = problem.detail ?? problem.title;
   if (problem.errors.length === 0) {
-    if (problem.status === 401) fields[UNAUTHORIZED_FIELD[mode]] = detail;
+    const on = UNAUTHORIZED_FIELD[mode];
+    if (problem.status === 401 && on) fields[on] = detail;
     if (problem.status === 409) fields.email = detail;
   }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
@@ -7,8 +7,10 @@ import {
   forgotPasswordBodySchema,
   loginBodySchema,
   resetPasswordBodySchema,
+  resetPasswordPreviewQuerySchema,
   signupBodySchema,
   type BootstrapStatus,
+  type ResetPasswordPreview,
   type SessionUser,
 } from '@majlis/contracts';
 import type { Request, Response } from 'express';
@@ -38,6 +40,7 @@ class BootstrapAdminDto extends createZodDto(signupBodySchema) {}
 class LoginDto extends createZodDto(loginBodySchema) {}
 class ForgotPasswordDto extends createZodDto(forgotPasswordBodySchema) {}
 class ResetPasswordDto extends createZodDto(resetPasswordBodySchema) {}
+class ResetPasswordPreviewQueryDto extends createZodDto(resetPasswordPreviewQuerySchema) {}
 
 /**
  * Signup and login, the first endpoints in the product that issue a
@@ -117,6 +120,18 @@ export class AuthController {
   @HttpCode(202)
   async forgotPassword(@Body() body: ForgotPasswordDto): Promise<void> {
     await this.auth.forgotPassword(body);
+  }
+
+  /**
+   * @Public(), and read-only: it names the account a link belongs to so the
+   * reset screen can show the address instead of the token. It must never
+   * consume the link, or opening the page would spend it.
+   */
+  @Public()
+  @Get('reset-password')
+  @ApiResponse({ status: 401, description: RESET_LINK_INVALID, type: ProblemDetailsDto })
+  previewReset(@Query() query: ResetPasswordPreviewQueryDto): Promise<ResetPasswordPreview> {
+    return this.auth.previewReset(query);
   }
 
   /**

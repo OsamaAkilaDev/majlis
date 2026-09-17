@@ -96,8 +96,30 @@ export const resetPasswordBodySchema = z.object({
   password: z.string().min(PASSWORD_MIN, `Password must be at least ${PASSWORD_MIN} characters.`),
 });
 
+/**
+ * GET /auth/reset-password. Resolves a link to the address it was sent to, so
+ * the screen can name the account it is about to change without ever putting
+ * the token in front of the user.
+ *
+ * Deliberately does not consume the token: the screen resolves the link on
+ * first paint, and a preview that spent it would make every reset fail at the
+ * moment the user pressed the button.
+ *
+ * Disclosing the address costs nothing. Whoever holds this token can take the
+ * account outright, so the email tells them nothing they could not already
+ * take. Unknown, expired, used and suspended all answer 401 with the one
+ * RESET_LINK_INVALID string, exactly as the POST does.
+ */
+export const resetPasswordPreviewQuerySchema = z.object({
+  token: z.string().min(1, 'A reset token is required.'),
+});
+
+export const resetPasswordPreviewSchema = z.object({ email: z.string() });
+
 export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;
 export type ResetPasswordBody = z.infer<typeof resetPasswordBodySchema>;
+export type ResetPasswordPreviewQuery = z.infer<typeof resetPasswordPreviewQuerySchema>;
+export type ResetPasswordPreview = z.infer<typeof resetPasswordPreviewSchema>;
 
 /**
  * GET /auth/bootstrap. One bit, and deliberately only one: the setup screen

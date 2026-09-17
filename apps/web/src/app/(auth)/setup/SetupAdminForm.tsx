@@ -82,7 +82,7 @@ export function SetupAdminForm() {
       <Field
         label="Password"
         error={fields.password}
-        constraint={<PasswordRule length={password.length} />}
+        constraint={<PasswordRule password={password} />}
       >
         <Input
           name="password"
