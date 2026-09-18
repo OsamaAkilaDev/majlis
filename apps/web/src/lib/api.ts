@@ -21,6 +21,18 @@ const OWN_401 = [
   REFRESH_PATH,
 ];
 
+/**
+ * Drops every page the Router Cache is holding. next.config.ts lets it keep a
+ * dynamic page for 30s, which is what makes going back to a list instant; this
+ * is what stops that list being the one from before you wrote to it.
+ * Registered once, by components/RouterCacheInvalidator.tsx.
+ */
+let invalidate: (() => void) | undefined;
+
+export function onMutation(fn: () => void): void {
+  invalidate = fn;
+}
+
 export class ProblemError extends Error {
   readonly status: number;
   readonly title: string;
@@ -99,6 +111,11 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   }
 
   if (!res.ok) throw await toProblem(res);
+
+  // A write, and one that landed. Here rather than in send() so a request
+  // retried after a refresh invalidates once rather than twice.
+  if (init?.method && init.method !== 'GET') invalidate?.();
+
   return res;
 }
 

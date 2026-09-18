@@ -116,6 +116,9 @@ Prisma 7 notes that shape the setup: **driver adapters are mandatory** (`@prisma
 
 - **Dark mode is included.**
 
+- **The client Router Cache holds a dynamic page for 30 seconds**, set by `experimental.staleTimes.dynamic` in `apps/web/next.config.ts`. Every write the client makes then refreshes the router, wired once in `lib/api.ts` and registered by `components/RouterCacheInvalidator.tsx`.
+  *Rationale: every screen reads `cookies()` and fetches `no-store`, so all of them are dynamic, and Next's default of 0 means the cache keeps nothing for them. Leaving a page and returning re-requested the whole RSC payload and showed `loading.tsx` again, on data that had not changed. Verified by A/B against a build with the value at 0: the return navigation issues one RSC request at 0 and none at 30. The refresh-on-write is what stops the saved 30 seconds being paid for with a seat count from before the registration.*
+
 - **Signup accepts any email address.** Format and uniqueness are the only checks. No domain allow-list.
 
 - **Content fields are plain text columns.** JSONB is reserved for genuinely structured data — eligibility rules, notification payloads, audit before/after snapshots — never for ordinary strings.

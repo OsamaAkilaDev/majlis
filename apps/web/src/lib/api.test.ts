@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch, ProblemError } from './api';
+import { apiFetch, onMutation, ProblemError } from './api';
 
 type Call = { url: string; init?: RequestInit };
 
@@ -134,5 +134,51 @@ describe('apiFetch', () => {
     // just succeeded.
     mockFetch([() => new Response(null, { status: 202 })]);
     await expect(apiFetch('/auth/forgot-password', { method: 'POST' })).resolves.toBeUndefined();
+  });
+});
+
+describe('onMutation', () => {
+  it('fires after a mutation succeeds', async () => {
+    // Catches the invalidator never being wired up, which is the stale-list
+    // defect staleTimes introduces: register for an event, go back to the
+    // cached /events, and the seat count is the one from before you booked.
+    const invalidate = vi.fn();
+    onMutation(invalidate);
+    mockFetch([() => json({ id: 'r1' })]);
+    await apiFetch('/events/e1/registrations', { method: 'POST' });
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire for a read', async () => {
+    // Catches an implementation that invalidates on every request. That
+    // refreshes the router on every page's own data load, which throws the
+    // Router Cache away as fast as it fills and re-renders in a loop.
+    const invalidate = vi.fn();
+    onMutation(invalidate);
+    mockFetch([() => json({ items: [] })]);
+    await apiFetch('/events?upcoming=true');
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when the mutation is refused', async () => {
+    // Catches invalidating before the status check. A 422 changed nothing on
+    // the server, so discarding every cached page for it is pure cost, paid
+    // again on each re-submit of a form the user is still fixing.
+    const invalidate = vi.fn();
+    onMutation(invalidate);
+    mockFetch([() => problem(422)]);
+    await expect(apiFetch('/clubs', { method: 'POST' })).rejects.toBeInstanceOf(ProblemError);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('fires once, not twice, when a mutation is retried after a 401', async () => {
+    // Catches the call being placed in send() rather than request(). Both
+    // pass the test above; only this one separates them, and a double refresh
+    // is a second full RSC render of the page on every expired-token write.
+    const invalidate = vi.fn();
+    onMutation(invalidate);
+    mockFetch([() => problem(401), () => json({}), () => json({ id: 'r1' })]);
+    await apiFetch('/events/e1/registrations', { method: 'POST' });
+    expect(invalidate).toHaveBeenCalledTimes(1);
   });
 });
