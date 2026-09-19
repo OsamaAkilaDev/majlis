@@ -97,8 +97,8 @@ describe('ClubMembership: one open membership per (user, club)', () => {
   });
 
   it('scopes the rule per user: two students may both hold open memberships in one club', async () => {
-    // Without this, a (club_id)-only index would pass every other test in
-    // this block while capping each club at one member platform-wide.
+    // Catches a (club_id)-only index, which passes every other test here while
+    // capping each club at one member platform-wide.
     const club = await mkClub();
     const [a, b] = [await mkUser(), await mkUser()];
     await join(club.id, a.id, 'ACTIVE');
@@ -106,8 +106,8 @@ describe('ClubMembership: one open membership per (user, club)', () => {
   });
 
   it('scopes the rule per club: one student may belong to two clubs', async () => {
-    // Mirror of the per-user test above. A (user_id)-only index would cap a
-    // student at one club membership for their entire time at the university.
+    // The mirror: a (user_id)-only index caps a student at one club membership
+    // for their entire time at the university.
     const [first, second] = [await mkClub(), await mkClub()];
     const user = await mkUser();
     await join(first.id, user.id, 'ACTIVE');

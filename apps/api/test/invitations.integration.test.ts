@@ -36,7 +36,7 @@ describe('GET /me/invitations', () => {
       .set('Cookie', mine.sessionCookie);
 
     // Catches a findMany with no userId filter, which shows every pending
-    // invitation in the system to every signed-in student.
+    // invitation to every signed-in student.
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].role).toBe('MARKETING');
   });
@@ -54,18 +54,15 @@ describe('GET /me/invitations', () => {
       .get(`${API_PREFIX}/me/invitations`)
       .set('Cookie', user.sessionCookie);
 
-    // Catches a query filtering on status alone. An invitation that expired
-    // would stay in the list forever and fail only on acceptance.
+    // Catches a query filtering on status alone: an expired invitation stays in
+    // the list forever and fails only on acceptance.
     expect(res.body.items).toHaveLength(0);
   });
 
   it('hides a null-expiry invitation rather than crashing on it', async () => {
-    // invite/appointLead always set invitationExpiresAt, but the column is
-    // nullable and mkAppointment (unlike inviteOfficer) leaves it unset.
-    // Pins the choice that an invitation always has an expiry: the WHERE
-    // clause excludes a null-expiry row, so toInvitation's non-null
-    // assertion on invitationExpiresAt never sees one. If the WHERE clause
-    // and the mapper disagree, this is a 500, not a 200 with 0 items.
+    // The column is nullable and mkAppointment leaves it unset. The WHERE clause
+    // excludes a null-expiry row, so toInvitation's non-null assertion never
+    // sees one: if the two disagree this is a 500, not a 200 with 0 items.
     const club = await makeClub();
     const user = await loginAsStudent(app);
     await mkAppointment({ userId: user.userId, clubId: club.id, role: 'CTO', status: 'INVITED' });
@@ -97,10 +94,8 @@ describe('POST /appointments/:appointmentId/accept', () => {
     expect(row.status).toBe('ACTIVE');
     expect(row.acceptedAt).not.toBeNull();
 
-    // Main spec 7.2: a team member automatically receives an ordinary club
-    // membership on acceptance. Catches an accept handler that flips the
-    // status and stops, leaving an officer who is not a member of their own
-    // club and vanishes from the member list.
+    // Accepting also grants an ordinary club membership. Catches a handler that
+    // flips the status and stops, leaving an officer missing from the member list.
     const membership = await prisma.clubMembership.findFirstOrThrow({
       where: { clubId: club.id, userId: user.userId },
     });
@@ -108,9 +103,8 @@ describe('POST /appointments/:appointmentId/accept', () => {
   });
 
   it('does not create a second membership when one is already open', async () => {
-    // Catches an unconditional create, which violates the partial unique
-    // index and turns an ordinary acceptance into a 500 for anyone who was
-    // already a member before being invited to the team.
+    // Catches an unconditional create, which violates the partial unique index
+    // and 500s for anyone already a member before being invited.
     const club = await makeClub();
     const user = await loginAsStudent(app);
     await prisma.clubMembership.create({ data: { clubId: club.id, userId: user.userId, status: 'ACTIVE' } });
@@ -127,9 +121,8 @@ describe('POST /appointments/:appointmentId/accept', () => {
   });
 
   it('activates a PENDING membership rather than creating a duplicate', async () => {
-    // Reaches the other half of the conditional: an open row that already
-    // exists but is not yet ACTIVE gets decided, not left alongside a second
-    // (constraint-violating) row.
+    // The other half of the conditional: an existing open row that is not yet
+    // ACTIVE is decided, not left beside a second constraint-violating row.
     const club = await makeClub();
     const user = await loginAsStudent(app);
     const pending = await prisma.clubMembership.create({
@@ -152,8 +145,8 @@ describe('POST /appointments/:appointmentId/accept', () => {
   });
 
   it('refuses acceptance by anyone other than the invitee, with 404', async () => {
-    // 404 rather than 403 so the endpoint does not confirm that an
-    // appointment id exists to someone who has no business knowing.
+    // 404 rather than 403, so the endpoint does not confirm the appointment id
+    // exists to someone with no business knowing.
     const club = await makeClub();
     const invitee = await loginAsStudent(app);
     const stranger = await loginAsStudent(app);
@@ -170,10 +163,9 @@ describe('POST /appointments/:appointmentId/accept', () => {
   });
 
   it('refuses an expired invitation, marks it EXPIRED, and the flip survives the failed request', async () => {
-    // The naive version throws UnprocessableError inside the same host.run
-    // that wrote EXPIRED, which rolls that write back: the client still sees
-    // 422, but the row stays INVITED and would expire again on every retry,
-    // forever. Reading the row back after the 422 is what catches that.
+    // Catches a throw inside the same host.run that wrote EXPIRED, which rolls
+    // the write back: the client sees 422 but the row stays INVITED forever.
+    // Reading the row back after the 422 is what discriminates.
     const club = await makeClub();
     const user = await loginAsStudent(app);
     const appt = await inviteOfficer(club.id, user.userId, 'CTO');
@@ -206,8 +198,8 @@ describe('POST /appointments/:appointmentId/accept', () => {
   });
 
   it('refuses acceptance for an archived club, leaving the invitation open', async () => {
-    // Reaches the assertAcceptsEdits branch specifically: not expired, not
-    // already decided, but the club itself no longer accepts edits.
+    // Reaches assertAcceptsEdits specifically: not expired, not decided, but the
+    // club no longer accepts edits.
     const club = await makeClub();
     const user = await loginAsStudent(app);
     const appt = await inviteOfficer(club.id, user.userId, 'CTO');

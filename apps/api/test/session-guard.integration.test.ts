@@ -17,10 +17,9 @@ let app: INestApplication;
 let tokens: TokensService;
 
 beforeAll(async () => {
-  // ProtectedTestModule is added only here, never in AppModule. Task 11
-  // brings the real /me route. SessionGuard still applies: it is AppModule's
-  // global APP_GUARD, and every test app compiles AppModule regardless of
-  // which extra module carries this fixture controller.
+  // ProtectedTestModule is added only here, never in AppModule. SessionGuard
+  // still applies: it is AppModule's global APP_GUARD, which every test app
+  // compiles whatever extra module carries the fixture controller.
   app = await createTestApp([ProtectedTestModule]);
   tokens = app.get(TokensService);
 });
@@ -43,11 +42,8 @@ async function sessionCookieFor(userId: string): Promise<string> {
 describe('SessionGuard', () => {
   it('rejects a still-unexpired access token once the user is suspended', async () => {
     // Catches a guard that verifies the JWT and trusts it, skipping the
-    // per-request user lookup. That guard passes every other test in this
-    // file (login-equivalent, protected access, logout-equivalent) while
-    // silently giving a suspended user the rest of the token's 15-minute
-    // life. Spec §1's first guarantee is that suspension takes effect on the
-    // very next request, not at token expiry.
+    // per-request user lookup: it passes every other test here while giving a
+    // suspended user the rest of the token's 15 minutes.
     const user = await mkUser();
     const cookie = await sessionCookieFor(user.id);
     await prisma.user.update({ where: { id: user.id }, data: { status: 'SUSPENDED' } });
@@ -57,13 +53,8 @@ describe('SessionGuard', () => {
   });
 
   it('gives a suspended user the identical rejection body a missing cookie gets', async () => {
-    // The code is correct today (both branches throw the same
-    // UnauthorizedError('Not signed in.')), but nothing above pins that.
-    // Catches a later refactor that gives the suspended branch a more
-    // specific message (e.g. 'Account suspended.'): that would let anyone
-    // holding a stale cookie for a suspended account distinguish "this
-    // account exists and was suspended" from "not signed in", leaking
-    // account state to a caller who no longer has valid credentials.
+    // Catches a suspended branch given a more specific message: anyone holding a
+    // stale cookie could then tell "suspended" from "not signed in".
     const user = await mkUser();
     const cookie = await sessionCookieFor(user.id);
     await prisma.user.update({ where: { id: user.id }, data: { status: 'SUSPENDED' } });
@@ -71,10 +62,8 @@ describe('SessionGuard', () => {
     const suspended = await request(app.getHttpServer()).get(PROTECTED_PATH).set('Cookie', cookie);
     const noCookie = await request(app.getHttpServer()).get(PROTECTED_PATH);
 
-    // requestId is expected to differ per request, asserted here so the
-    // two toEqual bodies below aren't quietly comparing one cached response
-    // against itself. Every other field (type, title, status, detail,
-    // instance) must be identical, not just status.
+    // requestId must differ, so the toEqual below is not comparing one cached
+    // response against itself. Every other field must match, not just status.
     const { requestId: suspendedRequestId, ...suspendedBody } = suspended.body;
     const { requestId: noCookieRequestId, ...noCookieBody } = noCookie.body;
     expect(suspendedRequestId).not.toBe(noCookieRequestId);
@@ -85,9 +74,8 @@ describe('SessionGuard', () => {
     const res = await request(app.getHttpServer()).get(PROTECTED_PATH);
 
     expect(res.status).toBe(401);
-    // Guards run outside some Nest pipelines; this pins that a guard's
-    // UnauthorizedError still reaches ProblemExceptionFilter rather than
-    // bypassing it for a bare Nest default error shape.
+    // Guards run outside some Nest pipelines, so this pins that a guard's
+    // UnauthorizedError still reaches ProblemExceptionFilter.
     expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
     expect(res.body.status).toBe(401);
   });
@@ -102,9 +90,8 @@ describe('SessionGuard', () => {
   });
 
   it('allows an active user with a valid session through to a protected route', async () => {
-    // A positive control: without it, a guard that rejects every request
-    // outright would still pass the three tests above and the blanket
-    // enumeration below.
+    // Positive control: a guard rejecting everything passes the three tests
+    // above and the enumeration below.
     const user = await mkUser();
     const cookie = await sessionCookieFor(user.id);
 
@@ -124,18 +111,15 @@ describe('SessionGuard', () => {
   });
 
   it('protects every non-public route by default', async () => {
-    // Enumerates the route table from the Nest container rather than a
-    // hand-maintained path list, so a route added in a later stage that
-    // forgets to think about auth turns this red without anyone remembering
-    // to update this test.
+    // Enumerates the Nest container's route table, not a hand-maintained list,
+    // so a new unprotected route turns this red with no test edit.
     const routes = registeredRoutes(app).filter((r) => !r.isPublic);
     expect(routes.length).toBeGreaterThan(0); // otherwise this passes vacuously
 
     for (const route of routes) {
       const res = await request(app.getHttpServer())[route.method](route.path);
-      // 401 specifically, not just "not 200": a route that answers 403 or
-      // 500 for an unrelated reason would otherwise pass as "protected",
-      // masking a guard that never actually ran on it.
+      // 401 specifically, not just "not 200": a 403 or 500 for an unrelated
+      // reason would otherwise read as protected, masking a guard that never ran.
       expect(res.status, `${route.method.toUpperCase()} ${route.path} is unprotected`).toBe(401);
     }
   });

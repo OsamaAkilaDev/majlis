@@ -58,9 +58,8 @@ const CLOSED_WINDOW = {
 
 describe('POST /clubs/:clubId/events', () => {
   it('defaults the check-in window around the event when the body omits it', async () => {
-    // Spec 5.1 and 7.3: ONGOING is defined as "now within the check-in
-    // window", so an event created without one would never become ONGOING
-    // and could never be scanned.
+    // ONGOING means "now within the check-in window", so an event created
+    // without one never becomes ONGOING and can never be scanned.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
 
@@ -91,11 +90,9 @@ describe('POST /clubs/:clubId/events', () => {
 
 describe('PATCH /events/:eventId, field-level permissions', () => {
   it('lets a club Marketing officer edit the title and refuses them the start time', async () => {
-    // Two guarantees at once. The event-scoped permission has to resolve the
-    // actor's role in the event's CLUB, which no EventAssignment carries, so
-    // a guard that only looked at EventAssignment would 403 the allowed half.
-    // And the field gate is the only thing between Marketing and the
-    // timestamps every registration window is derived from.
+    // Two catches: a guard reading only EventAssignment 403s the allowed half,
+    // since the role lives on the event's club; and without the field gate
+    // Marketing reaches the timestamps every registration window derives from.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const marketing = await makeActiveOfficer(app, club.id, 'MARKETING');
@@ -107,8 +104,8 @@ describe('PATCH /events/:eventId, field-level permissions', () => {
 
     const refused = await patch(marketing.sessionCookie, event.id, { startsAt: at(30 * DAY) });
     expect(refused.status).toBe(403);
-    // The status alone would pass against a route that simply refused
-    // Marketing outright, which is the behaviour this stage replaced.
+    // The detail, not just the status: a route refusing Marketing outright
+    // would pass on status alone.
     expect(refused.body.detail).toBe('You do not have permission to change startsAt.');
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).startsAt).toEqual(
       event.startsAt,
@@ -116,9 +113,8 @@ describe('PATCH /events/:eventId, field-level permissions', () => {
   });
 
   it('refuses lowering capacity below the confirmed count', async () => {
-    // Spec 7.4: students are never silently cancelled. Refused by the service
-    // with its own message before event_capacity_bounds would fire, which
-    // would otherwise surface as the filter's generic conflict text.
+    // Students are never silently cancelled. The service refuses with its own
+    // message before event_capacity_bounds fires with generic conflict text.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, { capacity: 10, confirmedCount: 4 });
@@ -181,9 +177,8 @@ describe('lazy lifecycle', () => {
       prisma.auditLog.count({ where: { entityId: event.id, action: 'event.status_advanced' } });
     expect(await hops()).toBe(1);
 
-    // Idempotence is the whole point: advance is called on every read, so a
-    // version that re-applied the transition would write an audit row per
-    // page view and eventually walk the event off the end of the chain.
+    // Catches a non-idempotent advance: it runs on every read, so re-applying
+    // the transition writes an audit row per page view.
     expect((await detail(student.sessionCookie, event.id)).body.status).toBe('REGISTRATION_CLOSED');
     expect(await hops()).toBe(1);
   });
@@ -217,9 +212,8 @@ describe('POST /internal/lifecycle-sweep', () => {
     const lead = await makeActiveLead(app, club.id);
     const due = await mkEvent(club.id, lead.userId, { status: 'PUBLISHED', ...CLOSED_WINDOW });
     const notDue = await mkEvent(club.id, lead.userId, { status: 'PUBLISHED' });
-    // Already where its timestamps say it should be, and still inside the
-    // candidate query's window. Counting this one as advanced would make the
-    // sweep's own report useless as a signal that anything happened.
+    // Already where its timestamps say, but still inside the candidate query's
+    // window: counting it as advanced makes the sweep report meaningless.
     const current = await mkEvent(club.id, lead.userId, {
       status: 'REGISTRATION_CLOSED',
       ...CLOSED_WINDOW,
@@ -229,8 +223,8 @@ describe('POST /internal/lifecycle-sweep', () => {
     expect(res.status).toBe(200);
     expect(res.body.advanced).toBe(1);
     expect((await prisma.event.findUniqueOrThrow({ where: { id: due.id } })).status).toBe('REGISTRATION_CLOSED');
-    // The counterpart matters as much: a sweep that advanced every published
-    // event would close registration on one that has not opened yet.
+    // Catches a sweep advancing every published event, closing registration on
+    // one that has not opened yet.
     expect((await prisma.event.findUniqueOrThrow({ where: { id: notDue.id } })).status).toBe('PUBLISHED');
     expect(
       await prisma.auditLog.count({ where: { entityId: current.id, action: 'event.status_advanced' } }),
@@ -260,8 +254,8 @@ describe('draft visibility', () => {
 
 describe('DELETE /events/:eventId/assignments/:assignmentId', () => {
   it("refuses an assignment id that belongs to another club's event", async () => {
-    // A permission scoped to event A cannot authorise a row on event B. The
-    // handler loads by { id, eventId }, not by id alone.
+    // Catches a handler loading by id alone: a permission scoped to event A
+    // would then delete a row on event B.
     const clubA = await makeClub();
     const clubB = await makeClub();
     const leadA = await makeActiveLead(app, clubA.id);
@@ -286,10 +280,9 @@ describe('DELETE /events/:eventId/assignments/:assignmentId', () => {
 });
 
 describe('field permissions on the poster upload route', () => {
-  // The route is gated by event:edit, which admits all five club roles, but
-  // posterUploaded is Marketing-only. Without the field gate in
-  // EventsService.mintEditUpload, a CTO or Operations officer mints a signed
-  // URL and overwrites the live poster object at events/<id>/poster.webp.
+  // event:edit admits all five club roles but posterUploaded is Marketing-only.
+  // Without the field gate in mintEditUpload, a CTO or Operations officer mints
+  // a signed URL and overwrites the live poster object.
   it.each(['CTO', 'OPERATIONS'] as const)('refuses %s a poster upload URL', async (role) => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
@@ -317,12 +310,9 @@ describe('field permissions on the poster upload route', () => {
     expect(res.status).toBe(201);
   });
 
-  /**
-   * The mint overwrites the live public object at events/<id>/poster.webp, so
-   * it is an edit and takes PATCH /events/:eventId's status gate. Before
-   * Stage 8 it refused nothing, which made it the one edit path a cancelled
-   * or completed event still accepted, and nothing recorded it.
-   */
+  // The mint overwrites the live public poster object, so it takes PATCH's
+  // status gate. Catches a mint route with no gate, the one edit path a
+  // cancelled or completed event still accepted.
   it('refuses a cancelled event and records the mint it allows', async () => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
@@ -341,8 +331,8 @@ describe('field permissions on the poster upload route', () => {
       .set('Cookie', lead.sessionCookie);
 
     expect(allowed.status).toBe(201);
-    // The bytes never pass through the API, so this row is the only record
-    // the object was replaced at all.
+    // The bytes never pass through the API, so this row is the only record the
+    // object was replaced.
     const rows = await prisma.auditLog.findMany({
       where: { entityId: live.id, action: 'event.upload_url_minted' },
     });
@@ -356,9 +346,8 @@ describe('field permissions on the poster upload route', () => {
 });
 
 describe('admin override reason', () => {
-  // Spec 6.1: "Every Admin override requires a recorded reason and writes an
-  // audit row in the same transaction as the overridden action." Before this,
-  // an Admin edit wrote event.updated with reason null.
+  // Every admin override needs a recorded reason in the same transaction.
+  // Catches an admin edit writing event.updated with reason null.
   it('refuses an admin edit with no reason, and records it when given', async () => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
@@ -401,9 +390,8 @@ describe('admin override reason', () => {
 });
 
 describe('admin override reason on create, publish, assign and unassign', () => {
-  // Spec 6.1 makes all four "override" rows for an Admin. Before this, each
-  // wrote its audit row with reason null, and the only path that asked was
-  // the patch.
+  // All four are admin overrides. Catches a reason gate fitted to the patch
+  // path only, leaving the other three writing reason null.
   const NEW_EVENT = () => ({
     eventId: crypto.randomUUID(),
     title: 'Admin Night',
@@ -495,8 +483,8 @@ describe('admin override reason on create, publish, assign and unassign', () => 
   });
 
   it('asks a club Lead for none of it', async () => {
-    // The counterpart. A gate that demanded a reason from everyone would pass
-    // every assertion above and make the console unusable for its own club.
+    // Catches a gate demanding a reason from everyone, which passes every
+    // assertion above and makes the console unusable for a club's own team.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
 
@@ -525,10 +513,8 @@ describe('admin override reason on create, publish, assign and unassign', () => 
 
 describe('GET /events renders the due status without writing it', () => {
   it('reports a closed registration window that nobody has opened yet', async () => {
-    // The plan: "GET /events renders dueStatus as a pure function without
-    // writing; the sweep endpoint persists in bulk." Reading row.status
-    // straight through makes a list say PUBLISHED while the detail page and
-    // the register route both say the window has closed.
+    // Catches a list reading row.status straight through: it says PUBLISHED
+    // while the detail page and the register route both say closed.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, { status: 'PUBLISHED', ...CLOSED_WINDOW });
@@ -542,9 +528,8 @@ describe('GET /events renders the due status without writing it', () => {
     expect(list.body.items).toHaveLength(1);
     expect(list.body.items[0].status).toBe('REGISTRATION_CLOSED');
 
-    // The other half: a list read must not advance anything. One transaction
-    // per row on the hottest read in the product is what the pure function is
-    // there to avoid.
+    // The other half: a list read must not write, or the hottest read in the
+    // product costs a transaction per row.
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe('PUBLISHED');
     expect(
       await prisma.auditLog.count({ where: { entityId: event.id, action: 'event.status_advanced' } }),
@@ -554,20 +539,17 @@ describe('GET /events renders the due status without writing it', () => {
 
 describe('advance under a concurrent transition', () => {
   it('does not replay the walk when another writer got there first', async () => {
-    // Each hop is conditional on the status this walk believes the row is in.
-    // An unconditional update lets a transaction holding a stale read rewrite
-    // the status and file a second transition history for one transition.
+    // Catches an unconditional hop update: a walk holding a stale read rewrites
+    // the status and files a second history for one transition.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, { status: 'PUBLISHED', ...CLOSED_WINDOW });
     const student = await loginAsStudent(app);
 
-    // Holding the row lock from outside pins the read the request has already
-    // made, so the transition lands between that read and its write. Without
-    // it the window is microseconds wide and the race never reproduces.
-    // The in-flight request must NOT be returned from the callback: Prisma
-    // awaits what the callback returns before committing, and the request is
-    // waiting on that commit.
+    // The outside row lock widens the race window, which is otherwise
+    // microseconds and never reproduces. The in-flight request must not be
+    // returned from the callback: Prisma awaits the return value before
+    // committing, and the request waits on that commit.
     let inFlight!: Promise<request.Response>;
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${event.id}::uuid FOR UPDATE`;
@@ -582,8 +564,7 @@ describe('advance under a concurrent transition', () => {
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe(
       'REGISTRATION_CLOSED',
     );
-    // The transition above was made by the other writer, so the request must
-    // have recorded none of its own.
+    // The other writer made the transition, so the request records none itself.
     expect(
       await prisma.auditLog.count({ where: { entityId: event.id, action: 'event.status_advanced' } }),
     ).toBe(0);
@@ -592,9 +573,8 @@ describe('advance under a concurrent transition', () => {
 
 describe('reopening a registration window', () => {
   it('refuses to move the close time forward once registration has closed', async () => {
-    // advanceRow walks forward only, deliberately: attendance must not be
-    // undone. So a 200 here saved a date the lifecycle will never honour and
-    // left the officer a field that contradicts the refusal students see.
+    // advanceRow walks forward only, so a 200 here saves a date the lifecycle
+    // never honours and contradicts the refusal students see.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, { status: 'REGISTRATION_CLOSED', ...CLOSED_WINDOW });
@@ -609,8 +589,8 @@ describe('reopening a registration window', () => {
   });
 
   it('still lets a PUBLISHED event move its close time', async () => {
-    // The counterpart: a blanket refusal of registrationClosesAt passes the
-    // test above and takes the field away from every live event.
+    // Catches a blanket refusal of registrationClosesAt, which passes the test
+    // above and takes the field from every live event.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, { status: 'PUBLISHED' });
@@ -627,11 +607,9 @@ describe('the sweep, on rows the existing case does not reach', () => {
       .set(SWEEP_SECRET_HEADER, EXAMPLE_LIFECYCLE_SWEEP_SECRET);
 
   it('picks up an event whose check-in opened while registration is still open', async () => {
-    // registration_closes_at <= ends_at is the only constraint, and the
-    // default check-in window opens 60 minutes before the start, so an event
-    // whose registration closes at its end time has check-in opening first.
-    // Without the checkInOpensAt candidate clause the sweep never sees it and
-    // it stays PUBLISHED, which is to say unscannable.
+    // Check-in can open before registration closes, since the only constraint is
+    // registration_closes_at <= ends_at. Catches a candidate query missing the
+    // checkInOpensAt clause, which leaves the event PUBLISHED and unscannable.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, {
@@ -651,9 +629,8 @@ describe('the sweep, on rows the existing case does not reach', () => {
   });
 
   it('does not count an event whose due status is behind its current one', async () => {
-    // A boundary moved into the future. advanceRow's loop never runs, so
-    // nothing changes; counting the call rather than its result reported one
-    // advanced event on every run, forever.
+    // A boundary moved into the future, so advanceRow's loop never runs.
+    // Catches a sweep counting the call rather than its result.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, {
@@ -679,8 +656,8 @@ describe('the sweep, on rows the existing case does not reach', () => {
 
 describe('draft visibility for an event assignee', () => {
   it('shows a draft to someone assigned to it who holds no club role', async () => {
-    // The third branch of both the list filter and the detail gate. The two
-    // cases already covered (a club officer, an Admin) both pass with it gone.
+    // The third branch of the list filter and the detail gate: the club officer
+    // and Admin cases both pass with it gone.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const draft = await mkEvent(club.id, lead.userId, { status: 'DRAFT' });
@@ -702,8 +679,8 @@ describe('draft visibility for an event assignee', () => {
 
 describe('GET /events/:eventId/assignments', () => {
   it('pages rather than returning everything', async () => {
-    // Spec 8: no unbounded list, anywhere. Without a take, limit=1 returns
-    // both rows and there is no cursor to ask for a second page with.
+    // Catches a query with no take: limit=1 returns both rows and there is no
+    // cursor to ask for a second page with.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId);
@@ -734,20 +711,10 @@ describe('GET /events/:eventId/assignments', () => {
 });
 
 describe('GET /events?q=', () => {
-  /**
-   * The trigram GIN index on `event.title` (20260914175400_perf_indexes) is a
-   * pure optimisation, so this asserts the SET of titles the filter matches,
-   * not its speed. An index that changes results is not an optimisation, and
-   * `gin_trgm_ops` has two ways of changing them that a "finds the event"
-   * test would sail past:
-   *
-   * - a term shorter than three characters produces no trigram, so the
-   *   planner must fall back to the sequential ILIKE. A setup that let the
-   *   index answer alone returns nothing for `ni`.
-   * - `%` and `_` are ILIKE wildcards, and the filter wraps the term in `%`
-   *   without escaping it, so `_` still matches any single character. The
-   *   index must not narrow that.
-   */
+  // The trigram GIN index on event.title is a pure optimisation, so these assert
+  // the SET of matches. Two ways gin_trgm_ops can change results that a "finds
+  // the event" test misses: a term under three characters yields no trigram and
+  // must fall back to sequential ILIKE, and `_` stays an ILIKE wildcard.
   async function titlesFor(cookie: string, q: string): Promise<string[]> {
     const res = await request(app.getHttpServer())
       .get(`${API_PREFIX}/events?q=${encodeURIComponent(q)}`)

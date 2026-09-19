@@ -73,16 +73,15 @@ describe('PATCH /departments/:id', () => {
       .send({ name: 'Renamed Department' });
 
     expect(res.status).toBe(200);
-    // Catches a handler that ignores the body, or a clubCount that's
-    // hardcoded or dropped on the update path.
+    // Catches a handler ignoring the body, or a clubCount hardcoded or dropped
+    // on the update path.
     expect(res.body).toMatchObject({ name: 'Renamed Department', clubCount: 1 });
   });
 
   it('refuses a STUDENT, and the write does not happen', async () => {
-    // Every happy-path test above passes even with no @RequirePermission at
-    // all; only the status check catches that gap. The read-back after
-    // catches a second, distinct bug: a handler that performs the write and
-    // denies afterward, which the status check alone would miss.
+    // Every happy path above passes with no @RequirePermission at all. The
+    // read-back catches a second bug the status check misses: a handler that
+    // writes first and denies afterwards.
     const student = await loginAsStudent(app);
     const dept = await prisma.department.create({ data: aDepartment() });
 
@@ -98,10 +97,9 @@ describe('PATCH /departments/:id', () => {
   });
 
   it('returns 404 for a well-formed but unknown id', async () => {
-    // A well-formed UUID that matches no row, not a malformed string:
-    // @prisma/adapter-pg raises P2007 (not P2023) for a malformed UUID, so a
-    // malformed id would test that mapping instead. This catches a handler
-    // that lets Prisma's P2025 escape as a bare 500.
+    // A well-formed UUID matching no row, not a malformed string:
+    // @prisma/adapter-pg raises P2007 for a malformed UUID, testing a different
+    // mapping. Catches a handler letting P2025 escape as a bare 500.
     const admin = await loginAsAdmin(app);
     const res = await request(app.getHttpServer())
       .patch(`${DEPARTMENTS_PATH}/00000000-0000-7000-8000-000000000000`)
@@ -121,9 +119,8 @@ describe('PATCH /departments/:id', () => {
       .set('Cookie', admin.sessionCookie)
       .send({ code: 'TAKEN' });
 
-    // Catches a handler that lets Prisma's P2002 escape as a bare 500, and
-    // (via the unchanged-row check) a partial write that commits some fields
-    // of the update before the unique violation is raised.
+    // Catches a handler letting P2002 escape as a bare 500, and, via the
+    // unchanged-row check, a partial write committed before the violation.
     expect(res.status).toBe(409);
     expect(await prisma.department.findUnique({ where: { id: dept.id } })).toMatchObject({
       code: dept.code,
@@ -133,9 +130,8 @@ describe('PATCH /departments/:id', () => {
 
 describe('DELETE /departments/:id', () => {
   it('refuses to delete a department that still has a club', async () => {
-    // This is the onDelete: Restrict guarantee. Catches a service that
-    // deletes without catching the foreign key violation, which surfaces as
-    // a 500 and leaves the admin with no idea why.
+    // The onDelete: Restrict guarantee. Catches a service deleting without
+    // catching the foreign key violation, which surfaces as an unexplained 500.
     const admin = await loginAsAdmin(app);
     const dept = await prisma.department.create({ data: aDepartment() });
     await prisma.club.create({ data: aClub(dept.id) });

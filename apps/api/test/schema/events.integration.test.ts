@@ -55,17 +55,16 @@ describe('Event', () => {
   });
 
   it('rejects an event created with zero capacity', async () => {
-    // capacity > 0 is the third conjunct of event_capacity_bounds and is
-    // otherwise untested: both other capacity tests only vary the counter.
+    // capacity > 0 is the third conjunct of event_capacity_bounds, and the other
+    // capacity tests only vary the counter.
     await expect(anEvent({ capacity: 0 })).rejects.toThrow(/event_capacity_bounds/);
   });
 
   it('allows registration to close exactly when the event ends', async () => {
-    // The predicate is registration_closes_at <= ends_at. This boundary case
-    // is what distinguishes it from a stricter <. Hoisted to one constant:
-    // at() reads Date.now() fresh each call, so two separate calls can
-    // straddle a millisecond and pass even under a stricter <, making the
-    // test intermittently vacuous.
+    // The predicate is registration_closes_at <= ends_at, and this boundary is
+    // what tells it from a stricter <. One hoisted constant: at() reads
+    // Date.now() fresh, so two calls can straddle a millisecond and pass
+    // under a stricter < anyway.
     const boundary = at(26);
     await expect(anEvent({ registrationClosesAt: boundary, endsAt: boundary })).resolves.toBeDefined();
   });
@@ -115,9 +114,9 @@ describe('EventRegistration: one open registration per (user, event)', () => {
   }
 
   it('scopes the rule per user and per event', async () => {
-    // Without this, an index on (event_id) alone would cap each event at one
-    // registrant, and one on (user_id) alone would let a student register
-    // only once ever: both would pass every other test in this block.
+    // Catches an index on (event_id) alone, which caps each event at one
+    // registrant, and on (user_id) alone, which lets a student register once
+    // ever: both pass every other test in this block.
     const event = await anEvent();
     const [a, b] = [await mkUser(), await mkUser()];
     await register(event.id, a.id, 'CONFIRMED');
@@ -186,10 +185,9 @@ describe('EventAssignment', () => {
   });
 
   it('scopes the rule per (event, responsibility): one person can hold two responsibilities on one event, and be assigned across two events', async () => {
-    // Both tests above pass identically against a (user_id)-only unique:
-    // the first test never varies the user or the event, and the second
-    // never varies the responsibility. Only a matrix of user x event x
-    // responsibility tells the two-column index apart from a one-column one.
+    // Both tests above pass against a (user_id)-only unique, since neither
+    // varies every column. Only a user x event x responsibility matrix tells a
+    // two-column index from a one-column one.
     const event = await anEvent();
     const [member, lead] = [await mkUser(), await mkUser()];
     await prisma.eventAssignment.create({
@@ -211,12 +209,11 @@ describe('EventAssignment', () => {
 });
 
 describe('cursor-pagination indexes', () => {
-  // Every list endpoint pages with `ORDER BY id`, which a (scope, status)
-  // index cannot serve: Postgres walks the primary key instead and filters
-  // out every other scope's rows. Measured on a 92k-row event_registration
-  // table, one event's first roster page went from 16.3ms scanning 91,528
-  // rows to 0.12ms scanning 21. These two indexes look redundant next to the
-  // (scope, status) ones above them and are not. Do not drop them.
+  // Every list endpoint pages with `ORDER BY id`, which a (scope, status) index
+  // cannot serve: Postgres walks the primary key and filters out every other
+  // scope's rows. On a 92k-row event_registration table, one roster page went
+  // from 16.3ms scanning 91,528 rows to 0.12ms scanning 21. These look redundant
+  // beside the (scope, status) indexes above and are not. Do not drop them.
   it.each([
     ['event_registration', 'event_registration_event_id_id_idx', ['event_id', 'id']],
     ['club_membership', 'club_membership_club_id_id_idx', ['club_id', 'id']],

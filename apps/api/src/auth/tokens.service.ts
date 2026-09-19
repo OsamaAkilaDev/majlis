@@ -7,13 +7,8 @@ import type { Env } from '../config/env.schema';
 
 @Injectable()
 export class TokensService {
-  /**
-   * jsonwebtoken's `expiresIn` type is a template-literal `StringValue`
-   * ("15m", "30d", ...) narrower than the plain `string` type the env schema
-   * exposes here. `envSchema` validates the value's actual format (against
-   * the grammar `ms()` accepts) at boot, so this cast just aligns the two
-   * TypeScript types; it is not doing any of the real validation.
-   */
+  /** Aligns two TypeScript types only. `envSchema` does the real validation,
+   *  against the grammar `ms()` accepts, at boot. */
   private readonly accessTtl: JwtSignOptions['expiresIn'];
   private readonly refreshTtl: JwtSignOptions['expiresIn'];
 
@@ -26,23 +21,17 @@ export class TokensService {
   }
 
   /**
-   * The payload is `{ sub, iat, exp }` and nothing else: no role, no club
-   * IDs, no permissions. Spec §6.2 promises that losing an appointment takes
-   * effect on the very next request because permissions are re-derived per
-   * request and never cached in the session; a role claim here would make
-   * that false for up to the access token's TTL, and would make it false
-   * invisibly, since every test written on the assumption that the role
-   * lives in the token would still pass.
+   * `{ sub, iat, exp }` and NOTHING else: no role, no club ids, no
+   * permissions. Spec 6.2 promises losing an appointment takes effect on the
+   * next request, and a role claim here would make that false for a whole
+   * token TTL, invisibly: every test written against it would still pass.
    */
   async signAccessToken(userId: string): Promise<string> {
     return this.jwt.signAsync({}, { subject: userId, expiresIn: this.accessTtl });
   }
 
-  /**
-   * Returns the `sub` and `iat` claims, or throws UnauthorizedError for any
-   * failure. `iat` is UNIX seconds, as JWT defines it, and is what
-   * SessionGuard compares against `user.sessionsInvalidatedAt`.
-   */
+  /** `iat` is UNIX seconds, and is what SessionGuard compares against
+   *  `user.sessionsInvalidatedAt`. */
   async verifyAccessToken(token: string): Promise<{ userId: string; issuedAt: number }> {
     try {
       const claims = await this.jwt.verifyAsync<{ sub: string; iat: number }>(token);
@@ -52,12 +41,9 @@ export class TokensService {
     }
   }
 
-  /**
-   * Refresh tokens are SHA-256, not argon2id. A 256-bit random string has no
-   * structure to guess and no dictionary to attack, so argon2id's work
-   * factor (correct for a human-chosen password) buys nothing here and
-   * would add ~100ms to every refresh. Passwords stay argon2id.
-   */
+  /** SHA-256, not argon2id: a 256-bit random string has no structure to guess
+   *  and no dictionary to attack, so the work factor buys nothing and would
+   *  add ~100ms to every refresh. Passwords stay argon2id. */
   mintRefreshToken(): { raw: string; hash: string } {
     return this.mintOpaqueToken();
   }
@@ -66,13 +52,8 @@ export class TokensService {
     return this.hashOpaqueToken(raw);
   }
 
-  /**
-   * 256 bits of randomness and its sha256. Shared by refresh tokens and
-   * password reset tokens, which are the same credential shape: a long
-   * random string the server stores only a digest of. One implementation, so
-   * the "only the hash is stored" rule cannot hold for one and drift for the
-   * other.
-   */
+  /** Shared by refresh and password-reset tokens, so "only the hash is
+   *  stored" cannot hold for one and drift for the other. */
   mintOpaqueToken(): { raw: string; hash: string } {
     const raw = randomBytes(32).toString('base64url');
     return { raw, hash: this.hashOpaqueToken(raw) };

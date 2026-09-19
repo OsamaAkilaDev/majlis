@@ -77,14 +77,12 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
   });
 
   it('refuses to create a club whose logo was never uploaded', async () => {
-    // This is the whole point of verifying before storing. The API never
-    // sees the bytes, so without this check a client can create a club with
-    // a logo pointing at nothing, and every screen renders a broken image
-    // with no way to tell what went wrong.
+    // The API never sees the bytes, so without verification a client creates a
+    // club whose logo points at nothing and every screen renders broken.
     const admin = await loginAsAdmin(app);
     const dept = await prisma.department.create({ data: aDepartment() });
     const minted = await request(app.getHttpServer()).post(UPLOAD_PATH).set('Cookie', admin.sessionCookie);
-    // Deliberately do not populate `uploaded`.
+    // `uploaded` is deliberately left empty.
 
     const res = await request(app.getHttpServer())
       .post(CLUBS_PATH)
@@ -96,9 +94,8 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
   });
 
   it('refuses an uploaded object that is over the kind cap', async () => {
-    // Catches verification that checks existence but not size. The bucket
-    // limit is 2 MB; the club logo cap is 256 KB, so a 1 MB object passes
-    // the bucket and must still be refused here.
+    // Catches verification checking existence but not size: the bucket limit is
+    // 2 MB and the logo cap 256 KB, so a 1 MB object clears the bucket.
     const admin = await loginAsAdmin(app);
     const dept = await prisma.department.create({ data: aDepartment() });
     const minted = await request(app.getHttpServer()).post(UPLOAD_PATH).set('Cookie', admin.sessionCookie);
@@ -141,15 +138,13 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
     };
 
     expect((await create('Robotics Club')).body.slug).toBe('robotics-club');
-    // The name column is unique, so this must fail on name before slug.
-    // uniqueSlug's pre-check already moved the second attempt's slug to
-    // -2, so the only constraint left to fail here is the name.
+    // uniqueSlug's pre-check already moved the second slug to -2, so the only
+    // constraint left to fail here is the unique name.
     const collision = await create('Robotics Club');
     expect(collision.status).toBe(409);
-    // The global Problem Details filter maps any escaping P2002 to a generic
-    // 409 too, so the status code alone would pass even with mapWriteError
-    // silently failing to match this constraint. The specific detail message
-    // is what proves the mapping actually fired and picked the name branch.
+    // The Problem Details filter maps an escaping P2002 to a generic 409 too, so
+    // status alone passes with mapWriteError not matching this constraint. The
+    // detail proves it fired and picked the name branch.
     expect(collision.body.detail).toBe('A club with that name already exists.');
     expect((await create('Robotics  Club!')).body.slug).toBe('robotics-club-2');
   });
@@ -162,9 +157,8 @@ describe('POST /uploads/club-logo then POST /clubs', () => {
   });
 
   it('refuses a STUDENT on POST /clubs itself, and no club is created', async () => {
-    // Both routes carry @RequirePermission('club:create'), but only the
-    // upload route above had a 403 test. This catches the same guard being
-    // missing from `create` specifically.
+    // Both routes carry club:create, but the test above covers only the upload
+    // route. Catches the guard missing from `create` itself.
     const student = await loginAsStudent(app);
     const dept = await prisma.department.create({ data: aDepartment() });
 
@@ -189,16 +183,15 @@ describe('GET /clubs', () => {
       .get(`${CLUBS_PATH}?departmentId=${a.id}`)
       .set('Cookie', student.sessionCookie);
 
-    // Catches a filter built but never applied to the where clause, which
-    // returns everything and still looks correct in a one-club fixture.
+    // Catches a filter built but never applied, which returns everything and
+    // still looks correct in a one-club fixture.
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].departmentName).toBe(a.name);
   });
 
   it('filters by status, holding department constant', async () => {
-    // The two fixtures differ ONLY in status: a fixture that also varied
-    // department (as the combined test used to) would let an
-    // implementation that ignores `status` entirely pass unnoticed.
+    // The two fixtures differ ONLY in status: varying department too would let an
+    // implementation that ignores `status` pass.
     const student = await loginAsStudent(app);
     const dept = await prisma.department.create({ data: aDepartment() });
     const archived = await makeClub({ departmentId: dept.id, status: 'ARCHIVED' });
@@ -213,9 +206,7 @@ describe('GET /clubs', () => {
   });
 
   it('filters by name, case-insensitively', async () => {
-    // Catches a `q` filter that is never applied, and separately a
-    // case-sensitive `contains` despite the where clause claiming
-    // `mode: 'insensitive'`.
+    // Catches a `q` filter never applied, and a case-sensitive `contains`.
     const student = await loginAsStudent(app);
     const dept = await prisma.department.create({ data: aDepartment() });
     const target = await makeClub({ departmentId: dept.id, name: uniq('Robotics Society') });
@@ -251,9 +242,8 @@ describe('GET /clubs/:clubId', () => {
       .get(`${CLUBS_PATH}/${club.id}`)
       .set('Cookie', student.sessionCookie);
 
-    // Catches a findFirst with no userId filter, which returns whichever
-    // membership row happens to come first and tells this student they are
-    // already a member of a club they have never joined.
+    // Catches a findFirst with no userId filter, which returns whichever row
+    // comes first and tells this student they are a member already.
     expect(res.body.viewerMembershipStatus).toBeNull();
     expect(res.body.memberCount).toBe(1);
   });
@@ -307,9 +297,8 @@ describe('GET /clubs/by-slug/:slug', () => {
 });
 
 describe('PATCH /clubs/:clubId, admin override', () => {
-  // Nothing covered an Admin PATCH of a club, which is why the suite stayed
-  // green when overrideReasonFor made every one of them a 422 that no screen
-  // could satisfy.
+  // With no Admin PATCH covered, the suite stayed green when overrideReasonFor
+  // made every one of them a 422 no screen could satisfy.
   it('refuses a club-roleless admin with no reason and records one when given', async () => {
     const club = await makeClub();
     const admin = await loginAsAdmin(app);

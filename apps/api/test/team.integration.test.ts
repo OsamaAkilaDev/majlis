@@ -37,8 +37,8 @@ describe('POST /clubs/:clubId/lead', () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('INVITED');
 
-    // The whole point of INVITED. Catches an appointment created ACTIVE,
-    // which hands full Lead authority to someone who never accepted.
+    // Catches an appointment created ACTIVE, handing full Lead authority to
+    // someone who never accepted.
     expect(
       (
         await request(app.getHttpServer())
@@ -67,11 +67,9 @@ describe('POST /clubs/:clubId/lead', () => {
 
 describe('the one ACTIVE Lead index', () => {
   it('admits two INVITED Leads but only the first acceptance', async () => {
-    // The partial unique index covers ACTIVE rows only, so a club can hold
-    // several INVITED candidates at once and the constraint fires at
-    // acceptance. Correct, and surprising enough to pin down. Two distinct
-    // users, because a single user would collide on other grounds and the
-    // test would pass against a broken index.
+    // The partial unique index covers ACTIVE rows only, so several INVITED
+    // candidates coexist and the constraint fires at acceptance. Two distinct
+    // users: a single user collides on other grounds and passes a broken index.
     const admin = await loginAsAdmin(app);
     const club = await makeClub();
     const first = await loginAsStudent(app);
@@ -99,10 +97,9 @@ describe('the one ACTIVE Lead index', () => {
       .post(`${API_PREFIX}/appointments/${b.body.id}/accept`)
       .set('Cookie', second.sessionCookie);
     expect(secondAccept.status).toBe(409);
-    // The global Problem Details filter maps any escaping P2002 to a generic
-    // 409 too, so the status code alone would pass even with mapWriteError
-    // silently failing to match this index. The specific detail message is
-    // what proves the mapping actually fired.
+    // The Problem Details filter maps an escaping P2002 to a generic 409 too, so
+    // status alone passes with mapWriteError not matching this index. The detail
+    // is what proves the mapping fired.
     expect(secondAccept.body.detail).toBe('That club already has an active Lead.');
 
     const active = await prisma.clubTeamAppointment.findMany({
@@ -127,11 +124,11 @@ describe('POST /clubs/:clubId/team', () => {
         .send({ userId: nominee.userId, role: 'MARKETING' });
 
     expect((await invite(lead.sessionCookie)).status).toBe(201);
-    // Spec 6.1 gives "invite / end team appointments" to Lead only.
+    // Inviting and ending team appointments is Lead only.
     expect((await invite(vice.sessionCookie)).status).toBe(403);
 
-    // Catches a guard scoped to the wrong param, or missing entirely, which
-    // would let the Vice Lead's denied call still slip a second row in.
+    // Catches a guard scoped to the wrong param, or missing, which lets the Vice
+    // Lead's denied call slip a second row in.
     const rows = await prisma.clubTeamAppointment.findMany({
       where: { clubId: club.id, userId: nominee.userId, role: 'MARKETING' },
     });
@@ -179,16 +176,14 @@ describe('POST /clubs/:clubId/team', () => {
 describe('GET /clubs/:clubId/team', () => {
   it('computes hasLeftClub from the ClubMembership row, not the appointment role', async () => {
     const club = await makeClub();
-    // A Lead reads it, not a bystander: the list is open to anyone signed in,
-    // but only club:team-manage sees the addresses on it, asserted below.
+    // A Lead reads it: the list is open to anyone signed in, but only
+    // club:team-manage sees the addresses, asserted below.
     const viewer = await makeActiveLead(app, club.id);
     const stillMember = await makeActiveOfficer(app, club.id, 'MARKETING');
     await prisma.clubMembership.create({ data: { clubId: club.id, userId: stillMember.userId, status: 'ACTIVE' } });
-    // Same role as stillMember, no membership row. Varying membership
-    // presence alone, not role, is the point: an implementation that derives
-    // hasLeftClub from the appointment's own role, or anything else
-    // correlated with it, rather than a real ClubMembership lookup, would
-    // produce the same output for both rows and pass.
+    // Same role as stillMember, no membership row: varying only membership
+    // presence catches hasLeftClub derived from the appointment's role, or
+    // anything else correlated with it, rather than a ClubMembership lookup.
     const left = await makeActiveOfficer(app, club.id, 'MARKETING');
 
     const res = await request(app.getHttpServer())
@@ -207,9 +202,9 @@ describe('GET /clubs/:clubId/team', () => {
 
 describe('DELETE /clubs/:clubId/team/:appointmentId', () => {
   it('refuses an appointment that belongs to another club', async () => {
-    // Deviation D5. The guard resolves scope from params.clubId, so a Lead
-    // of club A passing club A's id with club B's appointment id would end
-    // another club's officer unless the handler checks ownership.
+    // The guard resolves scope from params.clubId, so a Lead of club A passing
+    // club B's appointment id ends another club's officer unless the handler
+    // checks ownership.
     const clubA = await makeClub();
     const clubB = await makeClub();
     const leadA = await makeActiveLead(app, clubA.id);
@@ -312,8 +307,8 @@ describe('DELETE /clubs/:clubId/team/:appointmentId', () => {
       .send({ reason: 'Overwriting the record.' });
     expect(second.status).toBe(422);
 
-    // Without the guard, a second end would silently overwrite who ended it
-    // and why: audit history being rewritten, not merely a wasted call.
+    // Without the guard a second end overwrites who ended it and why, which is
+    // audit history rewritten, not a wasted call.
     const afterSecond = await prisma.clubTeamAppointment.findUniqueOrThrow({ where: { id: officer.appointmentId } });
     expect(afterSecond.endedAt).toEqual(afterFirst.endedAt);
     expect(afterSecond.endedReason).toBe(afterFirst.endedReason);
@@ -323,8 +318,8 @@ describe('DELETE /clubs/:clubId/team/:appointmentId', () => {
 
 describe('admin override on a team invitation', () => {
   it('refuses a club-roleless admin with no reason and records one when given', async () => {
-    // Spec 6.1's "invite / end team appointments" row reads override for an
-    // Admin. Ending one already recorded its reason; inviting recorded null.
+    // An admin invite is an override. Catches one recording reason null, which
+    // ending an appointment already avoided.
     const club = await makeClub();
     const admin = await loginAsAdmin(app);
     const nominee = await loginAsStudent(app);
@@ -355,14 +350,10 @@ describe('admin override on a team invitation', () => {
 });
 
 describe('GET /clubs/:clubId/team, email visibility', () => {
-  /**
-   * The route carries no @RequirePermission, and assertCanReadRoster returns
-   * immediately for any ACTIVE club, so before Stage 8 this handed every
-   * officer's address to any signed-in account. Two readers in one test:
-   * asserting only the Lead's copy would pass against a handler that always
-   * sends the address, and asserting only the bystander's would pass against
-   * one that never does.
-   */
+  // The route carries no @RequirePermission and the list is open to any
+  // signed-in user, so the address is gated in the projection. Two readers in
+  // one test: the Lead alone passes against a handler that always sends the
+  // address, the bystander alone against one that never does.
   it('sends userEmail to a Lead and omits it entirely for a member with no role', async () => {
     const club = await makeClub();
     const officer = await makeActiveOfficer(app, club.id, 'OPERATIONS');

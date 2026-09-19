@@ -52,8 +52,8 @@ describe('POST /clubs/:clubId/membership-requests, by policy', () => {
     const student = await loginAsStudent(app);
     const res = await join(student.sessionCookie, club.id);
 
-    // Catches a handler that ignores the policy and always writes ACTIVE,
-    // which every OPEN test would still pass.
+    // Catches a handler ignoring the policy and always writing ACTIVE, which
+    // every OPEN test above still passes.
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('PENDING');
   });
@@ -82,9 +82,8 @@ describe('POST /clubs/:clubId/membership-requests, by policy', () => {
     expect((await join(student.sessionCookie, club.id)).status).toBe(201);
     const second = await join(student.sessionCookie, club.id);
     expect(second.status).toBe(409);
-    // The global Problem Details filter maps any escaping P2002 to a generic
-    // 409 too, so the status code alone would pass even with mapWriteError
-    // deleted. The specific detail message is what proves mapWriteError ran.
+    // The Problem Details filter maps an escaping P2002 to a generic 409 too, so
+    // status alone passes with mapWriteError deleted. The detail proves it ran.
     expect(second.body.detail).toBe('You already have an open membership in that club.');
     // The 409 must not have left a second row behind.
     expect(
@@ -93,10 +92,8 @@ describe('POST /clubs/:clubId/membership-requests, by policy', () => {
   });
 
   it('lets someone who left request again', async () => {
-    // LEFT is outside the partial unique index predicate, which is what
-    // makes rejoining possible at all. Catches an index built on
-    // (club_id, user_id) with no WHERE clause, which would lock a student
-    // out of a club forever the moment they left it once.
+    // LEFT sits outside the partial unique index predicate. Catches an index on
+    // (club_id, user_id) with no WHERE, which locks a student out forever.
     const club = await makeClub({ membershipPolicy: 'OPEN' });
     const student = await loginAsStudent(app);
     await join(student.sessionCookie, club.id);
@@ -105,17 +102,15 @@ describe('POST /clubs/:clubId/membership-requests, by policy', () => {
       .set('Cookie', student.sessionCookie);
 
     expect((await join(student.sessionCookie, club.id)).status).toBe(201);
-    // Two rows must exist: the LEFT one and the new ACTIVE one. A rejoin
-    // that overwrote the old row instead of creating a new one would still
-    // pass a check that only looks at the newest row's status.
+    // Two rows, the LEFT one and the new ACTIVE one: a rejoin that overwrote the
+    // old row passes a check looking only at the newest row's status.
     const rows = await prisma.clubMembership.findMany({ where: { clubId: club.id, userId: student.userId } });
     expect(rows).toHaveLength(2);
   });
 
   it('admits exactly one membership when two requests race', async () => {
-    // Two real concurrent requests, not two sequential calls. A sequential
-    // pair passes against a check-then-insert implementation; only genuine
-    // concurrency exercises the index.
+    // Genuinely concurrent: a sequential pair passes against check-then-insert,
+    // and only a real race exercises the index.
     const club = await makeClub({ membershipPolicy: 'OPEN' });
     const student = await loginAsStudent(app);
 
@@ -146,7 +141,7 @@ describe('PATCH /clubs/:clubId/membership-requests/:requestId', () => {
     const req = await join(applicant.sessionCookie, club.id);
 
     expect((await decide(marketing.sessionCookie, club.id, req.body.id, 'ACTIVE')).status).toBe(403);
-    // Marketing's refusal must not have decided the row behind the 403.
+    // The 403 must not have decided the row behind it.
     expect(
       (await prisma.clubMembership.findUniqueOrThrow({ where: { id: req.body.id } })).status,
     ).toBe('PENDING');
@@ -155,7 +150,7 @@ describe('PATCH /clubs/:clubId/membership-requests/:requestId', () => {
   });
 
   it('refuses a request that belongs to another club', async () => {
-    // Deviation D5, same class of bug as the team route.
+    // Catches a lookup by row id alone, the same bug class as the team route.
     const clubA = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
     const clubB = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
     const leadA = await makeActiveLead(app, clubA.id);
@@ -169,8 +164,7 @@ describe('PATCH /clubs/:clubId/membership-requests/:requestId', () => {
   });
 
   it('refuses an officer deciding their own request', async () => {
-    // Main spec 6.2. Catches a handler with the permission check but not
-    // the self check, which is the whole rule.
+    // Catches a handler with the permission check but no self check.
     const club = await makeClub({ membershipPolicy: 'APPROVAL_REQUIRED' });
     const ops = await makeActiveOfficer(app, club.id, 'OPERATIONS');
     await prisma.clubMembership.deleteMany({ where: { clubId: club.id, userId: ops.userId } });
@@ -190,7 +184,7 @@ describe('PATCH /clubs/:clubId/membership-requests/:requestId', () => {
 
     expect((await decide(lead.sessionCookie, club.id, req.body.id, 'ACTIVE')).status).toBe(200);
     expect((await decide(lead.sessionCookie, club.id, req.body.id, 'REJECTED')).status).toBe(422);
-    // Still ACTIVE from the first decision, not flipped to REJECTED by the second.
+    // Still ACTIVE from the first decision, not flipped by the second.
     expect(
       (await prisma.clubMembership.findUniqueOrThrow({ where: { id: req.body.id } })).status,
     ).toBe('ACTIVE');
@@ -254,8 +248,8 @@ describe('POST /clubs/:clubId/members', () => {
   });
 
   it('refuses under CLOSED: CLOSED is the one policy nobody joins by any route', async () => {
-    // Ruling: if addMember worked under CLOSED, CLOSED and INVITE_ONLY would
-    // be behaviourally identical and CLOSED would not be a distinct policy.
+    // If addMember worked under CLOSED it would be identical to INVITE_ONLY and
+    // not a distinct policy at all.
     const club = await makeClub({ membershipPolicy: 'CLOSED' });
     const lead = await makeActiveLead(app, club.id);
     const student = await loginAsStudent(app);
@@ -297,8 +291,7 @@ describe('leaving and removal', () => {
           .set('Cookie', lead.sessionCookie)
       ).status,
     ).toBe(204);
-    // The two must be distinguishable: REMOVED is a decision someone made,
-    // LEFT is the member's own. Catches both routes writing LEFT.
+    // Catches both routes writing LEFT: REMOVED is a decision someone else made.
     expect(
       (await prisma.clubMembership.findFirstOrThrow({ where: { clubId: club.id, userId: other.userId } })).status,
     ).toBe('REMOVED');
@@ -409,15 +402,15 @@ describe('GET /clubs/:clubId/members', () => {
     const lead = await makeActiveLead(app, club.id);
     const pending = await loginAsStudent(app);
     await join(pending.sessionCookie, club.id);
-    // A control ACTIVE row: without it, a query that ignores `status`
-    // entirely would still return exactly one item and pass.
+    // A control ACTIVE row: without it, a query ignoring `status` returns
+    // exactly one item and passes.
     const activeMember = await loginAsStudent(app);
     await request(app.getHttpServer())
       .post(`${API_PREFIX}/clubs/${club.id}/members`)
       .set('Cookie', lead.sessionCookie)
       .send({ userId: activeMember.userId });
-    // The same user holds a role here and a different role in another club.
-    // Only the first must come back, proving the batching does not leak.
+    // The same user holds a different role in another club: only the first may
+    // come back, which proves the role batching does not leak across clubs.
     await mkAppointment({ userId: activeMember.userId, clubId: club.id, role: 'MARKETING', status: 'ACTIVE' });
     await mkAppointment({ userId: activeMember.userId, clubId: otherClub.id, role: 'CTO', status: 'ACTIVE' });
 
@@ -436,14 +429,10 @@ describe('GET /clubs/:clubId/members', () => {
     expect(activeRes.body.items[0].clubRoles).toEqual(['MARKETING']);
   });
 
-  /**
-   * The route carries no @RequirePermission, and assertCanReadRoster returns
-   * immediately for any ACTIVE club, so before Stage 8 this handed every
-   * member's address to any signed-in account. Two readers in one test:
-   * asserting only the Lead's copy would pass against a handler that always
-   * sends the address, and asserting only the member's would pass against
-   * one that never does.
-   */
+  // The route carries no @RequirePermission and the roster is open to any
+  // signed-in user, so the address is gated in the projection. Two readers in
+  // one test: the Lead alone passes against a handler that always sends the
+  // address, the member alone against one that never does.
   it('sends userEmail to a Lead and omits it entirely for a member with no role', async () => {
     const club = await makeClub({ membershipPolicy: 'OPEN' });
     const lead = await makeActiveLead(app, club.id);
@@ -489,16 +478,14 @@ describe('GET /me/clubs', () => {
     const byClub = new Map<string, { clubRoles: string[] }>(
       res.body.items.map((i: { clubId: string; clubRoles: string[] }) => [i.clubId, i]),
     );
-    // Proves roles attach to the right club rather than leaking across the
-    // two rows the same student holds.
+    // Roles must attach to the right club, not leak across the student's rows.
     expect(byClub.get(club.id)!.clubRoles).toEqual([]);
     expect(byClub.get(clubWithRole.id)!.clubRoles).toEqual(['MARKETING']);
   });
 
   it('lists a left-and-rejoined club exactly once, as the new ACTIVE row', async () => {
-    // "lets someone who left request again" proves two rows exist for this
-    // club afterward (one LEFT, one live). Unfiltered, this club would show
-    // up twice: once as a dead LEFT entry with nothing sensible to do.
+    // A left-and-rejoined club holds two rows, one LEFT and one live. Catches an
+    // unfiltered query, which lists the club twice, once as a dead entry.
     const club = await makeClub({ membershipPolicy: 'OPEN' });
     const student = await loginAsStudent(app);
     await join(student.sessionCookie, club.id);
@@ -519,8 +506,8 @@ describe('GET /me/clubs', () => {
 
 describe('roster visibility by club status', () => {
   it('keeps an ACTIVE club roster open to any signed-in user', async () => {
-    // The gate added below must not over-restrict: an active club's list is
-    // deliberately public to signed-in users.
+    // The gate below must not over-restrict: an active club's list is open to
+    // any signed-in user.
     const club = await makeClub({ membershipPolicy: 'OPEN' });
     const outsider = await loginAsStudent(app);
 
@@ -532,8 +519,8 @@ describe('roster visibility by club status', () => {
   });
 
   it('hides a suspended club roster from a non-member', async () => {
-    // Member rows carry full name and email. Without this gate a student can
-    // enumerate suspended clubs and read every member's email address.
+    // Member rows carry full name and email, so without this gate a student can
+    // enumerate suspended clubs and read every member's address.
     const club = await makeClub({ status: 'SUSPENDED' });
     const outsider = await loginAsStudent(app);
 
@@ -572,8 +559,7 @@ describe('roster visibility by club status', () => {
 
 describe('admin override on adding and removing a member', () => {
   it('refuses a club-roleless admin with no reason and records one when given', async () => {
-    // Spec 6.1's "decide membership requests" row reads override for an
-    // Admin; both writes recorded null.
+    // Both writes are admin overrides. Catches either recording reason null.
     const club = await makeClub({ membershipPolicy: 'INVITE_ONLY' });
     const admin = await loginAsAdmin(app);
     const student = await loginAsStudent(app);

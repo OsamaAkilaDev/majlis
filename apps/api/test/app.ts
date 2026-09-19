@@ -3,19 +3,11 @@ import { Test } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 
-/**
- * Boots the real AppModule through the real configureApp, exactly as
- * main.ts does, so the guards, pipes and filters under test in every
- * integration suite are the real ones, not a stand-in.
- *
- * `extraModules` adds test-only fixtures (e.g. `ProtectedTestModule`, see
- * test/fixtures/) alongside the real AppModule. They ride the same global
- * guards and filters AppModule wires up. They are never added to AppModule
- * itself.
- *
- * `overrides` replaces a real provider with a test double (e.g. a fake
- * StorageService, so no test touches Supabase) before the module compiles.
- */
+/** Boots the real AppModule through the real configureApp, as main.ts does, so
+ * every suite tests the real guards, pipes and filters. `extraModules` adds
+ * test-only fixtures alongside it, riding the same global guards, never added to
+ * AppModule itself. `overrides` swaps a provider for a test double before the
+ * module compiles. */
 export async function createTestApp(
   extraModules: Type[] = [],
   overrides: { provide: unknown; useValue: unknown }[] = [],

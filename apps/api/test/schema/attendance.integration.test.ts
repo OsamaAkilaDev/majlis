@@ -56,10 +56,9 @@ describe('QrPass', () => {
   it('stores no token column at all, only the version', async () => {
     const cols = await prisma.$queryRaw<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'qr_pass'`;
-    // Asserts the EXACT column set rather than matching on the substring
-    // "token". A raw secret named `signature`, `qr_secret` or `raw_code`
-    // would sail past a substring check, and this test is the only
-    // automated defence of the no-raw-token guarantee.
+    // The EXACT column set, not a substring match on "token": a raw secret named
+    // `signature`, `qr_secret` or `raw_code` sails past a substring check, and
+    // this is the only automated defence of the no-raw-token guarantee.
     expect(cols.map((c) => c.column_name).sort()).toEqual([
       'id',
       'issued_at',
@@ -88,9 +87,8 @@ describe('AttendanceRecord', () => {
   });
 
   it('scopes attendance per registration, not per event: a queue of students all check in', async () => {
-    // The catastrophic failure this guards against: a unique index on
-    // event_id instead of registration_id would pass every other test here
-    // while allowing exactly one check-in per event, ever.
+    // Catches a unique index on event_id instead of registration_id, which
+    // passes every other test here while allowing one check-in per event, ever.
     const { event, user, registration } = await aRegistration();
     const scanner = await mkUser();
     await prisma.attendanceRecord.create({
@@ -110,9 +108,8 @@ describe('AttendanceRecord', () => {
   });
 
   it('scopes attendance per registration, not per user: one student attends two events', async () => {
-    // The mirror image of the event-scoping catastrophe: a unique index on
-    // user_id would let a student check in to exactly one event for their
-    // entire time at the university. Every other test here passes either way.
+    // The mirror: a unique index on user_id lets a student check in to one event
+    // ever, and every other test here passes either way.
     const first = await aRegistration();
     const scanner = await mkUser();
     await prisma.attendanceRecord.create({
@@ -158,9 +155,8 @@ describe('AttendanceRecord', () => {
   });
 
   it('refuses to delete a registration that has an attendance record', async () => {
-    // registration is Restrict, not Cascade: a registration with attendance
-    // but no certificate must not be deletable, since that would destroy the
-    // proof a person was in the room.
+    // registration is Restrict, not Cascade: deleting one would destroy the
+    // proof that a person was in the room.
     const { user, event, registration } = await aRegistration();
     const scanner = await mkUser();
     await prisma.attendanceRecord.create({
@@ -215,10 +211,9 @@ describe('Certificate', () => {
   });
 
   it('scopes active certificates per registration, not per student: one student attends two events', async () => {
-    // The catastrophic failure this guards against: a unique index on
-    // user_id (instead of registration_id) would allow one active
-    // certificate per student for their entire degree, and would pass every
-    // other test here, because aRegistration() mints a fresh user each call.
+    // Catches a unique index on user_id instead of registration_id, which allows
+    // one active certificate per student ever and passes every other test here,
+    // since aRegistration() mints a fresh user each call.
     const first = await aRegistration();
     await prisma.certificate.create({
       data: certData({
@@ -265,9 +260,8 @@ describe('Certificate', () => {
   });
 
   it('rejects a duplicate serial number', async () => {
-    // serial_number is the certificate's human-facing identifier and is
-    // @unique exactly as verification_code is; only one of the two symmetric
-    // guarantees was covered.
+    // serial_number is the human-facing identifier and is @unique exactly as
+    // verification_code is, so both symmetric guarantees need covering.
     const a = await aRegistration();
     const b = await aRegistration();
     const serial = 'MJL-SHARED-0001';

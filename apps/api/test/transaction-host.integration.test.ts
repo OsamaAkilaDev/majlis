@@ -41,8 +41,8 @@ describe('TransactionHost', () => {
   });
 
   it('joins the ambient transaction rather than opening a nested one', async () => {
-    // Simulates an audit writer called deep inside a service: it never
-    // receives a tx handle, yet its write must share the outer transaction.
+    // An audit writer deep inside a service: it never receives a tx handle, yet
+    // its write must share the outer transaction.
     async function auditWriterDeepInTheStack() {
       await host.tx.auditLog.create({
         data: {
@@ -69,10 +69,9 @@ describe('TransactionHost', () => {
   });
 
   it('returns the callback result, from both the opening and the joining path', async () => {
-    // run() has two distinct return paths: one that opens a transaction and
-    // one that joins an ambient one. Every other test here asserts only on
-    // database side effects, so a regression that awaited the callback but
-    // discarded its value would pass all of them.
+    // run() has two return paths, opening a transaction and joining an ambient
+    // one. Catches a regression that awaits the callback but discards its value,
+    // which every side-effect assertion here misses.
     expect(await host.run(async () => 'outer')).toBe('outer');
 
     const joined = await host.run(async () => host.run(async () => 'inner'));

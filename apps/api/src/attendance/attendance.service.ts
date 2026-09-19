@@ -22,38 +22,27 @@ import { verifyPass } from './qr-token';
 
 const HOUR_MS = 60 * 60 * 1000;
 
-/**
- * Registrations that held a confirmed place, whatever became of them. This
- * is the denominator the scanner's counter shows, and the set the roster's
- * `expected` counts: a waitlisted student was never expected in the room.
- */
+/** Registrations that held a confirmed place, whatever became of them: a
+ *  waitlisted student was never expected in the room. */
 const EXPECTED = ['CONFIRMED', 'CHECKED_IN', 'ATTENDED', 'NO_SHOW'] as const;
 
 /**
- * Statuses a scan may check in: spec 7.5 step 5 requires a confirmed place,
- * and CONFIRMED is the only status that is one.
+ * Spec 7.5 step 5 requires a confirmed place, and CONFIRMED is the only
+ * status that is one.
  *
- * NO_SHOW is deliberately absent. Nothing writes it while an event is still
- * open: `correct()` writes CONFIRMED during ONGOING, and the only other
- * writer is the hop to COMPLETED, after which checkInTx has already
- * answered EVENT_NOT_OPEN before this list is consulted. Admitting it would
- * have let a scan resurrect a closed event's absentee if either of those
- * ever changed.
- *
- * WAITLISTED is absent for the same rule. The operator is answered
- * NOT_REGISTERED, because the six results carry no "waitlisted" case and
- * the action is the same either way: that person holds no place here.
+ * NO_SHOW is absent deliberately: admitting it would let a scan resurrect a
+ * closed event's absentee if the writers of that status ever changed.
+ * WAITLISTED is absent too, answered NOT_REGISTERED, since the action is the
+ * same either way: that person holds no place here.
  */
 const CHECKABLE = ['CONFIRMED'] as const;
 
 /**
- * Registration statuses a correction may rewrite. Everything else is
- * refused rather than overwritten:
+ * Everything else is refused rather than overwritten:
  *
  * - CANCELLED and REMOVED would be resurrected as CHECKED_IN, making a
- *   withdrawn student certificate-eligible, or would collide with the
- *   student's second open row on
- *   event_registration_one_open_per_user and surface as a bare 409.
+ *   withdrawn student certificate-eligible, or collide with their second
+ *   open row on event_registration_one_open_per_user as a bare 409.
  * - WAITLISTED would become CHECKED_IN without incrementing
  *   Event.confirmedCount, diverging the counter the
  *   `capacity >= confirmed_count` CHECK guards.
@@ -85,12 +74,8 @@ const EVENT_FOR_CHECK_IN = {
 
 type CheckInEvent = Prisma.EventGetPayload<{ select: typeof EVENT_FOR_CHECK_IN }>;
 
-/**
- * Who is being checked in, unresolved. A scan carries the id the signed
- * token committed to; manual check-in carries the address the operator
- * typed. It stays unresolved until checkInTx has passed the event gate, so
- * that no refusal before that point can vary on whether the subject exists.
- */
+/** Stays UNRESOLVED until checkInTx has passed the event gate, so no refusal
+ *  before that point can vary on whether the subject exists. */
 type Subject = { userId: string } | { email: string };
 
 /** What a successful scan records beyond the registration it is for. */
@@ -116,18 +101,13 @@ export class AttendanceService {
     this.correctionWindowMs = config.get('ATTENDANCE_CORRECTION_WINDOW_HOURS', { infer: true }) * HOUR_MS;
   }
 
-  /**
-   * POST /events/:eventId/check-in/scan. Six of spec 7.5's seven outcomes
-   * are a 200 with a `result` discriminant, because they are things the
-   * operator has to read and act on rather than faults in their request.
-   * The seventh, "not authorised to scan this event", is a 403 written by
-   * PermissionsGuard before this ever runs.
-   */
+  /** Six of spec 7.5's seven outcomes are a 200 with a `result`
+   *  discriminant: things the operator acts on, not faults in the request.
+   *  The seventh is a 403 from PermissionsGuard before this runs. */
   async scan(actor: Actor, eventId: string, body: ScanBody): Promise<CheckInResult> {
     const verified = verifyPass(body.token, this.secret);
-    // Neither the reason nor anything else about the token reaches the
-    // operator: a forged pass and a superseded one look identical to them,
-    // which is the point.
+    // Nothing about the token reaches the operator: a forged pass and a
+    // superseded one look identical, which is the point.
     if (!verified.ok) return { result: 'INVALID_PASS' };
 
     const pass = await this.host.tx.qrPass.findUnique({ where: { userId: verified.payload.userId } });
@@ -141,18 +121,13 @@ export class AttendanceService {
     });
   }
 
-  /**
-   * POST /events/:eventId/check-in/manual. The fallback when a camera fails,
-   * keyed by the email the operator can read off the student rather than by
-   * a second credential format (decided 2026-09-12). Same result union, and
-   * a reason that is required and audited.
-   */
+  /** The camera fallback, keyed by email rather than a second credential
+   *  format (decided 2026-09-12). The reason is required and audited. */
   async manual(actor: Actor, eventId: string, body: ManualCheckInBody): Promise<CheckInResult> {
-    // The address is resolved inside checkInTx, after the event gate, never
-    // here. Resolving it first made this route an oracle for who holds a
-    // Majlis account: an unknown address answered NOT_REGISTERED while a
-    // known one reached the window check and answered EVENT_NOT_OPEN, which
-    // is the state every event is in for all but a few hours of its life.
+    // Resolved inside checkInTx, AFTER the event gate, never here. Resolving
+    // first made this an account-existence oracle: an unknown address
+    // answered NOT_REGISTERED while a known one reached the window check and
+    // answered EVENT_NOT_OPEN, which is most events most of the time.
     return this.checkIn(actor, eventId, { email: body.email }, {
       method: 'MANUAL',
       manualReason: body.reason,
@@ -160,15 +135,12 @@ export class AttendanceService {
   }
 
   /**
-   * The shared body of both routes, and the transaction spec 7.5 describes:
-   * the attendance row, the registration's new status and the audit row all
-   * commit together or none of them do.
+   * Spec 7.5's transaction: the attendance row, the registration's new status
+   * and the audit row all commit together or none do.
    *
-   * The advance runs BEFORE the transaction opens, per the warning in its
-   * own docblock: inside one it would join this transaction, and there is no
-   * refusal here that must not roll it back. It hands back the row it read,
-   * which is the one checkInTx used to read a second time inside the
-   * transaction, for the same event, a millisecond later.
+   * The advance runs BEFORE the transaction opens, per its own docblock:
+   * inside one it would join this transaction, and there is no refusal here
+   * that must not roll it back.
    */
   private async checkIn(
     actor: Actor,
@@ -181,10 +153,9 @@ export class AttendanceService {
     try {
       return await this.host.run(() => this.checkInTx(actor, event, subject, recording));
     } catch (e) {
-      // attendance_record_registration_id_key. Two operators scanning the
-      // same person at the same instant is an ordinary event in a queue, not
-      // a fault: the index is what makes one of them lose, and this is what
-      // turns losing into the answer the operator needed anyway.
+      // attendance_record_registration_id_key. Two operators scanning one
+      // person at the same instant is ordinary in a queue: the index makes
+      // one lose, and this turns losing into the answer they needed anyway.
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002' &&

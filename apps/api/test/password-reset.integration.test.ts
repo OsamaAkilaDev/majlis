@@ -20,11 +20,8 @@ let app: INestApplication;
 const PASSWORD = 'correct-horse-battery';
 const NEW_PASSWORD = 'a-completely-different-one';
 
-/**
- * Everything handed to the channel, in order. The raw reset token reaches
- * the channel in memory and is persisted nowhere, so this is the only place
- * a test can get hold of one, exactly as a real inbox would be.
- */
+/** Everything handed to the channel, in order. The raw reset token is persisted
+ * nowhere, so this is the only place a test can get one. */
 const delivered: DeliverableNotification[] = [];
 
 const capturingChannel = {
@@ -66,11 +63,8 @@ function login(email: string, password: string) {
   return request(app.getHttpServer()).post(`${API_PREFIX}/auth/login`).send({ email, password });
 }
 
-/**
- * The raw token, taken out of what was handed to the channel. It is never
- * persisted, so this stands in for reading the email, and it is the only way
- * to get one.
- */
+/** The raw token out of what was handed to the channel: stands in for reading
+ * the email. */
 function tokenFromEmail(): string {
   const last = delivered.at(-1)!;
   expect(last.type).toBe('auth.password_reset');
@@ -80,8 +74,8 @@ function tokenFromEmail(): string {
 
 describe('POST /auth/forgot-password', () => {
   it('answers 202 identically for a real address and an unknown one', async () => {
-    // Any difference here, in status or in body, is an account-existence
-    // oracle: an unauthenticated caller could enumerate who holds an account.
+    // Any difference in status or body is an account-existence oracle open to an
+    // unauthenticated caller.
     const email = `${uniq('reset')}@uni.ac.ae`;
     await signup(app, { email, password: PASSWORD }).expect(201);
 
@@ -95,8 +89,8 @@ describe('POST /auth/forgot-password', () => {
   });
 
   it('writes a row for a real address and none for an unknown one', async () => {
-    // The mirror of the test above: identical answers must not be achieved
-    // by doing nothing at all.
+    // The mirror of the test above: identical answers must not come from doing
+    // nothing at all.
     const email = `${uniq('reset')}@uni.ac.ae`;
     const res = await signup(app, { email, password: PASSWORD }).expect(201);
     const userId = (res.body as { id: string }).id;
@@ -150,10 +144,9 @@ describe('GET /auth/reset-password', () => {
   });
 
   it('does not consume the link, so the reset still works afterwards', async () => {
-    // The defect this whole endpoint could introduce. The reset screen calls
-    // it on every page load; if it spent the token the way the POST does,
-    // every reset would fail the moment the user pressed the button, and the
-    // test above would still pass.
+    // Catches a preview that spends the token like the POST does: the screen
+    // calls it on every page load, so every reset would then fail on submit,
+    // and the test above would still pass.
     const { email } = await requestReset();
     const token = tokenFromEmail();
 
@@ -165,9 +158,8 @@ describe('GET /auth/reset-password', () => {
   });
 
   it('refuses an unknown, an expired, a used and a suspended link in the same words', async () => {
-    // One message for four causes. A preview that distinguished them would
-    // be the oracle the POST deliberately is not, and it is reachable
-    // without even submitting a form.
+    // One message for four causes: a preview that told them apart is the oracle
+    // the POST refuses to be, reachable without submitting a form.
     const unknown = await preview('not-a-real-token');
 
     const expiredSetup = await requestReset();
@@ -222,12 +214,11 @@ describe('POST /auth/reset-password', () => {
   });
 
   it('revokes every refresh token the account holds, in the same transaction', async () => {
-    // A reset that leaves the account's other sessions able to renew
-    // themselves for thirty days is not a reset.
+    // A reset leaving other sessions able to renew for thirty days is not a reset.
     const { userId, refreshCookie } = await requestReset();
 
-    // The session was live before the reset, so a 401 afterwards is the
-    // reset's doing and not a token that never worked.
+    // Live before the reset, so the 401 afterwards is the reset's doing and not
+    // a token that never worked.
     await refresh(app, refreshCookie).expect(200);
 
     await reset(tokenFromEmail()).expect(204);
@@ -245,7 +236,7 @@ describe('POST /auth/reset-password', () => {
     const second = await reset(token, 'yet-another-password').expect(401);
 
     expect(second.body.detail).toBe(RESET_LINK_INVALID);
-    // And the second attempt changed nothing.
+    // The second attempt changed nothing.
     await login((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).email, NEW_PASSWORD).expect(200);
   });
 
@@ -263,7 +254,7 @@ describe('POST /auth/reset-password', () => {
     const unknown = await reset('a-token-that-was-never-issued').expect(401);
     expect(unknown.body.detail).toBe(RESET_LINK_INVALID);
 
-    // And the password is untouched.
+    // The password is untouched.
     await login((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).email, PASSWORD).expect(200);
   });
 
@@ -274,8 +265,7 @@ describe('POST /auth/reset-password', () => {
 
     const res = await reset(token).expect(401);
     expect(res.body.detail).toBe(RESET_LINK_INVALID);
-    // The token is not consumed by a refusal, because the whole transaction
-    // rolls back with the throw.
+    // A refusal does not consume the token: the transaction rolls back.
     expect((await prisma.passwordResetToken.findFirstOrThrow({ where: { userId } })).usedAt).toBeNull();
   });
 
@@ -320,20 +310,17 @@ describe('the reset link', () => {
     const answer = await forgot(email).expect(202);
     const raw = tokenFromEmail();
 
-    // Not in the HTTP response, which is what makes the 202 carry nothing.
+    // Not in the HTTP response, which is why the 202 carries nothing.
     expect(answer.text).not.toContain(raw);
-    // And not in the audit trail, which spec 5.1 says never holds a token.
+    // And not in the audit trail, which never holds a token.
     const audit = await prisma.auditLog.findMany({ where: { entityId: userId } });
     expect(JSON.stringify(audit)).not.toContain(raw);
   });
 
   it('is not in the notification row either, which the API exclusion would not help with', async () => {
-    // The whole reason the table stores only a sha256 is that reading it
-    // yields nothing usable. A live URL in notification.payload hands that
-    // straight back: one read of that table would give working links for
-    // every pending request, and the rows outlive each token's expiry.
-    // Excluding them from the API narrows who can read it over HTTP; it does
-    // not remove the row.
+    // The reset table stores only a sha256 so that reading it yields nothing.
+    // Catches a live URL in notification.payload, which hands back working links
+    // for every pending request, in rows that outlive the tokens' expiry.
     const email = `${uniq('reset')}@uni.ac.ae`;
     const res = await signup(app, { email, password: PASSWORD }).expect(201);
     const userId = (res.body as { id: string }).id;
@@ -351,8 +338,8 @@ describe('the reset link', () => {
   });
 
   it('is delivered inline, so the sweep never has a reset to pick up', async () => {
-    // If the row were left PENDING the sweep would send a second email from
-    // a payload that has no link in it.
+    // A PENDING row would have the sweep send a second email from a payload
+    // with no link in it.
     const email = `${uniq('reset')}@uni.ac.ae`;
     await signup(app, { email, password: PASSWORD }).expect(201);
     await forgot(email).expect(202);
@@ -370,18 +357,16 @@ describe('cookies issued before a reset', () => {
     await reset(tokenFromEmail()).expect(204);
 
     const relogin = await login(email, NEW_PASSWORD).expect(200);
-    // The new session works, so the refusal above is about the old token
-    // rather than about refresh being broken for this account.
+    // The new session works, so the refusal below is about the old token rather
+    // than refresh being broken for this account.
     await refresh(app, refreshCookieOf(relogin)).expect(200);
     await refresh(app, signedUp.refreshCookie).expect(401);
   });
 
   it('stop working as a SESSION cookie the instant the reset commits', async () => {
-    // A password reset exists because the credential may already be in an
-    // attacker's hands. Revoking refresh tokens only ends the ability to
-    // RENEW; the access token is a stateless 15 minute JWT, so without the
-    // sessionsInvalidatedAt comparison in SessionGuard a stolen cookie keeps
-    // working for a quarter of an hour after the victim resets.
+    // Revoking refresh tokens only ends renewal. The access token is a stateless
+    // 15 minute JWT, so without SessionGuard's sessionsInvalidatedAt comparison
+    // a stolen cookie keeps working for a quarter of an hour after the reset.
     const email = `${uniq('reset')}@uni.ac.ae`;
     const signedUp = await signupAndKeepCookies(app, { email, password: PASSWORD });
 
@@ -400,7 +385,7 @@ describe('cookies issued before a reset', () => {
       .expect(401);
     expect(after.body.detail).toBe('Not signed in.');
 
-    // The account itself is fine: it is the pre-reset token that is dead.
+    // The account is fine: it is the pre-reset token that is dead.
     expect(
       (await prisma.user.findUniqueOrThrow({ where: { id: signedUp.userId } })).status,
     ).toBe('ACTIVE');

@@ -4,14 +4,8 @@ import type { UserStatus } from '../../src/generated/prisma/client';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: injected below.
 import { TransactionHost } from '../../src/prisma/transaction.host';
 
-/**
- * Proves the club-scope path of PermissionsGuard end to end over HTTP. No
- * Stage 2 endpoint uses club scope (Stage 4 is the first real one), so
- * without this fixture the decorator's scope-reading path ships unexercised
- * by an actual request and Stage 4 inherits it unverified.
- *
- * Registered only in the test modules that need it, never in AppModule.
- */
+/** Exercises the club-scope path of PermissionsGuard over HTTP. Registered only
+ * in the test modules that need it, never in AppModule. */
 @Controller('__test/clubs/:clubId')
 export class ScopedTestController {
   @Get('edit')
@@ -20,15 +14,9 @@ export class ScopedTestController {
     return { ok: true };
   }
 
-  /**
-   * A route the router genuinely matches (unlike an empty `:clubId`
-   * segment, which 404s before the guard ever runs) whose decorator points
-   * `from` at a dotted path with no real value behind it:
-   * `params.missing.deeper` reads a property off `undefined`. Exercises
-   * readScopeId/readAt's guard against exactly that: without the
-   * `typeof acc !== 'object'` check in readAt, this throws a raw TypeError
-   * instead of resolving to "no scope", surfacing as an unhandled 500.
-   */
+  /** A route the router genuinely matches (an empty `:clubId` 404s before the
+   * guard runs) whose `from` reads a property off `undefined`. Exercises
+   * readAt's `typeof acc !== 'object'` check, without which this is a 500. */
   @Get('broken-scope')
   @RequirePermission('club:edit', { scope: 'club', from: 'params.missing.deeper' })
   brokenScope(): { ok: true } {
@@ -36,17 +24,9 @@ export class ScopedTestController {
   }
 }
 
-/**
- * Stands in for the real `PATCH /api/v1/users/:id/status` route Task 11
- * builds. Ruled before Stage 2 started: Task 8 needs *some* ADMIN-only,
- * unscoped route to prove PermissionsGuard's denial + audit path before that
- * endpoint exists; Task 11 re-asserts denial against the real one.
- *
- * The handler performs a real write (through TransactionHost, never
- * PrismaService) rather than a no-op: otherwise "the write did not happen"
- * would hold trivially even against a guard that lets every request through,
- * since a no-op handler never writes regardless of what the guard decides.
- */
+/** An ADMIN-only unscoped route for PermissionsGuard's denial and audit path.
+ * The handler does a real write, not a no-op: otherwise "the write did not
+ * happen" holds even against a guard that lets every request through. */
 @Controller('__test/users')
 export class UserStatusTestController {
   constructor(private readonly host: TransactionHost) {}

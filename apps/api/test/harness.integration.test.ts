@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 
-// TEST_DATABASE_URL is normally unset (db.ts derives it). Assigning undefined
-// to process.env would store the string 'undefined'.
+// TEST_DATABASE_URL is normally unset, since db.ts derives it. Assigning
+// undefined to process.env would store the string 'undefined'.
 function restore(saved: string | undefined): void {
   if (saved === undefined) delete process.env.TEST_DATABASE_URL;
   else process.env.TEST_DATABASE_URL = saved;
@@ -40,9 +40,8 @@ describe('integration test harness', () => {
   });
 
   it('refuses a connection string where "majlis_test" appears only in the username, not the database name', async () => {
-    // A substring check on the whole URL would pass this: "majlis_test"
-    // matches the username, but the actual database is majlis_prod. Only a
-    // parsed-pathname comparison catches it.
+    // A substring check passes this: "majlis_test" matches the username while
+    // the database is majlis_prod. Only a parsed-pathname comparison catches it.
     const saved = process.env.TEST_DATABASE_URL;
     try {
       process.env.TEST_DATABASE_URL = 'postgresql://majlis_test_ro:pw@prod-host:5432/majlis_prod';
@@ -53,9 +52,8 @@ describe('integration test harness', () => {
   });
 
   it('truncateAll is idempotent', async () => {
-    // There have been application tables since Task 5; this no longer tests
-    // running against an empty schema. It asserts that truncating twice in a
-    // row (beforeEach already truncated once) does not error.
+    // beforeEach already truncated once, so this asserts that truncating twice
+    // in a row does not error.
     await expect(truncateAll(prisma)).resolves.toBeUndefined();
     await expect(truncateAll(prisma)).resolves.toBeUndefined();
   });

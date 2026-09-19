@@ -19,14 +19,9 @@ const DAY = 24 * HOUR;
 /** Matches ATTENDANCE_CORRECTION_WINDOW_HOURS' default. */
 const WINDOW_HOURS = 48;
 
-/**
- * Bytes the API produced, keyed by object path, with the bucket they were
- * sent to. The bucket is recorded because it is a security property and not
- * a detail: a certificate written to the public bucket is readable at
- * /object/public/<path> with no cookie, and signing its URL does not change
- * that. An earlier version of this fake dropped the argument, which made the
- * wiring untestable and let a mutation that reverted it stay green.
- */
+/** Bytes the API produced, by object path. The bucket is recorded because it is
+ * a security property: a certificate in the public bucket is readable at
+ * /object/public/<path> with no cookie, whatever the URL is signed with. */
 const uploaded = new Map<string, { size: number; contentType: string; bucket: string }>();
 
 /** Every (path, bucket) createSignedDownloadUrl was asked to sign, in order. */
@@ -72,10 +67,8 @@ function verify(code: string) {
   return request(app.getHttpServer()).get(`${API_PREFIX}/verify/${code}`);
 }
 
-/**
- * An event that finished long enough ago for its correction window to have
- * closed, with one student who was checked in and one who was not.
- */
+/** An event whose correction window has closed, with one student checked in and
+ * one not. */
 async function aCertifiableEvent(overrides: Record<string, unknown> = {}) {
   const now = Date.now();
   const endedAt = now - (WINDOW_HOURS + 1) * HOUR;
@@ -128,8 +121,8 @@ describe('POST /events/:eventId/certificates/issue', () => {
     const rows = await prisma.certificate.findMany({ where: { eventId: event.id } });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.userId).toBe(attendee.userId);
-    // All four snapshot columns, filled at issuance. A certificate that
-    // joined to the club at read time would be rewritten by a rename.
+    // All four snapshot columns, filled at issuance: a certificate joining to
+    // the club at read time would be rewritten by a rename.
     expect(rows[0]?.holderNameSnapshot).toBe('Amina Hassan');
     expect(rows[0]?.eventTitleSnapshot).toBe(event.title);
     expect(rows[0]?.clubNameSnapshot).toBe(club.name);
@@ -142,9 +135,8 @@ describe('POST /events/:eventId/certificates/issue', () => {
   });
 
   it('issues nothing the second time it runs', async () => {
-    // Spec 7.6: idempotent. The partial unique index on registration_id
-    // WHERE status = 'ACTIVE' is the guarantee; a second run must be a no-op
-    // rather than a duplicate or an error.
+    // The partial unique index on registration_id WHERE status = 'ACTIVE' is the
+    // guarantee; a second run must be a no-op, not a duplicate or an error.
     const { event } = await aCertifiableEvent();
     const admin = await loginAsAdmin(app);
 
@@ -154,7 +146,7 @@ describe('POST /events/:eventId/certificates/issue', () => {
     expect(first.body).toEqual({ issued: 1, total: 1 });
     expect(second.body).toEqual({ issued: 0, total: 1 });
     expect(await prisma.certificate.count({ where: { eventId: event.id } })).toBe(1);
-    // And no second CERTIFIED audit row for a transition that did not happen.
+    // No second CERTIFIED audit row for a transition that did not happen.
     expect(await prisma.auditLog.count({ where: { action: 'certificate.issued_for_event' } })).toBe(1);
   });
 
@@ -168,8 +160,8 @@ describe('POST /events/:eventId/certificates/issue', () => {
   });
 
   it('refuses while the attendance correction window is still open', async () => {
-    // Issuing at COMPLETED would make spec 7.5's 48 hours for correcting
-    // attendance zero, because 7.6 locks attendance at CERTIFIED.
+    // Issuing at COMPLETED cuts the 48-hour correction window to zero, because
+    // CERTIFIED locks attendance.
     const now = Date.now();
     const { event } = await aCertifiableEvent({
       startsAt: new Date(now - 4 * HOUR),
@@ -202,11 +194,9 @@ describe('POST /events/:eventId/certificates/issue', () => {
 
 describe('the lifecycle sweep', () => {
   it('is what actually issues, because completion and issuance are 48 hours apart', async () => {
-    // An event reaches COMPLETED when its check-in window shuts and cannot
-    // issue until the correction window closes two days later, so no status
-    // advance is ever also an issuance. Without a path that looks for events
-    // already sitting in COMPLETED, certificates would only ever appear when
-    // somebody happened to open the event page afterwards.
+    // No status advance is ever also an issuance, since the two are 48 hours
+    // apart. Catches a sweep with no clause for events already sitting in
+    // COMPLETED: certificates would appear only when somebody opened the page.
     const { event } = await aCertifiableEvent();
 
     const res = await request(app.getHttpServer())
@@ -232,28 +222,25 @@ describe('GET /certificates/:id/pdf', () => {
 
     expect(first.status).toBe(200);
     expect(first.body.pdfUrl).toContain(`certificates/${certificate.id}/certificate.pdf`);
-    // The object path is a pure function of the certificate id, and every
-    // holder of registration:read can list those ids. A public URL here
-    // makes the ownership check below decorative: anyone who can read the
-    // listing reads every student's credential document with no cookie.
+    // The object path is a pure function of the certificate id, which every
+    // holder of registration:read can list, so a public URL makes the ownership
+    // check below decorative.
     expect(first.body.pdfUrl).not.toContain('/object/public/');
     expect(first.body.pdfUrl).toContain('/object/sign/');
     expect(first.body.pdfUrl).toContain('token=');
     expect(signed).toEqual([
       { path: `certificates/${certificate.id}/certificate.pdf`, bucket: CERTIFICATE_BUCKET },
     ]);
-    // Signing alone closes nothing. majlis-storage is a PUBLIC bucket, so a
-    // certificate written there stays readable at /object/public/<path> with
-    // no cookie no matter how the API hands the URL out. Only a bucket that
-    // refuses the unsigned path fixes it, so both the bytes and the
-    // signature have to be against the private one. Verified live
-    // 2026-09-13: anonymous /object/public/ on majlis-certificates answers
-    // 400, a signed URL answers 200, a tampered token answers 400.
+    // Signing alone closes nothing: majlis-storage is a PUBLIC bucket, so bytes
+    // written there stay readable at /object/public/<path> however the URL is
+    // handed out. Both the bytes and the signature must be against the private
+    // bucket. Verified live: anonymous /object/public/ on majlis-certificates
+    // answers 400, a signed URL 200, a tampered token 400.
     const object = uploaded.get(`certificates/${certificate.id}/certificate.pdf`);
     expect(object?.bucket).toBe(CERTIFICATE_BUCKET);
     expect(object?.bucket).not.toBe(STORAGE_BUCKET);
-    // A real PDF, not an empty buffer: the render is the thing that can fail
-    // silently once the fake storage accepts anything.
+    // A real PDF, not an empty buffer: the render fails silently once the fake
+    // storage accepts anything.
     expect(object?.contentType).toBe('application/pdf');
     expect(object?.size).toBeGreaterThan(1000);
 
@@ -262,13 +249,12 @@ describe('GET /certificates/:id/pdf', () => {
       .get(`${API_PREFIX}/certificates/${certificate.id}/pdf`)
       .set('Cookie', attendee.sessionCookie);
 
-    // A second call signs again rather than replaying a stored URL: the
-    // first one expires, and a persisted URL would have to be either
-    // long-lived or already dead.
+    // Catches a persisted URL replayed on every call: the first signature
+    // expires, so a stored one is either long-lived or already dead.
     expect(second.body.pdfUrl).not.toBe(first.body.pdfUrl);
     expect(second.body.pdfUrl).toContain('/object/sign/');
-    // Rendered once, on the first download. Spec 7.6: issuance stays cheap
-    // enough to run inline because it renders nothing.
+    // Rendered once, on the first download, which is what keeps issuance cheap
+    // enough to run inline.
     expect(uploaded.size).toBe(0);
   });
 
@@ -298,9 +284,8 @@ describe('GET /verify/:code', () => {
     const res = await verify(certificate.verificationCode);
 
     expect(res.status).toBe(200);
-    // Spec 7.6: holder name, event, club, issue date, status, "and nothing
-    // else, ever". Pinned exactly, because a widened response on an
-    // anonymous route publishes whatever was added to the world.
+    // Pinned exactly: a widened response on an anonymous route publishes
+    // whatever was added to the world.
     expect(Object.keys(res.body).sort()).toEqual([
       'clubName',
       'eventTitle',
@@ -337,8 +322,8 @@ describe('GET /verify/:code', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('REVOKED');
     expect(res.body.revokedAt).not.toBeNull();
-    // Same six keys as an active one. An employer holding a revoked document
-    // has to learn that it was revoked, and the reason is not theirs to read.
+    // Same six keys as an active one: an employer must learn it was revoked,
+    // and the reason is not theirs to read.
     expect(Object.keys(res.body).sort()).toEqual([
       'clubName',
       'eventTitle',
@@ -361,9 +346,8 @@ describe('an attendance correction after the certificates have issued', () => {
     const certificate = await prisma.certificate.findFirstOrThrow({ where: { eventId: event.id } });
     expect((await verify(certificate.verificationCode)).body.status).toBe('ACTIVE');
 
-    // The event is CERTIFIED, which assertCorrectable admits for an Admin
-    // carrying an override reason. Correcting a mis-scan here used to leave
-    // /verify answering ACTIVE, with that student's name, indefinitely.
+    // Catches a correction that does not revoke: /verify keeps answering ACTIVE,
+    // with that student's name, indefinitely.
     const res = await request(app.getHttpServer())
       .patch(`${API_PREFIX}/events/${event.id}/attendance/${attended.id}`)
       .set('Cookie', admin.sessionCookie)
@@ -384,8 +368,7 @@ describe('an attendance correction after the certificates have issued', () => {
     expect(row.revokedById).toBe(admin.userId);
     expect(row.revokedReason).toBe('Scanned the wrong badge at the door');
 
-    // Audited in the same transaction as the correction, like every other
-    // sensitive action.
+    // Audited in the same transaction as the correction.
     const audit = await prisma.auditLog.findMany({ where: { action: 'certificate.revoked' } });
     expect(audit).toHaveLength(1);
     expect(audit[0]?.actorUserId).toBe(admin.userId);
@@ -400,7 +383,7 @@ describe('POST /certificates/:id/reissue', () => {
     await issue(admin.sessionCookie, event.id);
     const old = await prisma.certificate.findFirstOrThrow({ where: { eventId: event.id } });
 
-    // A name correction after issuance is the case spec 7.6 names.
+    // A name correction after issuance is the case reissue exists for.
     await prisma.user.update({ where: { id: attendee.userId }, data: { fullName: 'Amina Al Hassan' } });
 
     const res = await request(app.getHttpServer())
@@ -412,24 +395,23 @@ describe('POST /certificates/:id/reissue', () => {
     expect(res.body.holderName).toBe('Amina Al Hassan');
     expect(res.body.serialNumber).not.toBe(old.serialNumber);
 
-    // The partial unique index allows exactly one ACTIVE row per
-    // registration, so this only holds if the revoke landed first.
+    // The partial unique index allows one ACTIVE row per registration, so this
+    // holds only if the revoke landed first.
     const rows = await prisma.certificate.findMany({ where: { registrationId: old.registrationId } });
     expect(rows).toHaveLength(2);
     expect(rows.filter((r) => r.status === 'ACTIVE')).toHaveLength(1);
 
-    // Both remain verifiable, which is the point of revoking rather than
-    // deleting: the old document is out there on somebody's wall.
+    // Both stay verifiable, which is why reissue revokes rather than deletes:
+    // the old document is out there on somebody's wall.
     expect((await verify(old.verificationCode)).body.status).toBe('REVOKED');
     expect((await verify(res.body.verificationCode)).body.status).toBe('ACTIVE');
-    // And the old row's snapshot still says what it always said.
+    // The old row's snapshot still says what it always said.
     expect((await verify(old.verificationCode)).body.holderName).toBe('Amina Hassan');
   });
 
   it('tells the holder about the replacement, not only about the revocation', async () => {
-    // Spec 7.7's trigger is "certificate issued or revoked", and a reissue is
-    // both. An inbox that says only "revoked" during a name correction tells
-    // the holder the opposite of what happened.
+    // A reissue is both an issue and a revoke. Catches an inbox saying only
+    // "revoked" during a name correction, the opposite of what happened.
     const { event, attendee } = await aCertifiableEvent();
     const admin = await loginAsAdmin(app);
     await issue(admin.sessionCookie, event.id);
@@ -443,9 +425,8 @@ describe('POST /certificates/:id/reissue', () => {
 
     const rows = await prisma.notification.findMany({ where: { userId: attendee.userId } });
     expect(rows.filter((r) => r.type === 'certificate.revoked')).toHaveLength(1);
-    // Two issued rows, the first from the original issuance: the dedupe key
-    // is per certificate id, so the replacement is a notification of its own
-    // rather than one the first press absorbs.
+    // Two issued rows, the first from the original issuance: the dedupe key is
+    // per certificate id, so the replacement is not absorbed by the first.
     const issued = rows.filter((r) => r.type === 'certificate.issued');
     expect(issued).toHaveLength(2);
     expect(issued.map((r) => r.dedupeKey)).toContain(`certificate.issued:${res.body.id}`);

@@ -16,13 +16,10 @@ beforeEach(async () => {
 const INSTANT = new Date('2026-06-15T12:00:00.000Z');
 
 describe('timestamp storage', () => {
-  /**
-   * Reading back through Prisma proves nothing: without the UTC pin, Prisma
-   * writes and reads through the same server offset and returns exactly what
-   * it was given while the row holds a different instant. `extract(epoch
-   * from ...)` on a fresh pg connection is offset-independent, so it sees
-   * the instant actually stored.
-   */
+  // Reading back through Prisma proves nothing: without the UTC pin it writes
+  // and reads through the same offset and returns what it was given while the
+  // row holds a different instant. `extract(epoch from ...)` on a fresh pg
+  // connection is offset-independent, so it sees the instant actually stored.
   it('stores the instant Prisma was given, not its wall clock', async () => {
     const user = await prisma.user.create({ data: { ...aUser(), createdAt: INSTANT } });
 

@@ -24,11 +24,8 @@ interface OpenApiDoc {
   components?: { schemas?: Record<string, OpenApiSchema> };
 }
 
-/**
- * Resolves a `{ $ref: '#/components/schemas/X' }` node against the document
- * it came from: `content['application/json'].schema` is always this shape
- * for a DTO-typed `@ApiResponse`, never the inline schema itself.
- */
+/** Resolves a `{ $ref: '#/components/schemas/X' }` node against its document: a
+ * DTO-typed `@ApiResponse` is always a ref, never an inline schema. */
 function resolveSchema(doc: OpenApiDoc, schema: OpenApiSchema): OpenApiSchema {
   if (!schema.$ref) return schema;
   const name = schema.$ref.replace('#/components/schemas/', '');
@@ -56,19 +53,14 @@ describe('generated OpenAPI document', () => {
     expect(loginPath).toBeDefined();
 
     const response401 = doc.paths[loginPath!]!.post?.responses?.['401'];
-    // Catches a route that documents no error responses at all, the state
-    // before this task, where the Problem Details schemas were imported only
-    // as TYPES and so never reached the generated document.
+    // Catches a route documenting no error responses, which happens when the
+    // Problem Details schemas are imported only as types.
     expect(response401).toBeDefined();
 
     const schema = resolveSchema(doc, response401!.content!['application/json']!.schema);
 
-    // The bug being fixed produces a document with no error SHAPE: a test
-    // that stopped at "the 401 key exists" would still pass against a
-    // response object carrying an empty or missing schema. Asserting the
-    // resolved schema's own properties is what actually discriminates: it
-    // fails unless a real Problem Details shape reached components.schemas,
-    // not just a response status code.
+    // Asserting the resolved schema's properties, not just that the 401 key
+    // exists: an empty or missing schema would otherwise pass.
     expect(schema.properties).toBeDefined();
     expect(schema.properties!.type).toBeDefined();
     expect(schema.properties!.title).toBeDefined();
@@ -76,9 +68,8 @@ describe('generated OpenAPI document', () => {
   });
 
   it("declares PATCH /users/{id}/status's 404 response with the same Problem Details schema component", async () => {
-    // A second route, reusing the same component, proves the schema is
-    // registered once and referenced (per openapi.ts's design), not
-    // hand-written per route as the spec forbids.
+    // A second route reusing the component proves the schema is registered once
+    // and referenced, not hand-written per route.
     const res = await fetchDoc();
     const doc = res.body as OpenApiDoc;
 
@@ -96,13 +87,10 @@ describe('generated OpenAPI document', () => {
 });
 
 describe('403 responses follow @RequirePermission', () => {
-  /**
-   * The decorator emits its own `@ApiResponse(403)` rather than leaving it to
-   * be hand-written beside all 41 call sites, which is how the document and
-   * the guard drift apart. These two cases are what make that a fold rather
-   * than a blanket: one guarded route must carry the 403, one deliberately
-   * unguarded route must not.
-   */
+  // The decorator emits its own `@ApiResponse(403)` rather than one hand-written
+  // per call site, which is how the document and the guard drift apart. Two
+  // cases keep it a fold, not a blanket: a guarded route carries the 403, an
+  // unguarded one does not.
   it('documents 403 on a guarded route, with the Problem Details schema', async () => {
     const doc = (await fetchDoc()).body as OpenApiDoc;
 
@@ -112,8 +100,8 @@ describe('403 responses follow @RequirePermission', () => {
     const response403 = doc.paths[auditPath!]!.get?.responses?.['403'];
     expect(response403).toBeDefined();
 
-    // Not just the status key: a response carrying no schema would still
-    // satisfy "the 403 exists" while documenting nothing about its body.
+    // Not just the status key: a response with no schema satisfies "the 403
+    // exists" while documenting nothing about its body.
     const schema = resolveSchema(doc, response403!.content!['application/json']!.schema);
     expect(schema.properties?.title).toBeDefined();
     expect(schema.properties?.status).toBeDefined();
@@ -122,9 +110,9 @@ describe('403 responses follow @RequirePermission', () => {
   it('leaves a self-scoped route without one', async () => {
     const doc = (await fetchDoc()).body as OpenApiDoc;
 
-    // GET /me/invitations carries no @RequirePermission: it is scoped by
-    // `actor.id` inside TeamService. A 403 here would mean the decorator's
-    // response had been applied globally instead of per call site.
+    // GET /me/invitations carries no @RequirePermission, being scoped by
+    // `actor.id` in TeamService. A 403 here means the response was applied
+    // globally instead of per call site.
     const invitationsPath = Object.keys(doc.paths).find((p) => p.endsWith('/me/invitations'));
     expect(invitationsPath).toBeDefined();
     expect(doc.paths[invitationsPath!]!.get?.responses?.['403']).toBeUndefined();

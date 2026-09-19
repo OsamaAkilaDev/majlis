@@ -3,36 +3,22 @@ import { ARGON2_OPTIONS } from '../src/auth/auth.service';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { pgAdapter } from '../src/prisma/pg-adapter';
 
-/**
- * Development data. Every write is an upsert keyed on a natural unique
- * column, so re-running restores each seeded row to its declared state
- * (including the password hash) rather than only guaranteeing row count.
- * Prisma 7 no longer runs this automatically.
- */
+// Development data. Every write is an upsert keyed on a natural unique column,
+// so re-running restores each row to its declared state, not just its count.
+// Prisma 7 no longer runs this automatically.
 
-// Every seeded persona shares this password (see README.md). Hashed with the
-// same ARGON2_OPTIONS the login path verifies against — computed once here
-// rather than pinned as a literal, so it can never drift from the real
-// parameters the way the old placeholder string did.
+// Shared by every seeded persona (see README.md). Hashed here with the same
+// ARGON2_OPTIONS the login path verifies against, so it cannot drift from them.
 const SEED_PASSWORD = 'Passw0rd!';
 
 const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
 
-/**
- * Restores a seeded registration to the status its scenario needs.
- *
- * Registrations have no natural unique key, so this cannot be an upsert; but
- * the "create only if absent" guard it replaces left a row an earlier suite
- * run had moved elsewhere exactly where it was. A NO_SHOW registration is
- * not CANCELLED, so the old guard found it and did nothing, and the
- * documented "re-run db:seed to refresh the scan window" refreshed the
- * window without restoring the registration the scan applies to. The
- * scenario then failed as though the scanner were broken.
- *
- * CANCELLED rows are left behind rather than reused: the one-open-per-user
- * partial index allows a fresh open row beside them, which is what a student
- * who cancelled and registered again actually looks like.
- */
+/** Restores a seeded registration to the status its scenario needs. No natural
+ * unique key, so not an upsert; a "create only if absent" guard leaves a row an
+ * earlier suite run moved to NO_SHOW exactly where it was, and the scan then
+ * fails as though the scanner were broken. CANCELLED rows are left behind
+ * rather than reused: the one-open-per-user index allows a fresh row beside
+ * them, which is what cancelling and registering again looks like. */
 async function seedRegistration(
   prisma: PrismaClient,
   eventId: string,
@@ -95,8 +81,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 
   // A club nobody can self-join, so the accessibility suite always has a
-  // disabled join control to scan. Without it that scan depends on whichever
-  // policy the first club happens to carry.
+  // disabled join control to scan, whatever policy the first club carries.
   await prisma.club.upsert({
     where: { slug: 'chess-club' },
     update: { membershipPolicy: 'CLOSED' },
@@ -112,9 +97,8 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // Appointments have no natural unique key, so idempotency is a guarded
-  // create rather than an upsert. The one-active-Lead partial index would
-  // otherwise reject the second run.
+  // No natural unique key, so idempotency is a guarded create, not an upsert:
+  // the one-active-Lead partial index would reject the second run.
   for (const [email, role] of [
     ['lead@uni.ac.ae', 'LEAD'],
     ['ops@uni.ac.ae', 'OPERATIONS'],
@@ -135,7 +119,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
       });
     }
 
-    // Team members hold an ordinary membership too, kept as a separate record.
+    // Team members hold an ordinary membership too, as a separate record.
     const membership = await prisma.clubMembership.findFirst({
       where: { clubId: club.id, userId: users[email]!, status: 'ACTIVE' },
     });
@@ -146,8 +130,8 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     }
   }
 
-  // Declared once and used for both branches: Stage 5's concurrency tests turn
-  // on capacity being what this says, and an empty `update` never restores it.
+  // Used for both upsert branches: the concurrency tests turn on capacity being
+  // what this says, and an empty `update` never restores it.
   const event = {
     title: 'Introduction to ROS 2',
     summary: 'A hands-on first session with the Robot Operating System.',
@@ -180,8 +164,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 
   // An event nobody can register for, so the accessibility suite always has a
-  // disabled register control to scan. Capacity one, taken, and no waitlist:
-  // the same reasoning as chess-club's CLOSED membership policy above.
+  // disabled register control to scan. Capacity one, taken, and no waitlist.
   const full = {
     ...event,
     title: 'Robotics Showcase',
@@ -210,15 +193,12 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   // The one seat, held.
   await seedRegistration(prisma, showcase.id, users['lead@uni.ac.ae']!, 'CONFIRMED');
 
-  // Stage 6 needs two clocks the other events cannot supply, because nothing
-  // in the product can move an event's boundaries into the past: one event
-  // whose check-in window is open right now, and one whose 48-hour correction
-  // window has already closed. Without them the scanner can only ever be shown
-  // refusing, and no certificate can exist to verify.
-  //
-  // Both are seeded PUBLISHED and left for the lazy lifecycle to advance, so
-  // the status on screen is one the product actually computed rather than one
-  // this file asserted.
+  // Two clocks nothing in the product can produce, since it cannot move an
+  // event's boundaries into the past: one check-in window open now, and one
+  // whose 48-hour correction window has closed. Without them the scanner can
+  // only be shown refusing and no certificate exists to verify. Both seeded
+  // PUBLISHED and left for the lazy lifecycle to advance, so the status on
+  // screen is one the product computed.
   const ongoing = {
     ...event,
     title: 'Drone Build Night',
@@ -248,8 +228,8 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // Back to CONFIRMED even when an earlier suite run checked it in or swept
-  // it to NO_SHOW: this is the registration the scanner walk scans.
+  // Back to CONFIRMED even if an earlier suite run checked it in or swept it to
+  // NO_SHOW: this is the registration the scanner walk scans.
   await seedRegistration(prisma, tonight.id, users['student@uni.ac.ae']!, 'CONFIRMED');
 
   const finished = {
@@ -273,9 +253,8 @@ export async function seed(prisma: PrismaClient): Promise<void> {
 
   const past = await prisma.event.upsert({
     where: { clubId_slug: { clubId: club.id, slug: 'line-follower-sprint' } },
-    // Left alone once it has advanced: the walk is forward-only, and putting
-    // a CERTIFIED event back to PUBLISHED on every reseed would strand the
-    // certificates it has already issued.
+    // No status here: the walk is forward-only, and putting a CERTIFIED event
+    // back to PUBLISHED on reseed would strand the certificates it issued.
     update: finished,
     create: {
       ...finished,
@@ -286,10 +265,9 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // CHECKED_IN, so the COMPLETED hop leaves it alone (it only sweeps CONFIRMED
-  // and WAITLISTED into NO_SHOW) and it is eligible for a certificate. The
-  // attendance record comes with it: a registration checked in with no record
-  // is a state the product itself cannot produce.
+  // CHECKED_IN, so the COMPLETED hop leaves it alone and it is certificate
+  // eligible. The attendance record comes with it: checked in with no record is
+  // a state the product cannot produce.
   const attended = await seedRegistration(prisma, past.id, users['student@uni.ac.ae']!, 'CHECKED_IN');
   await prisma.attendanceRecord.upsert({
     where: { registrationId: attended.id },
@@ -305,16 +283,10 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 }
 
-/**
- * This script writes placeholder accounts sharing one publicly-known
- * password (real argon2id hash, known plaintext), plus a PUBLISHED event. It
- * must never reach a real database.
- *
- * The test harness refuses any connection string not naming `majlis_test`;
- * this is the reciprocal guard for the development path. A `.env` pointed at
- * a deployed database is an ordinary mistake, and without this the only
- * symptom would be placeholder credentials appearing in production.
- */
+/** This script writes accounts sharing one publicly-known password, so it must
+ * never reach a real database. The test harness refuses any connection string
+ * not naming `majlis_test`; this is the reciprocal guard for the development
+ * path, where a `.env` pointed at a deployed database is an ordinary mistake. */
 export function assertSafeToSeed(url: string, env: NodeJS.ProcessEnv): void {
   if (env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed: NODE_ENV is production.');

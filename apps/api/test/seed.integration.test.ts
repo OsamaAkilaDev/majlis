@@ -37,8 +37,8 @@ describe('seed', () => {
   });
 
   it('appoints the right people to those roles, not merely the right number', async () => {
-    // Counting by role alone passes even if the two people were swapped,
-    // the right number of wrong rows.
+    // Counting by role alone passes with the two people swapped: the right
+    // number of wrong rows.
     await seed(prisma);
     const club = await prisma.club.findFirstOrThrow();
     const lead = await prisma.user.findUniqueOrThrow({ where: { email: 'lead@uni.ac.ae' } });
@@ -64,12 +64,9 @@ describe('seed', () => {
   });
 
   it('lets the seeded admin actually log in with the password README.md promises', async () => {
-    // The old placeholder hash made every seeded account unauthenticatable.
-    // This is the exact login a fresh clone's README walks a developer
-    // through. Asserting the response's specific email and platformRole,
-    // not merely a 200, is what would catch a fix that hashes the right
-    // password but stores it against the wrong persona (e.g. every seeded
-    // user sharing one row, or the hash landing on lead@uni.ac.ae instead).
+    // The exact login the README walks a developer through. Asserting the
+    // specific email and platformRole, not just a 200, catches a hash that is
+    // right but stored against the wrong persona.
     await seed(prisma);
     const res = await login(app, { email: 'admin@uni.ac.ae', password: 'Passw0rd!' });
 
@@ -79,9 +76,8 @@ describe('seed', () => {
   });
 
   it('rejects the seeded admin with the wrong password', async () => {
-    // Discriminates against a seed bug that hashes an empty string, ignores
-    // ARGON2_OPTIONS, or otherwise accepts anything: a login test that only
-    // checked the correct password succeeding would miss all three.
+    // Catches a seed that hashes an empty string, ignores ARGON2_OPTIONS, or
+    // otherwise accepts anything: a correct-password test misses all three.
     await seed(prisma);
     const res = await login(app, { email: 'admin@uni.ac.ae', password: 'wrong-password-entirely' });
     expect(res.status).toBe(401);
@@ -119,8 +115,8 @@ describe('seed', () => {
   });
 
   it('repairs a corrupted password hash on re-seed', async () => {
-    // Catches an `update` branch that omits passwordHash: the stored hash
-    // would stay corrupted instead of being restored to the seeded one.
+    // Catches an `update` branch omitting passwordHash: a corrupted hash would
+    // stay corrupted instead of being restored.
     await seed(prisma);
     const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@uni.ac.ae' } });
     await prisma.user.update({ where: { id: admin.id }, data: { passwordHash: 'corrupted-hash' } });
@@ -133,9 +129,8 @@ describe('seed', () => {
   });
 
   it('restores a corrupted event capacity and certificate flags on re-seed', async () => {
-    // Catches the `update: {}` branch: a developer who hand-edits capacity to
-    // reproduce a bug keeps that value through every re-seed, and Stage 5's
-    // last-seat concurrency tests then run against the wrong number.
+    // Catches an `update: {}` branch: a hand-edited capacity survives every
+    // re-seed, and the last-seat concurrency tests run against the wrong number.
     await seed(prisma);
     const before = await prisma.event.findFirstOrThrow();
     await prisma.event.update({

@@ -53,11 +53,10 @@ async function anOpenEvent(overrides: Record<string, unknown> = {}) {
 
 describe('the last seat, under real concurrency', () => {
   it('admits exactly one student when five race for one seat', async () => {
-    // Five genuinely simultaneous requests from five distinct users, not five
-    // sequential calls: a sequential pair passes against a read-then-write
-    // implementation with no row lock at all. Only real concurrency puts two
-    // transactions inside the window between reading confirmed_count and
-    // incrementing it.
+    // Promise.all over five distinct users forces the race: a sequential pair
+    // passes against a read-then-write with no row lock, because only real
+    // concurrency puts two transactions between reading and incrementing
+    // confirmed_count.
     const { event } = await anOpenEvent({ capacity: 1, waitlistEnabled: true });
     const racers = await students(5);
 
@@ -72,9 +71,8 @@ describe('the last seat, under real concurrency', () => {
     const after = await prisma.event.findUniqueOrThrow({ where: { id: event.id } });
     expect(after.confirmedCount).toBe(1);
 
-    // The four losers form a queue with no duplicate places in it. A position
-    // assigned outside the row lock produces two students at position 1 and a
-    // promotion order nobody can defend.
+    // Catches a waitlist position assigned outside the row lock, which puts two
+    // students at position 1 and leaves the promotion order undefendable.
     const waitlisted = await prisma.eventRegistration.findMany({
       where: { eventId: event.id, status: 'WAITLISTED' },
       orderBy: { waitlistPosition: 'asc' },
@@ -90,8 +88,8 @@ describe('the last seat, under real concurrency', () => {
     const res = await register(second!.sessionCookie, event.id);
 
     expect(res.status).toBe(409);
-    // The filter maps any stray P2002 to a generic 409 too, so the status
-    // alone proves nothing about which branch ran.
+    // The filter maps a stray P2002 to a generic 409 too, so the status alone
+    // proves nothing about which branch ran.
     expect(res.body.detail).toBe('That event is full and has no waitlist.');
     expect(await prisma.eventRegistration.count({ where: { eventId: event.id } })).toBe(1);
   });
@@ -110,22 +108,20 @@ describe('waitlist ordering and promotion', () => {
 
     const rows = await prisma.eventRegistration.findMany({ where: { eventId: event.id } });
     const byUser = new Map(rows.map((r) => [r.userId, r]));
-    // Position 1, not position 2 and not both: promotion order is the whole
-    // point of holding a queue rather than a set.
+    // Position 1, not 2 and not both: the order is why this is a queue.
     expect(byUser.get(first!.userId)?.status).toBe('CONFIRMED');
     expect(byUser.get(first!.userId)?.promotedAt).not.toBeNull();
     expect(byUser.get(second!.userId)?.status).toBe('WAITLISTED');
     expect(byUser.get(holder!.userId)?.status).toBe('CANCELLED');
 
-    // The counter has to come back to exactly one. Decrementing without
-    // re-incrementing on promotion leaves the event permanently under-filled.
+    // Catches a decrement with no re-increment on promotion, which leaves the
+    // event permanently under-filled.
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).confirmedCount).toBe(1);
   });
 
   it('does not free a seat when a waitlisted student cancels', async () => {
-    // Cancelling from the waitlist frees nothing. A handler that decremented
-    // the counter for every cancellation would push the event over capacity
-    // on the next registration.
+    // Catches a handler decrementing the counter for every cancellation, which
+    // pushes the event over capacity on the next registration.
     const { event } = await anOpenEvent({ capacity: 1, waitlistEnabled: true });
     const [holder, queued] = await students(2);
 
@@ -169,8 +165,8 @@ describe('the registration window', () => {
     expect(early.status).toBe(422);
     expect(early.body.detail).toBe('Registration for that event has not opened yet.');
 
-    // Closed a second ago but not yet swept: the window check has to stand on
-    // its own, not lean on the lifecycle having already moved the status.
+    // Closed a second ago but not yet swept: the window check must stand alone,
+    // not lean on the lifecycle having moved the status.
     const over = await anOpenEvent({
       registrationOpensAt: new Date(Date.now() - 2 * DAY),
       registrationClosesAt: new Date(Date.now() - 1000),
@@ -191,8 +187,7 @@ describe('the registration window', () => {
     expect(onCancelled.status).toBe(422);
     expect(onCancelled.body.detail).toBe('That event was cancelled.');
 
-    // 404, not 403: a draft is not visible outside the club team, so the
-    // refusal must not confirm that it exists.
+    // 404, not 403: the refusal must not confirm the draft exists.
     expect((await register(student.sessionCookie, draft.event.id)).status).toBe(404);
   });
 });
@@ -215,8 +210,7 @@ describe('eligibility and the Admin override', () => {
     expect(overridden.body.status).toBe('CONFIRMED');
     expect(overridden.body.source).toBe('ADMIN_OVERRIDE');
 
-    // Spec 6.1: every Admin override records a reason, in the same
-    // transaction as the action.
+    // Every admin override records a reason in the same transaction.
     const audit = await prisma.auditLog.findFirstOrThrow({
       where: { action: 'event.registration_overridden' },
     });
@@ -240,8 +234,8 @@ describe('eligibility and the Admin override', () => {
   });
 
   it('returns the same registration when a student registers twice', async () => {
-    // Spec 8 makes registration idempotent. 409 is reserved for the
-    // full-and-no-waitlist case, so a second click must not produce one.
+    // Registration is idempotent, and 409 is reserved for full-with-no-waitlist,
+    // so a second click must not produce one.
     const { event } = await anOpenEvent({ capacity: 5 });
     const student = await loginAsStudent(app);
 
@@ -270,9 +264,8 @@ describe('GET /events/:eventId/registrations', () => {
 
     expect((await roster(lead.sessionCookie)).status).toBe(200);
 
-    // Spec 6.1 excludes Marketing from attendee personal data outright, and
-    // gives club Operations the roster only for an event they are assigned
-    // to: a standing club appointment is not enough.
+    // Marketing is excluded from attendee data outright, and Operations reach the
+    // roster only for an assigned event: a standing appointment is not enough.
     const refusedMarketing = await roster(marketing.sessionCookie);
     expect(refusedMarketing.status).toBe(403);
     expect(refusedMarketing.body.detail).toBe('You do not have permission to do that.');
@@ -291,9 +284,8 @@ describe('GET /events/:eventId/registrations', () => {
 
 describe('what a promotion leaves behind', () => {
   it('clears the waitlist position of the student it promoted', async () => {
-    // The column travels into eventDetail.viewerWaitlistPosition, the roster
-    // and GET /me/registrations, where a non-null value means "waitlisted".
-    // Left set, three screens render "Confirmed" and "Position 1" together.
+    // A non-null position means "waitlisted" on three screens, so leaving it set
+    // renders "Confirmed" and "Position 1" together.
     const { event } = await anOpenEvent({ capacity: 1, waitlistEnabled: true });
     const [holder, queued] = await students(2);
 
@@ -316,10 +308,9 @@ describe('what a promotion leaves behind', () => {
   });
 
   it('promotes nobody into a cancelled event', async () => {
-    // Spec 7.4's promotion is the counterpart of a freed seat, and a cancelled
-    // event has no seats. Promoting here makes someone CONFIRMED with a
-    // promotedAt on an event that is not happening, which in Stage 7 becomes
-    // a "you're off the waitlist" message for it.
+    // A cancelled event has no seats to free, so promoting here makes someone
+    // CONFIRMED on an event that is not happening, and sends them a
+    // "you're off the waitlist" message for it.
     const { lead, event } = await anOpenEvent({ capacity: 1, waitlistEnabled: true });
     const [holder, queued] = await students(2);
 
@@ -338,16 +329,15 @@ describe('what a promotion leaves behind', () => {
     const byUser = new Map(rows.map((r) => [r.userId, r]));
     expect(byUser.get(queued!.userId)?.status).toBe('WAITLISTED');
     expect(byUser.get(queued!.userId)?.promotedAt).toBeNull();
-    // The seat still comes off the counter: it is the record of who held one.
+    // The seat still comes off the counter, which records who held one.
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).confirmedCount).toBe(0);
   });
 });
 
 describe('PATCH /events/:eventId capacity, against the confirmed count', () => {
   it('promotes only as many as the new headroom, not the whole new capacity', async () => {
-    // capacity - confirmedCount, not capacity. With four queued and one seat
-    // already taken, raising 3 -> 4 has room for three more; promoting four
-    // oversells and the event_capacity_bounds CHECK is what stops it.
+    // Headroom is capacity - confirmedCount, not capacity: with one seat taken,
+    // raising 3 to 4 has room for three more, and promoting four oversells.
     const { lead, event } = await anOpenEvent({ capacity: 3, waitlistEnabled: true, confirmedCount: 1 });
     const queued = await students(4);
     await prisma.eventRegistration.createMany({
@@ -376,17 +366,14 @@ describe('PATCH /events/:eventId capacity, against the confirmed count', () => {
   });
 
   it('reads the confirmed count under the row lock, not before it', async () => {
-    // The guard and the headroom both decide on confirmedCount. Read outside
-    // the lock, a registration that commits in between makes the guard pass on
-    // a stale count and the CHECK constraint reject the write instead, which
-    // is a 23514 and not a P2002, so the caller gets a generic conflict rather
-    // than the message naming how many students are already confirmed.
+    // Catches confirmedCount read outside the lock: a registration committing in
+    // between passes the guard on a stale count, and the CHECK rejects the write
+    // as a 23514, giving a generic conflict instead of the counted message.
     const { lead, event } = await anOpenEvent({ capacity: 3, waitlistEnabled: true, confirmedCount: 2 });
     const latecomer = await loginAsStudent(app);
 
-    // The in-flight request must NOT be returned from the callback: Prisma
-    // awaits what the callback returns before committing, and the request is
-    // waiting on that commit.
+    // The in-flight request must not be returned from the callback: Prisma awaits
+    // the return value before committing, and the request waits on that commit.
     let inFlight!: Promise<request.Response>;
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${event.id}::uuid FOR UPDATE`;
@@ -411,9 +398,8 @@ describe('PATCH /events/:eventId capacity, against the confirmed count', () => {
 
 describe('the Admin override response', () => {
   it('carries the attendee, not the admin who registered them', async () => {
-    // person() short-circuits to the actor's own name and email for a
-    // self-registration. An override registers somebody else, so the response
-    // would otherwise name the admin as the attendee.
+    // Catches person() short-circuiting to the actor for a self-registration:
+    // an override registers somebody else, so the response names the admin.
     const email = `${uniq('attendee')}@uni.ac.ae`;
     const { event } = await anOpenEvent({ capacity: 5 });
     const attendee = await loginAsStudent(app, { email, fullName: 'Real Attendee' });

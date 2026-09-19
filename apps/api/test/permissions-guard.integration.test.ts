@@ -41,7 +41,7 @@ async function sessionCookieFor(userId: string): Promise<string> {
 
 const at = (hoursFromNow: number) => new Date(Date.now() + hoursFromNow * 3_600_000);
 
-/** Bare-minimum Event row, mirroring test/schema/events.integration.test.ts. */
+/** Bare-minimum Event row. */
 async function anEvent(clubId: string, createdById: string) {
   return prisma.event.create({
     data: {
@@ -67,9 +67,8 @@ async function anEvent(clubId: string, createdById: string) {
 
 describe('PermissionsGuard: HTTP', () => {
   it('denies a non-admin and records the denial, and the write does not happen', async () => {
-    // Catches a guard that denies correctly but records nothing (first two
-    // assertions), and separately a guard that records the denial but lets
-    // the write through anyway (the final assertion).
+    // Catches a guard that denies but records nothing, and separately one that
+    // records the denial and lets the write through.
     const student = await mkUser(); // platformRole defaults to STUDENT
     const cookie = await sessionCookieFor(student.id);
     const target = await prisma.user.create({ data: aUser() });
@@ -80,9 +79,8 @@ describe('PermissionsGuard: HTTP', () => {
       .send({ status: 'SUSPENDED' });
 
     expect(res.status).toBe(403);
-    // Guards run outside some Nest pipelines; pins that a guard's
-    // ForbiddenError still reaches ProblemExceptionFilter, the same way
-    // session-guard.integration.test.ts pins it for UnauthorizedError.
+    // Guards run outside some Nest pipelines, so this pins that a guard's
+    // ForbiddenError still reaches ProblemExceptionFilter.
     expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
 
     const rows = await prisma.auditLog.findMany({ where: { entityId: target.id } });
@@ -97,8 +95,7 @@ describe('PermissionsGuard: HTTP', () => {
   });
 
   it('allows an ADMIN through the same route, and the write happens', async () => {
-    // A positive control: without it, a guard that denies every request
-    // outright would still pass the test above.
+    // Positive control: a guard that denies everything passes the test above.
     const admin = await mkUser({ platformRole: 'ADMIN' });
     const cookie = await sessionCookieFor(admin.id);
     const target = await prisma.user.create({ data: aUser() });
@@ -133,16 +130,10 @@ describe('PermissionsGuard: HTTP', () => {
   });
 
   it('denies rather than 500s when the scope path in the decorator is unresolvable', async () => {
-    // Unlike an empty `:clubId` segment (Express 5's router never matches
-    // it, so the guard never runs and `expect([403,404])` would pass
-    // against ANY implementation of the guard), `broken-scope` is a route
-    // the router genuinely matches. Its decorator points `from` at
-    // `params.missing.deeper`, a dotted path with no real value behind it.
-    // readScopeId/readAt must resolve that to "no scope found" and let
-    // evaluate() deny from empty facts, never throw: without the
-    // `typeof acc !== 'object'` guard in readAt, indexing a property off
-    // the `undefined` that `params.missing` resolves to throws a raw
-    // TypeError, surfacing as an unhandled 500.
+    // `broken-scope` is a route the router genuinely matches (an empty `:clubId`
+    // segment never matches, so the guard would not run at all), and its `from`
+    // points at `params.missing.deeper`. Catches readAt missing its
+    // `typeof acc !== 'object'` guard, which throws a TypeError and 500s.
     const user = await mkUser(); // STUDENT, no club roles: evaluate() must deny
     const club = await mkClub();
     const res = await request(app.getHttpServer())
@@ -154,9 +145,8 @@ describe('PermissionsGuard: HTTP', () => {
 
 describe('resolveClubFacts', () => {
   it('grants club scope only in the club the appointment is in', async () => {
-    // Two users, two clubs. A resolver that ignores its userId argument
-    // (e.g. queries by clubId alone) would pass a single-user fixture; this
-    // shape catches it via the bob@clubA assertion.
+    // Two users and two clubs: a resolver ignoring its userId argument passes a
+    // single-user fixture, and is caught by the bob/clubA assertion.
     const alice = await mkUser();
     const bob = await mkUser();
     const clubA = await mkClub();
@@ -169,10 +159,8 @@ describe('resolveClubFacts', () => {
   });
 
   it('ignores an appointment that is not ACTIVE', async () => {
-    // Spec §5.1: "No permission is active until status = 'ACTIVE'." Catches
-    // a resolver that queries appointments without filtering on status,
-    // which would grant full Lead authority to anyone merely INVITED,
-    // including someone who DECLINED.
+    // Catches a resolver querying appointments without filtering on status,
+    // which grants full Lead authority to anyone INVITED, or who DECLINED.
     const alice = await mkUser();
     const clubA = await mkClub();
     for (const status of ['INVITED', 'DECLINED', 'EXPIRED', 'ENDED'] as const) {
@@ -185,9 +173,8 @@ describe('resolveClubFacts', () => {
 
 describe('resolveEventFacts', () => {
   it('grants event scope only for the event the assignment is on', async () => {
-    // Same two-users/two-somethings shape as the club test, for the same
-    // reason: catches a resolver that ignores its userId or eventId
-    // argument.
+    // Two users and two events, as in the club test: catches a resolver ignoring
+    // its userId or eventId argument.
     const alice = await mkUser();
     const bob = await mkUser();
     const club = await mkClub();
@@ -211,11 +198,9 @@ describe('resolveEventFacts', () => {
 
 describe('PermissionsGuard.loadFacts: event scope also carries the event\'s club authority', () => {
   it('grants a club LEAD authority over an event in their own club with no per-event assignment', async () => {
-    // Verifies the decision recorded in permissions.guard.ts: an event's
-    // club-level officers hold authority over its events even without a
-    // separate EventAssignment row. A resolver that only ever queried
-    // EventAssignment would silently deny a club Lead acting on their own
-    // club's event. This pins that it does not.
+    // A club's officers hold authority over its events with no EventAssignment
+    // row. Catches a resolver querying only EventAssignment, which silently
+    // denies a club Lead acting on their own club's event.
     const lead = await mkUser();
     const club = await mkClub();
     const event = await anEvent(club.id, lead.id);

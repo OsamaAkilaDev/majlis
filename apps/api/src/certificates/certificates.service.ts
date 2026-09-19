@@ -27,31 +27,21 @@ import { renderCertificate } from './certificate-pdf';
 
 const HOUR_MS = 60 * 60 * 1000;
 
-/**
- * Who is eligible, per the event's `attendance_policy` (spec 7.6). The one
- * policy that exists today is CHECK_IN_ONLY; the others are a later additive
- * stage and get their own entries here rather than an `if`.
- */
+/** Eligibility per `attendance_policy` (spec 7.6). A later policy gets its
+ *  own entry here rather than an `if`. */
 const ELIGIBLE = {
   CHECK_IN_ONLY: ['CHECKED_IN', 'ATTENDED'],
 } as const satisfies Record<string, readonly string[]>;
 
-/**
- * A serial or verification code collision is astronomically unlikely and
- * still has to be survivable, so the insert is retried with fresh codes
- * rather than returning a 500. Three attempts is far past the point where a
- * fourth would mean something other than chance.
- */
+/** A code collision is astronomically unlikely and still has to be
+ *  survivable: retried with fresh codes rather than answering 500. */
 const INSERT_ATTEMPTS = 3;
 
 /** A sweep that found more than this has a bigger problem than a slow run. */
 const ISSUE_SWEEP_LIMIT = 500;
 
-/**
- * Long enough for a browser to follow the URL it was just handed, short
- * enough that one leaked out of a history entry or a referrer header is
- * already dead.
- */
+/** Long enough to follow the URL, short enough that one leaked through a
+ *  history entry or a referrer header is already dead. */
 const PDF_URL_TTL_SECONDS = 300;
 
 const EVENT_FOR_ISSUE = {
@@ -74,11 +64,9 @@ interface Actor {
 }
 
 /**
- * A collision on one of the two generated codes, which is worth retrying
- * with fresh ones. Deliberately NOT
- * `certificate_one_active_per_registration`: that one means somebody else
- * already issued this registration's certificate, and retrying would loop
- * until the attempts ran out before answering the conflict it always was.
+ * Deliberately NOT `certificate_one_active_per_registration`: that means
+ * somebody else already issued this registration's certificate, and retrying
+ * would burn every attempt before answering the conflict it always was.
  */
 function isCodeCollision(e: unknown): boolean {
   if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2002') return false;
@@ -121,12 +109,11 @@ export class CertificatesService {
   }
 
   /**
-   * The lazy path: called after `advance()` on every single-event read and
-   * action, and by the sweep per swept row. Silent about an event that is
-   * not ready, because most of the events it is called for never will be.
+   * The lazy path, called after `advance()` on every single-event read.
+   * Silent about an event that is not ready, because most never will be.
    *
-   * This depends on nothing in `events/` beyond the transition function, so
-   * `EventsService` can call it without a cycle. There is no queue.
+   * Depends on nothing in `events/` beyond the transition function, so
+   * EventsService can call it without a cycle. There is no queue.
    */
   async issueForEvent(eventId: string): Promise<CertificateIssueResult> {
     const event = await this.host.tx.event.findUnique({
@@ -138,13 +125,10 @@ export class CertificatesService {
   }
 
   /**
-   * Every event whose certificates have come due, issued in its own
-   * transaction. Called by the lifecycle sweep, and it is the path that
-   * actually issues: an event reaches COMPLETED when its check-in window
-   * shuts, but cannot issue until the correction window closes 48 hours
+   * The path that actually issues: an event reaches COMPLETED when check-in
+   * shuts but cannot issue until the correction window closes 48 hours
    * later, so no status advance is ever also an issuance. The opportunistic
-   * path in EventsService only fires if a person happens to open the event
-   * after that.
+   * path only fires if somebody happens to open the event after that.
    */
   async issueDue(now = new Date()): Promise<number> {
     const rows = await this.host.tx.event.findMany({
@@ -164,10 +148,8 @@ export class CertificatesService {
     return issued;
   }
 
-  /**
-   * POST /events/:eventId/certificates/issue. Same work, but an Admin who
-   * pressed the button is told why nothing happened.
-   */
+  /** Same work, but an Admin who pressed the button is told why nothing
+   *  happened. */
   async issue(eventId: string): Promise<CertificateIssueResult> {
     const event = await this.host.tx.event.findUnique({
       where: { id: eventId },
@@ -181,16 +163,13 @@ export class CertificatesService {
   }
 
   /**
-   * Why this event cannot issue certificates, or null.
-   *
-   * An event already CERTIFIED is NOT a refusal: issuance is idempotent
-   * (spec 7.6), and a second press of the button has to be a no-op rather
-   * than an error. `issueCore` finds nothing left to do and says so.
+   * CERTIFIED is NOT a refusal: issuance is idempotent (spec 7.6), so a
+   * second press must be a no-op rather than an error.
    *
    * The clock gate is `endsAt` plus the correction window, not COMPLETED.
-   * Issuing the moment an event completes would reduce spec 7.5's 48 hours
-   * for correcting attendance to zero, and §7.6 locks attendance at
-   * CERTIFIED, so the two rules only coexist if issuance waits.
+   * Issuing on completion would cut spec 7.5's 48 correction hours to zero,
+   * and 7.6 locks attendance at CERTIFIED: the two rules only coexist if
+   * issuance waits.
    */
   private notIssuableReason(event: IssuableEvent): string | null {
     if (!event.certificateEnabled) return 'That event does not issue certificates.';
@@ -211,9 +190,8 @@ export class CertificatesService {
           where: {
             eventId: event.id,
             status: { in: [...ELIGIBLE[event.attendancePolicy]] },
-            // The partial unique index is the guarantee; this is what keeps
-            // the common second run from relying on it. A NO_SHOW is not in
-            // the status filter above and so never reaches here at all.
+            // The partial unique index is the guarantee; this keeps the
+            // common second run from having to rely on it.
             certificates: { none: { status: 'ACTIVE' } },
           },
           include: { user: { select: { fullName: true } } },

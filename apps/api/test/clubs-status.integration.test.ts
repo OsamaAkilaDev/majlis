@@ -17,8 +17,7 @@ let app: INestApplication;
 /** What the fake storage backend has "received" bytes for, keyed by object path. */
 const uploaded = new Map<string, { size: number; contentType: string }>();
 
-// Stubbed at the module level so no test in this file touches Supabase, same
-// fake as clubs-create.integration.test.ts.
+// Stubbed so no test in this file touches Supabase.
 const fakeStorage = {
   createSignedUploadUrl: async (path: string) => ({
     signedUrl: `https://example.supabase.co/storage/v1/object/upload/sign/majlis-storage/${path}?token=t`,
@@ -70,15 +69,14 @@ describe('PATCH /clubs/:clubId/status', () => {
 
     const rows = await prisma.auditLog.findMany({ where: { entityId: club.id }, orderBy: { createdAt: 'asc' } });
     expect(rows.map((r) => r.action)).toEqual(['club.suspended', 'club.reactivated']);
-    // Catches a handler that writes the audit row without the reason, which
-    // is what makes an override reviewable at all.
+    // Catches an audit row written without the reason, which is what makes an
+    // override reviewable.
     expect(rows[0]!.reason).toBe('Inactive all semester.');
   });
 
   it('revives an ARCHIVED club, which is no longer terminal', async () => {
-    // Reversed on 2026-09-16: an archive reached by misclick had no route
-    // back. Asserts the row, not just the status code, so a handler that
-    // answers 200 without writing still fails.
+    // ARCHIVED is not terminal: a misclick must have a route back. Asserts the
+    // row, so a handler answering 200 without writing fails.
     const admin = await loginAsAdmin(app);
     const club = await makeClub({ status: 'ARCHIVED' });
 
@@ -87,8 +85,8 @@ describe('PATCH /clubs/:clubId/status', () => {
   });
 
   it('still refuses a transition to the status it already holds', async () => {
-    // The one rule left now that the table is fully connected, and the only
-    // thing standing between `assertTransition` and a no-op audit row.
+    // The only rule left in a fully connected table, and all that stands between
+    // assertTransition and a no-op audit row.
     const admin = await loginAsAdmin(app);
     const club = await makeClub({ status: 'ARCHIVED' });
 
@@ -97,7 +95,7 @@ describe('PATCH /clubs/:clubId/status', () => {
   });
 
   it('refuses a Lead of the club, leaving status unchanged', async () => {
-    // Catches a rule copied from club:edit. A Lead who can archive their own
+    // Catches a rule copied from club:edit: a Lead who can archive their own
     // club has escaped the governance model.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
@@ -124,8 +122,7 @@ describe('PATCH /clubs/:clubId', () => {
     await prisma.clubMembership.create({ data: { clubId: club.id, userId: member.userId, status: 'ACTIVE' } });
 
     expect((await patchClub(lead.sessionCookie, club.id, { category: 'Engineering' })).status).toBe(200);
-    // Catches a handler with no @RequirePermission at all, which every
-    // happy-path test would still pass.
+    // Catches a handler with no @RequirePermission, which every happy path passes.
     expect((await patchClub(member.sessionCookie, club.id, { category: 'Engineering' })).status).toBe(403);
   });
 
@@ -140,12 +137,9 @@ describe('PATCH /clubs/:clubId', () => {
   });
 
   it('the validation pipe strips keys the edit schema does not declare', async () => {
-    // This only proves patchClubBodySchema's ZodValidationPipe strips
-    // status/slug before the service ever sees the body. Real, but not a
-    // statement about the service. Catches the schema switched to
-    // passthrough mode, or one that gained a `status` or `slug` key. It
-    // would NOT catch a service that spread the (already-stripped) body into
-    // Prisma's data, see the service-level test below for that.
+    // Catches the schema switched to passthrough, or one that gained a `status`
+    // or `slug` key. It would not catch a service spreading the body into
+    // Prisma's data: the service-level test below does that.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     await patchClub(lead.sessionCookie, club.id, { status: 'ARCHIVED', slug: 'stolen' });
@@ -156,18 +150,16 @@ describe('PATCH /clubs/:clubId', () => {
   });
 
   it('ClubsService.update ignores keys outside PatchClubBody even with no validation pipe in the way', async () => {
-    // Calls the service directly, bypassing ZodValidationPipe entirely.
-    // Fails the moment `update` builds `data` by spreading `body` instead of
-    // picking each key explicitly, which is the one thing the test above
-    // cannot exercise: Zod never lets a smuggled key reach the service in
-    // the first place.
+    // Calls the service directly, bypassing ZodValidationPipe, so it fails the
+    // moment `update` builds `data` by spreading `body`. The test above cannot:
+    // Zod never lets a smuggled key reach the service.
     const club = await makeClub();
     const admin = await loginAsAdmin(app);
     const actor = await prisma.user.findUniqueOrThrow({ where: { id: admin.userId } });
     const clubs = app.get(ClubsService, { strict: false });
 
-    // overrideReason is required now that this actor is a club-roleless Admin
-    // (spec 6.1). It is not one of the smuggled keys under test.
+    // overrideReason is required of a club-roleless Admin, and is not one of the
+    // smuggled keys under test.
     await clubs.update(actor, club.id, {
       status: 'ARCHIVED',
       slug: 'stolen',
@@ -182,12 +174,12 @@ describe('PATCH /clubs/:clubId', () => {
   });
 
   it('refuses a logoUploaded edit with no uploaded object, leaving logoUrl unchanged', async () => {
-    // The service must call verifyUpload rather than trust the boolean, or a
-    // Lead could flip logoUploaded to true with nothing at that path and the
-    // update would silently write a broken image URL.
+    // Catches a service trusting the boolean instead of calling verifyUpload: a
+    // Lead could flip logoUploaded with nothing at that path, writing a broken
+    // image URL.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
-    // Deliberately do not populate `uploaded`.
+    // `uploaded` is deliberately left empty.
 
     const res = await patchClub(lead.sessionCookie, club.id, { logoUploaded: true });
     expect(res.status).toBe(422);
@@ -211,8 +203,8 @@ describe.each(['logo', 'banner'] as const)('POST /clubs/:clubId/%s-upload-url', 
   });
 
   it('refuses a plain member', async () => {
-    // Catches a route missing @RequirePermission entirely, or one scoped to
-    // the wrong param name (see clubs.controller.ts's clubId requirement).
+    // Catches a route missing @RequirePermission, or one scoped to the wrong
+    // param name.
     const club = await makeClub();
     const member = await loginAsStudent(app);
 
@@ -225,12 +217,9 @@ describe.each(['logo', 'banner'] as const)('POST /clubs/:clubId/%s-upload-url', 
 });
 
 describe('POST /clubs/:clubId/logo-upload-url', () => {
-  /**
-   * The mint overwrites the live public object at clubs/<id>/logo.webp, so it
-   * is an edit and takes PATCH /clubs/:clubId's status gate. Before Stage 8
-   * it refused nothing, which made it the one way an officer of an archived
-   * club could still replace its public logo, and nothing recorded it.
-   */
+  // The mint overwrites the live public logo object, so it takes PATCH's status
+  // gate. Catches a mint route with no gate, the one way an officer of an
+  // archived club could still replace its public logo.
   it('refuses an archived club and records the mint it allows', async () => {
     const archived = await makeClub({ status: 'ARCHIVED' });
     const archivedLead = await makeActiveLead(app, archived.id);
@@ -248,8 +237,8 @@ describe('POST /clubs/:clubId/logo-upload-url', () => {
       .set('Cookie', lead.sessionCookie);
 
     expect(allowed.status).toBe(201);
-    // The bytes never pass through the API, so this row is the only record
-    // the object was replaced at all.
+    // The bytes never pass through the API, so this row is the only record the
+    // object was replaced.
     const rows = await prisma.auditLog.findMany({ where: { entityId: live.id, action: 'club.upload_url_minted' } });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.actorUserId).toBe(lead.userId);

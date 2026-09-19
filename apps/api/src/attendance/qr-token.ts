@@ -2,29 +2,24 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { parse as parseUuid, stringify as stringifyUuid } from 'uuid';
 
 /**
- * The QR pass token of spec 7.5. HMAC-SHA256 over a fixed 22-byte payload,
- * signature truncated to 16 bytes: 128 bits of forgery resistance, and a
- * wire form short enough that the QR stays sparse enough to decode at arm's
- * length in a badly lit hall.
+ * Spec 7.5's QR pass. HMAC-SHA256 over a fixed 22-byte payload, signature
+ * truncated to 16: 128 bits of forgery resistance, and a QR sparse enough to
+ * decode at arm's length in a badly lit hall.
  *
- * The payload is 16 bytes of user id, 2 bytes of token version and 4 bytes
- * of epoch seconds, and nothing else. No event data, no personal data. The
- * pass is an identity, not a ticket, which is why one pass works for every
- * event the holder is registered for.
+ * The payload is a user id, a token version and epoch seconds, and NOTHING
+ * else. No event data, no personal data: the pass is an identity, not a
+ * ticket, which is why one works for every event its holder is registered
+ * for.
  *
- * The signing key is a parameter here and a private field on the one service
- * that holds it. It never appears in a log line, in an audit row, or in a
- * response, and the raw token is never stored: only `tokenVersion`, which
- * the signature commits to.
+ * The signing key never reaches a log, an audit row or a response, and the
+ * raw token is never stored: only `tokenVersion`, which the signature
+ * commits to.
  */
 const VERSION = 'v1';
 const PAYLOAD_BYTES = 22;
 
-/**
- * Half a SHA-256. 128 bits is well beyond what an online forgery attempt
- * against a scan endpoint could reach, and every byte saved here is QR
- * density the operator's camera does not have to resolve.
- */
+/** Half a SHA-256: 128 bits is beyond any online forgery attempt against a
+ *  scan endpoint, and every byte saved is QR density. */
 const SIGNATURE_BYTES = 16;
 
 const UUID_BYTES = 16;
@@ -38,12 +33,9 @@ export interface PassPayload {
   issuedAt: Date;
 }
 
-/**
- * Discriminated rather than a bare boolean so a caller cannot mistake a
- * verification failure for a payload. `MALFORMED` and `BAD_SIGNATURE` are
- * both answered to the operator as INVALID_PASS; the distinction exists for
- * the logs, not for the response.
- */
+/** Discriminated, not a bare boolean, so a caller cannot mistake a failure
+ *  for a payload. Both failures answer INVALID_PASS; the distinction is for
+ *  the logs, never the response. */
 export type PassVerification =
   | { ok: true; payload: PassPayload }
   | { ok: false; reason: 'MALFORMED' | 'BAD_SIGNATURE' };
@@ -51,10 +43,8 @@ export type PassVerification =
 function encode(payload: PassPayload): Buffer {
   const buf = Buffer.alloc(PAYLOAD_BYTES);
   Buffer.from(parseUuid(payload.userId)).copy(buf, 0);
-  // writeUInt16BE throws on anything outside 0..65535, which is the only
-  // guard a token version needs: reaching 65536 rotations means something
-  // is rotating in a loop, and silently wrapping to 0 would revive a token
-  // retired 65536 rotations ago.
+  // writeUInt16BE throws outside 0..65535, which is the guard wanted: wrapping
+  // to 0 would revive a token retired 65536 rotations ago.
   buf.writeUInt16BE(payload.tokenVersion, VERSION_OFFSET);
   buf.writeUInt32BE(Math.floor(payload.issuedAt.getTime() / 1000), ISSUED_AT_OFFSET);
   return buf;
@@ -70,15 +60,13 @@ export function signPass(payload: PassPayload, secret: string): string {
 }
 
 /**
- * Never throws. Everything reaching this arrived from a camera pointed at
- * whatever someone chose to print, so a malformed token is an ordinary
- * outcome and a thrown exception there would be a 500 on the scanner screen
- * instead of "invalid pass".
+ * Never throws: everything here came from a camera pointed at whatever
+ * someone chose to print, so a malformed token is an ordinary outcome and an
+ * exception would be a 500 on the scanner screen instead of "invalid pass".
  *
- * The signature is compared with `timingSafeEqual`, on buffers already
- * checked to be the same length. The length check is on the DECODED
- * signature, so it is a property of the wire format rather than a
- * byte-by-byte comparison that would leak the real digest.
+ * `timingSafeEqual`, on buffers already checked to be the same length. That
+ * check is on the DECODED signature, a property of the wire format, not a
+ * byte-by-byte comparison that would leak the digest.
  */
 export function verifyPass(token: string, secret: string): PassVerification {
   const parts = token.split('.');

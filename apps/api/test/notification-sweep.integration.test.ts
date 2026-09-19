@@ -80,9 +80,8 @@ describe('POST /internal/notification-sweep, authentication', () => {
   });
 
   it('refuses the lifecycle sweep secret presented in the notification header', async () => {
-    // The two sweeps carry separate secrets deliberately, so one leaked
-    // scheduler credential does not authorise the other endpoint. A shared
-    // secret would make this call succeed.
+    // The two sweeps carry separate secrets, so one leaked scheduler credential
+    // does not authorise the other endpoint. A shared secret would succeed here.
     const res = await request(app.getHttpServer())
       .post(`${API_PREFIX}/internal/notification-sweep`)
       .set(NOTIFICATION_SWEEP_SECRET_HEADER, 'dev-only-lifecycle-sweep-secret')
@@ -107,9 +106,9 @@ describe('POST /internal/notification-sweep, authentication', () => {
 
 describe('with no RESEND_API_KEY configured', () => {
   it('resolves the skipping channel', async () => {
-    // The whole of "Resend ships unwired" rests on this branch of the
-    // factory. A default value on RESEND_API_KEY would construct a real
-    // ResendChannel here and every row would land FAILED instead.
+    // "Resend ships unwired" rests on this branch of the factory. A default value
+    // on RESEND_API_KEY constructs a real ResendChannel and every row lands
+    // FAILED instead.
     expect(app.get(NOTIFICATION_CHANNEL)).toBeInstanceOf(SkippingChannel);
   });
 
@@ -155,8 +154,7 @@ describe('delivery', () => {
   });
 
   it('survives a channel that throws rather than returning a failure', async () => {
-    // A network error, a bad JSON body, an SDK bug. One of them must not
-    // take the rest of the batch down with it.
+    // A network error, bad JSON or an SDK bug must not take the batch down.
     const bad = await pending();
     const good = await pending('event.published');
     rejects.set(bad, 'throw');
@@ -196,16 +194,15 @@ describe('delivery', () => {
 
     expect(res.body).toEqual({ sent: 0, failed: 0, skipped: 0 });
     expect(attempted).toEqual([]);
-    // And the FAILED row keeps the reason it failed for.
+    // The FAILED row keeps the reason it failed for.
     const failed = await prisma.notification.findFirstOrThrow({ where: { dedupeKey: 'k-failed' } });
     expect(failed.emailError).toBe('that address does not exist');
   });
 
   it('delivers a notification a real trigger wrote, end to end', async () => {
-    // The one test here whose row the product wrote rather than this file:
-    // a registration through the real route, swept through the real
-    // endpoint. It is what catches a trigger that writes a row the sweep
-    // cannot resolve a recipient for, or writes it already delivered.
+    // The one row here the product wrote rather than this file. Catches a trigger
+    // writing a row the sweep cannot resolve a recipient for, or one already
+    // marked delivered.
     const club = await makeClub();
     const lead = await makeActiveLead(appWithChannel, club.id);
     const event = await mkEvent(club.id, lead.userId);

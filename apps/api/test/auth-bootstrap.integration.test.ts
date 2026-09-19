@@ -53,10 +53,9 @@ describe('GET /auth/bootstrap', () => {
   });
 
   it('still reports one is needed when non-admin accounts exist', async () => {
-    // The discriminating case. An implementation that counts USERS rather
-    // than ADMINS passes the test above and fails here, and in production it
-    // would lock the setup screen away the moment any student signed up,
-    // leaving the deployment with no route to an admin at all.
+    // Catches an implementation counting USERS rather than ADMINS: it passes the
+    // test above and locks the setup screen the moment any student signs up,
+    // leaving the deployment with no route to an admin.
     await loginAsStudent(app);
     await loginAsStudent(app);
 
@@ -94,10 +93,9 @@ describe('POST /auth/bootstrap', () => {
   });
 
   it('issues a session that actually reaches an Admin-only route', async () => {
-    // Catches a bootstrap that creates the row with the default STUDENT role
-    // and reports success anyway: the response body could still be made to
-    // say ADMIN, but SessionGuard re-derives the role from the database, so
-    // only a genuinely-promoted row gets past `user:list`.
+    // Catches a bootstrap creating the row with the default STUDENT role and
+    // reporting success: the body could say ADMIN, but SessionGuard re-derives
+    // the role, so only a genuinely promoted row gets past `user:list`.
     const res = await postBootstrap();
     const cookie = (res.headers['set-cookie'] as unknown as string[])
       .find((c) => c.startsWith('majlis_session='))!
@@ -125,10 +123,9 @@ describe('POST /auth/bootstrap', () => {
   });
 
   it('creates exactly one admin when two requests race', async () => {
-    // The reason the service takes an advisory lock. Without it both
-    // requests read zero admins, both pass the guard, and the deployment
-    // ends up with two platform owners, one of them an attacker who lost
-    // the race by milliseconds and won anyway.
+    // Promise.all forces the race the advisory lock exists for: without it both
+    // read zero admins, both pass the guard, and the deployment gets two
+    // platform owners.
     const [a, b] = await Promise.all([postBootstrap(), postBootstrap()]);
 
     const statuses = [a.status, b.status].sort();
@@ -161,8 +158,8 @@ describe('POST /auth/bootstrap', () => {
       action: 'user.admin_bootstrapped',
       entityType: 'User',
       outcome: 'SUCCESS',
-      // Nobody was signed in to do this. The column is nullable precisely
-      // so an actor-less action does not have to invent one.
+      // Nobody was signed in: the column is nullable so an actor-less action
+      // does not have to invent one.
       actorUserId: null,
     });
   });
@@ -176,8 +173,8 @@ describe('POST /auth/bootstrap', () => {
   });
 
   it('leaves no user row behind when the audit write fails', async () => {
-    // The transaction boundary, asserted rather than assumed: the audit row
-    // and the admin row commit together or not at all.
+    // The transaction boundary asserted, not assumed: the audit row and the
+    // admin row commit together or not at all.
     const { AuditService } = await import('../src/audit/audit.service');
     const audit = app.get(AuditService);
     const record = audit.record.bind(audit);

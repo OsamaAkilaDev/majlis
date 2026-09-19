@@ -20,17 +20,10 @@ function joinPath(...segments: (string | undefined)[]): string {
   return `/${parts.join('/')}`;
 }
 
-/**
- * Enumerates every controller route Nest actually registered, reading the
- * same metadata RouterExplorer does, rather than a hand-maintained path
- * list, so a route added in a later stage that forgets @Public() (or
- * forgets to think about auth at all) turns the guard test red without
- * anyone remembering to update it.
- *
- * SwaggerModule.setup mounts its docs UI directly on the underlying HTTP
- * adapter, outside Nest's controller/module metadata entirely, so it never
- * appears here: nothing to special-case.
- */
+/** Every controller route Nest registered, read from the same metadata
+ * RouterExplorer uses rather than a hand-maintained list, so a new route that
+ * forgets about auth turns the guard test red with no test edit. SwaggerModule
+ * mounts on the HTTP adapter, outside this metadata, so it never appears. */
 export function registeredRoutes(app: INestApplication): RegisteredRoute[] {
   const modulesContainer = app.get(ModulesContainer);
   const reflector = app.get(Reflector);
@@ -45,9 +38,8 @@ export function registeredRoutes(app: INestApplication): RegisteredRoute[] {
       const controllerPublic = reflector.get<boolean>(IS_PUBLIC_KEY, controller) ?? false;
 
       for (const key of Object.getOwnPropertyNames(controller.prototype)) {
-        // `constructor` is the class itself (the same function PATH_METADATA
-        // was set on via @Controller()), so it must be excluded explicitly,
-        // not just filtered by "has PATH_METADATA": it always does.
+        // `constructor` is the class itself, the same function @Controller() set
+        // PATH_METADATA on, so filtering by "has PATH_METADATA" never excludes it.
         if (key === 'constructor') continue;
         const handler = (controller.prototype as Record<string, unknown>)[key];
         if (typeof handler !== 'function') continue;

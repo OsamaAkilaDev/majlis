@@ -27,8 +27,8 @@ async function anAuditRow() {
 describe('AuditLog', () => {
   it('stores before and after snapshots as JSON', async () => {
     const row = await anAuditRow();
-    // Re-read rather than trusting the object create() echoes back, so this
-    // proves the JSON was actually persisted.
+    // Re-read rather than trusting what create() echoes back, which proves the
+    // JSON was persisted.
     const persisted = await prisma.auditLog.findUniqueOrThrow({ where: { id: row.id } });
     expect(persisted.before).toEqual({ status: 'ACTIVE' });
     expect(persisted.after).toEqual({ status: 'SUSPENDED' });
@@ -68,10 +68,9 @@ describe('AuditLog', () => {
   });
 
   it('rejects an UPDATE matching no rows, proving the trigger is statement-level', async () => {
-    // The existing bulk-UPDATE test would also pass against a FOR EACH ROW
-    // trigger, since it touches a real row. Only a zero-row statement
-    // distinguishes the two, and that is the form a careless bulk migration
-    // takes.
+    // The bulk-UPDATE test above passes against a FOR EACH ROW trigger too, since
+    // it touches a real row. Only a zero-row statement tells the two apart, and
+    // that is the form a careless bulk migration takes.
     await anAuditRow();
     await expect(
       prisma.$executeRawUnsafe(`UPDATE "audit_log" SET "reason" = 'x' WHERE 1 = 0`),
@@ -117,9 +116,8 @@ describe('Notification', () => {
   });
 
   it('allows two different dedupe keys for the same user', async () => {
-    // A (user_id)-only unique constraint would allow exactly one
-    // notification per user, ever, and would pass every other test in this
-    // block: both existing tests only vary the user, never the key.
+    // Catches a (user_id)-only unique, which allows one notification per user
+    // ever and passes every other test here, since they only vary the user.
     const user = await mkUser();
     await prisma.notification.create({
       data: {
@@ -149,8 +147,8 @@ describe('Notification', () => {
   });
 
   it('cascades away when its user is deleted', async () => {
-    // The AuditLog half of this contrast is exercised above; without this the
-    // cascade is only ever verified by reading the migration SQL.
+    // The AuditLog half is above; without this the cascade is only ever verified
+    // by reading the migration SQL.
     const user = await mkUser();
     await prisma.notification.create({
       data: { userId: user.id, type: 'certificate.issued', payload: {}, dedupeKey: uniq('k') },

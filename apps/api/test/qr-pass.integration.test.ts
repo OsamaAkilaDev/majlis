@@ -12,8 +12,8 @@ import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
 const prisma = createTestPrisma();
 let app: INestApplication;
 
-// The integration environment has no QR_SIGNING_SECRET set, so the schema's
-// development default is what the service signs with.
+// No QR_SIGNING_SECRET in the integration environment, so the service signs
+// with the schema's development default.
 const SECRET = process.env.QR_SIGNING_SECRET ?? EXAMPLE_QR_SIGNING_SECRET;
 
 beforeAll(async () => {
@@ -48,9 +48,8 @@ describe('GET /me/qr-pass', () => {
 
     const verified = verifyPass(res.body.token as string, SECRET);
     expect(verified.ok).toBe(true);
-    // The token has to commit to the OWNER, not merely to something
-    // well-formed: a pass that verified but carried a different user id
-    // would check the wrong person in.
+    // The token must commit to the OWNER, not just to something well-formed: a
+    // pass carrying a different user id checks the wrong person in.
     expect(verified.ok && verified.payload.userId).toBe(student.userId);
 
     const rows = await prisma.qrPass.findMany({ where: { userId: student.userId } });
@@ -59,9 +58,9 @@ describe('GET /me/qr-pass', () => {
   });
 
   it('stores no raw token anywhere', async () => {
-    // Spec 5.1: "no raw token is stored, only the version that the signature
-    // commits to". Catches an implementation that persists what it issued,
-    // which would make the pass table a list of live credentials.
+    // Only the version the signature commits to is stored. Catches an
+    // implementation persisting what it issued, making the pass table a list of
+    // live credentials.
     const student = await loginAsStudent(app);
     const res = await getPass(student.sessionCookie);
 
@@ -70,14 +69,11 @@ describe('GET /me/qr-pass', () => {
   });
 
   it('answers two colliding first-time inserts with the one row that won', async () => {
-    // qr_pass.user_id is unique and the first call races itself from two
-    // tabs. Two concurrent GETs do NOT reliably produce that collision
-    // (whichever request reaches its findUnique second usually finds the
-    // other's committed row and never inserts), so the insert path is
-    // driven directly here. Both INSERTs then run, one takes the P2002, and
-    // a service that rethrows it turns an ordinary race into a 500 on the
-    // student's own QR screen. Verified: this goes red against a rethrow,
-    // where the two-GET version passed.
+    // qr_pass.user_id is unique and the first call races itself across two tabs.
+    // Two concurrent GETs do not reliably collide (the second findUnique usually
+    // sees the other's committed row), so the insert path is driven directly:
+    // both INSERTs run, one takes the P2002, and a service that rethrows turns
+    // the race into a 500 on the student's QR screen.
     const student = await loginAsStudent(app);
     const service = app.get(QrPassService);
     const create = (
@@ -93,8 +89,8 @@ describe('GET /me/qr-pass', () => {
 
 describe('POST /me/qr-pass/rotate', () => {
   it('kills every previously issued image', async () => {
-    // The version lives inside the signed payload and every scan re-checks
-    // it against the row, so this mismatch IS the death of the old image.
+    // The version is inside the signed payload and every scan re-checks it
+    // against the row, so this mismatch is what kills the old image.
     const student = await loginAsStudent(app);
     const before = await getPass(student.sessionCookie);
 
@@ -104,8 +100,8 @@ describe('POST /me/qr-pass/rotate', () => {
 
     const old = verifyPass(before.body.token as string, SECRET);
     const fresh = verifyPass(res.body.token as string, SECRET);
-    // The old token still verifies (it was genuinely signed) and is dead
-    // anyway, because its version no longer matches the stored one.
+    // The old token still verifies, being genuinely signed, and is dead anyway
+    // because its version no longer matches the stored one.
     expect(old.ok && old.payload.tokenVersion).toBe(1);
     expect(fresh.ok && fresh.payload.tokenVersion).toBe(2);
 
@@ -125,7 +121,7 @@ describe('POST /me/qr-pass/rotate', () => {
     expect(rows[0]?.actorUserId).toBe(student.userId);
     expect(rows[0]?.before).toEqual({ tokenVersion: 1 });
     expect(rows[0]?.after).toEqual({ tokenVersion: 2 });
-    // Spec 5.1: an audit row never contains a raw QR token.
+    // An audit row never contains a raw QR token.
     expect(JSON.stringify(rows[0])).not.toContain(res.body.token);
   });
 
@@ -141,8 +137,8 @@ describe('POST /me/qr-pass/rotate', () => {
 
 describe('pass ownership', () => {
   it('returns each caller their own pass and never another user', async () => {
-    // Catches a handler that reads a user id off the request instead of off
-    // the session, the shape of every "return my X" IDOR.
+    // Catches a handler reading the user id off the request rather than the
+    // session, the shape of every "return my X" IDOR.
     const [one, two] = await Promise.all([loginAsStudent(app), loginAsStudent(app)]);
 
     const first = verifyPass((await getPass(one!.sessionCookie)).body.token as string, SECRET);

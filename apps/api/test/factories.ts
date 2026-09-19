@@ -20,22 +20,14 @@ export type UserSeed = Prisma.UserCreateInput;
 export type ClubSeed = Prisma.ClubUncheckedCreateInput;
 export type DepartmentSeed = Prisma.DepartmentCreateInput;
 
-/**
- * A value unique to this call. Integration tests share one database and
- * truncate between tests, but a collision inside a single test is still
- * possible with a fixed string, and a unique-constraint failure in setup
- * reads like a bug in the code under test.
- */
+/** Unique per call: a fixed string collides within one test, and a setup
+ * constraint failure reads like a bug in the code under test. */
 export function uniq(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
 }
 
-/**
- * A plain seed object: does not touch the database. Email is lowercased
- * deliberately: the user table carries CHECK (email = lower(email)), so a
- * factory producing mixed case would fail on insert and every test would
- * start with a constraint error instead of the one it meant to check.
- */
+/** Seed object, no database write. Email is lowercased because the user table
+ * carries CHECK (email = lower(email)); mixed case fails on insert. */
 export function aUser(overrides: Partial<UserSeed> = {}): UserSeed {
   const handle = uniq('user');
   return {
@@ -71,13 +63,9 @@ export function aClub(departmentId: string, overrides: Partial<ClubSeed> = {}): 
   };
 }
 
-// vitest.integration.config.ts runs with pool: 'forks' and isolate left at
-// its default (true), so each test file gets its own worker and its own
-// module instance of this file, one lazily-created client per test file,
-// not one shared across the whole run. It is left to be reclaimed when that
-// file's forked worker exits rather than explicitly disconnected, which is
-// safe at this scale (one extra connection per file, for the suite's
-// lifetime only).
+// pool: 'forks' with isolate on means one module instance, and so one lazy
+// client, per test file. Reclaimed when that worker exits rather than
+// disconnected: one extra connection per file for the suite's lifetime.
 let db: ReturnType<typeof createTestPrisma> | undefined;
 function testDb() {
   db ??= createTestPrisma();
@@ -89,23 +77,15 @@ export function mkUser(overrides: Partial<UserSeed> = {}): Promise<User> {
   return testDb().user.create({ data: aUser(overrides) });
 }
 
-/**
- * Inserts and returns a Club row, creating its Department too, so a test
- * needing a club never has to reach for a shared one just to skip that
- * step. Pass `departmentId` in overrides to place it in an existing
- * department instead.
- */
+/** Inserts a Club, creating its Department too. Pass `departmentId` in
+ * overrides to place it in an existing one. */
 export async function mkClub(overrides: Partial<ClubSeed> = {}): Promise<Club> {
   const departmentId =
     overrides.departmentId ?? (await testDb().department.create({ data: aDepartment() })).id;
   return testDb().club.create({ data: aClub(departmentId, overrides) });
 }
 
-/**
- * Stage 4's naming convention for the same fixture `mkClub` already
- * provides, kept as one function rather than two implementations, so the
- * two naming styles cannot drift apart.
- */
+/** Alias, not a second implementation, so the two naming styles cannot drift. */
 export const makeClub = mkClub;
 
 export interface AppointmentSeed {
@@ -115,15 +95,9 @@ export interface AppointmentSeed {
   status: AppointmentStatus;
 }
 
-/**
- * Inserts and returns a ClubTeamAppointment row. `status` is required, with
- * no default: the schema defaults a new appointment to INVITED, which
- * confers no permission at all, and a factory that silently defaulted to
- * ACTIVE instead would let a permission test that forgets to pass `status`
- * pass against a broken guard without ever noticing. Every caller states
- * outright which state it is testing. `invitedById` has no foreign key (see
- * the schema), so self-inviting is a harmless simplification here.
- */
+/** `status` is required with no default: a factory defaulting to ACTIVE would
+ * let a permission test that forgot to state it pass against a broken guard.
+ * `invitedById` has no foreign key, so self-inviting is harmless. */
 export function mkAppointment({
   userId,
   clubId,
@@ -135,12 +109,8 @@ export function mkAppointment({
   });
 }
 
-/**
- * Inserts an INVITED appointment with a live invitationExpiresAt, matching
- * what TeamService.invite would produce. Direct write rather than the real
- * POST /clubs/:clubId/team route, which needs an authenticated Lead that
- * Task 7's invitee-focused tests have no reason to set up.
- */
+/** An INVITED appointment with a live invitationExpiresAt, matching what
+ * TeamService.invite produces, without needing an authenticated Lead. */
 export function inviteOfficer(clubId: string, userId: string, role: ClubRole): Promise<ClubTeamAppointment> {
   return testDb().clubTeamAppointment.create({
     data: {
@@ -163,16 +133,10 @@ export interface ActiveLead {
 /** Same shape as ActiveLead, kept as a distinct name at the call site for readability. */
 export type ActiveOfficer = ActiveLead;
 
-/**
- * Signs up a fresh STUDENT through the real /auth/signup route, so
- * `sessionCookie` is a genuine signed access token exercised through
- * SessionGuard like any other.
- *
- * Reimplements signup and cookie extraction rather than calling
- * `loginAsStudent` from auth-helpers.ts: that module already imports `uniq`
- * from this one, so importing it back here would make the two files a
- * cycle. Do not "simplify" this into a loginAsStudent call.
- */
+/** Signs up through the real /auth/signup, so `sessionCookie` is a genuine
+ * token through SessionGuard. Duplicates loginAsStudent deliberately, and must
+ * stay duplicated: auth-helpers imports `uniq` from here, so calling back into
+ * it would be a cycle. Do not collapse the two. */
 async function signupForAppointment(
   app: INestApplication,
   emailPrefix: string,
@@ -190,11 +154,7 @@ async function signupForAppointment(
   return { userId, sessionCookie };
 }
 
-/**
- * Gives a fresh STUDENT an ACTIVE LEAD appointment on `clubId`. Exported so
- * Tasks 6, 7 and 8 all exercise club-scoped permission checks against the
- * same fixture.
- */
+/** Gives a fresh STUDENT an ACTIVE LEAD appointment on `clubId`. */
 export async function makeActiveLead(app: INestApplication, clubId: string): Promise<ActiveLead> {
   const { userId, sessionCookie } = await signupForAppointment(app, 'lead', 'Test Lead');
   const appointment = await mkAppointment({ userId, clubId, role: 'LEAD', status: 'ACTIVE' });
@@ -218,15 +178,10 @@ export type RegistrationSeed = Prisma.EventRegistrationUncheckedCreateInput;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-/**
- * A plain seed object: does not touch the database. Every window satisfies
- * the four CHECK constraints in the events migration, so a test that only
- * cares about one of them can override that one and still insert.
- *
- * `status` defaults to PUBLISHED rather than the schema's DRAFT: almost every
- * test here is about what a live event does, and a DRAFT default would make
- * each of them silently exercise the invisible case instead.
- */
+/** Seed object, no database write. The window satisfies all four CHECK
+ * constraints, so a test can override one and still insert. `status` defaults
+ * to PUBLISHED, not the schema's DRAFT: a DRAFT default would make most tests
+ * silently exercise the invisible case. */
 export function anEvent(clubId: string, createdById: string, overrides: Partial<EventSeed> = {}): EventSeed {
   const handle = uniq('event');
   const now = Date.now();
@@ -261,11 +216,8 @@ export function mkEvent(
   return testDb().event.create({ data: anEvent(clubId, createdById, overrides) });
 }
 
-/**
- * A plain seed object: does not touch the database. `status` is required
- * with no default for the same reason mkAppointment's is: a waitlist test
- * that forgot to state it would otherwise quietly assert against CONFIRMED.
- */
+/** Seed object, no database write. `status` is required for the same reason
+ * mkAppointment's is: a waitlist test forgetting it would assert on CONFIRMED. */
 export function aRegistration(
   eventId: string,
   userId: string,
@@ -275,11 +227,8 @@ export function aRegistration(
   return { eventId, userId, status, ...overrides };
 }
 
-/**
- * Inserts a registration row directly. Does NOT maintain `confirmedCount`:
- * a test seeding CONFIRMED rows must set the counter itself, because the
- * counter is exactly what the code under test is responsible for.
- */
+/** Does NOT maintain `confirmedCount`: a test seeding CONFIRMED rows sets the
+ * counter itself, since the counter is what the code under test owns. */
 export function mkRegistration(
   eventId: string,
   userId: string,

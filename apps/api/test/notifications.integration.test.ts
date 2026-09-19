@@ -54,10 +54,9 @@ function patch(path: string, cookie: string, body: object) {
 
 describe('a notification row is written in the same transaction as its trigger', () => {
   it('rolls the registration notification back with the registration that failed', async () => {
-    // Catches a NotificationService that escapes the ambient transaction
-    // (its own client, or a write moved after host.run returns): such a
-    // writer commits immediately and leaves a student told they hold a seat
-    // that the rollback destroyed.
+    // Catches a NotificationService escaping the ambient transaction, with its
+    // own client or a write after host.run returns: it commits immediately and
+    // tells a student they hold a seat the rollback destroyed.
     const host = app.get(TransactionHost);
     const registrations = app.get(RegistrationsService);
     const club = await makeClub();
@@ -78,9 +77,8 @@ describe('a notification row is written in the same transaction as its trigger',
       }),
     ).rejects.toThrow('the action failed');
 
-    // Both, deliberately: the registration count proves the rollback
-    // actually happened, so a zero notification count cannot be explained
-    // by the registration never being attempted.
+    // Both counts: the registration one proves the rollback happened, so a zero
+    // notification count cannot mean the registration was never attempted.
     expect(await prisma.eventRegistration.count()).toBe(0);
     expect(await prisma.notification.count()).toBe(0);
   });
@@ -115,10 +113,9 @@ describe('a notification row is written in the same transaction as its trigger',
 
 describe('the dedupe key absorbs a repeated trigger', () => {
   it('issues certificates twice and notifies the holder once', async () => {
-    // Certificate issuance is idempotent by design (spec 7.6), so the
-    // second press re-reads every ACTIVE certificate and tries to notify
-    // for all of them. Only (user_id, dedupe_key) stops the holder being
-    // told twice about the same document.
+    // Issuance is idempotent, so a second press re-reads every ACTIVE
+    // certificate and tries to notify for all of them. Only the
+    // (user_id, dedupe_key) index stops the holder hearing twice.
     const now = Date.now();
     const endedAt = now - (WINDOW_HOURS + 1) * HOUR;
     const club = await makeClub();
@@ -165,18 +162,17 @@ describe('GET /me/notifications', () => {
   });
 
   it('lists newest first and continues across a page boundary', async () => {
-    // The inbox reads backwards, so the cursor seek has to read backwards
-    // with it. Ordered desc with an ascending seek, page two either repeats
-    // page one or skips past it, and the tab-bar badge, which counts a single
-    // page of unread rows, sticks on whatever the oldest ten say.
+    // The inbox reads backwards, so the cursor seek must too. Catches desc order
+    // with an ascending seek: page two repeats or skips page one, and the unread
+    // badge sticks on whatever the oldest ten say.
     const mine = await loginAsStudent(app);
     for (let i = 0; i < 5; i += 1) {
       await prisma.notification.create({
         data: { userId: mine.userId, type: 'event.published', dedupeKey: `k${i}`, payload: {} },
       });
     }
-    // Read back rather than assumed from insertion order: what the endpoint
-    // owes the reader is the reverse of id order, whatever order that is.
+    // Read back rather than assumed from insertion order: the endpoint owes the
+    // reverse of id order, whatever that order is.
     const newest = (
       await prisma.notification.findMany({ where: { userId: mine.userId }, orderBy: { id: 'desc' } })
     ).map((r) => r.id);
@@ -215,10 +211,9 @@ describe('GET /me/notifications', () => {
   });
 
   it('never returns an auth.password_reset row, which records a request rather than inbox content', async () => {
-    // The real row's payload is `{ expiresInMinutes }`; the raw token never
-    // leaves forgotPassword's call stack. This fixture is deliberately worse
-    // than anything the product writes, so the assertion fails on a filter
-    // that leaks the row rather than only on one that leaks a link.
+    // The real payload is `{ expiresInMinutes }`. This fixture is deliberately
+    // worse than anything the product writes, so the assertion fails on a filter
+    // that leaks the row, not only on one that leaks a link.
     const mine = await loginAsStudent(app);
     await prisma.notification.create({
       data: {
@@ -246,8 +241,8 @@ describe('POST /me/notifications/:id/read', () => {
     expect(first.body.readAt).not.toBeNull();
 
     const second = await post(`/me/notifications/${row.id}/read`, mine.sessionCookie).expect(200);
-    // The same instant, not a fresh one: a second press must not rewrite
-    // when the notification was first read.
+    // The same instant, not a fresh one: a second press must not rewrite when
+    // the notification was first read.
     expect(second.body.readAt).toBe(first.body.readAt);
   });
 
@@ -277,9 +272,8 @@ describe('a material event change', () => {
   }
 
   const MATERIAL: Record<string, unknown> = {
-    // Each value has to leave the merged row satisfying the window CHECKs:
-    // the fixture event runs from +7d to +7d+2h, so startsAt moves earlier
-    // and endsAt later rather than both in one direction.
+    // Each value must leave the merged row satisfying the window CHECKs: the
+    // fixture runs +7d to +7d+2h, so startsAt moves earlier and endsAt later.
     startsAt: new Date(Date.now() + 6 * DAY).toISOString(),
     endsAt: new Date(Date.now() + 9 * DAY + 2 * HOUR).toISOString(),
     venue: 'Hall B',
@@ -302,8 +296,8 @@ describe('a material event change', () => {
   }
 
   it('notifies nobody when only the title changes', async () => {
-    // The field set is the whole rule. A patch of anything outside it must
-    // be silent, or every copy edit mails the attendee list.
+    // A patch outside the notifying field set must be silent, or every copy edit
+    // mails the attendee list.
     const { lead, event, student } = await anEventWithAnAttendee();
 
     await patch(`/events/${event.id}`, lead.sessionCookie, { title: 'A Better Name' }).expect(200);

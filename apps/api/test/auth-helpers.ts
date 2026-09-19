@@ -28,24 +28,21 @@ export interface LoggedInUser {
 }
 
 export interface SignedUpUser extends LoggedInUser {
-  /** A `name=value` pair, kept around so a test can present it again after
-   * acting on the account (e.g. suspending it) to see whether it still works. */
+  /** A `name=value` pair, kept so a test can present it again after acting on
+   * the account, to see whether it still works. */
   refreshCookie: string;
 }
 
-// vitest.integration.config.ts runs one worker per file (see factories.ts's
-// identical `testDb()`), so one lazily-created client per file is fine here.
+// One worker per file (see factories.ts's identical `testDb()`), so one lazy
+// client per file is fine.
 let db: ReturnType<typeof createTestPrisma> | undefined;
 function testDb() {
   db ??= createTestPrisma();
   return db;
 }
 
-/**
- * POSTs to /auth/signup with sane, unique-by-default values, returning the
- * raw supertest response: callers read `.status`, `.body` (the
- * SessionUser), or `.headers['set-cookie']` as needed.
- */
+/** POSTs to /auth/signup with unique-by-default values, returning the raw
+ * supertest response. */
 export function signup(app: INestApplication, overrides: SignupInput = {}): request.Test {
   return request(app.getHttpServer())
     .post(SIGNUP_PATH)
@@ -61,12 +58,8 @@ export function login(app: INestApplication, credentials: LoginInput): request.T
   return request(app.getHttpServer()).post(LOGIN_PATH).send(credentials);
 }
 
-/**
- * POSTs to /auth/refresh with the given `Cookie` header value, returning the
- * raw supertest response. `cookie` is normally the output of
- * `refreshCookieOf(...)`: a single `name=value` pair is all the refresh
- * route reads, so there's no need to send the session cookie alongside it.
- */
+/** POSTs to /auth/refresh with the given `Cookie` value, normally the output of
+ * `refreshCookieOf(...)`: the refresh route reads nothing else. */
 export function refresh(app: INestApplication, cookie: string): request.Test {
   return request(app.getHttpServer()).post(REFRESH_PATH).set('Cookie', cookie);
 }
@@ -78,11 +71,7 @@ function sessionCookieFromResponse(res: request.Response): string {
   return raw.split(';')[0]!;
 }
 
-/**
- * Extracts the refresh cookie's `name=value` pair from any response that set
- * one (signup, login, or a previous refresh), ready to pass straight to
- * `refresh(app, ...)` or `.set('Cookie', ...)`.
- */
+/** The refresh cookie's `name=value` pair from any response that set one. */
 export function refreshCookieOf(res: request.Response): string {
   const setCookie = res.headers['set-cookie'] as unknown as string[] | undefined;
   const raw = setCookie?.find((c) => c.startsWith(`${REFRESH_COOKIE}=`));
@@ -95,21 +84,14 @@ export function rawRefreshTokenFrom(res: request.Response): string {
   return refreshCookieOf(res).split('=')[1]!;
 }
 
-/**
- * Both cookies a response set, combined into one `Cookie` header value, for
- * a request (like logout) that should work regardless of which cookies are
- * presented.
- */
+/** Both cookies a response set, as one `Cookie` header value. */
 export function allCookiesOf(res: request.Response): string {
   const setCookie = res.headers['set-cookie'] as unknown as string[];
   return setCookie.map((c) => c.split(';')[0]).join('; ');
 }
 
-/**
- * Signs up a fresh STUDENT (the default for every new account) and returns
- * an authenticated context for it. Signup already issues a session, same as
- * login does, so there is no separate login round trip to make.
- */
+/** Signs up a fresh STUDENT and returns an authenticated context. Signup issues
+ * a session, so there is no separate login round trip. */
 export async function loginAsStudent(
   app: INestApplication,
   overrides: SignupInput = {},
@@ -121,14 +103,9 @@ export async function loginAsStudent(
   return { userId: (res.body as { id: string }).id, sessionCookie: sessionCookieFromResponse(res) };
 }
 
-/**
- * Signs up a fresh user, then promotes it to ADMIN with a direct Prisma
- * write: Stage 2 has no "make someone an Admin" route, so this is the only
- * way a test can reach one. The cookie from signup keeps working after the
- * promotion: SessionGuard re-reads `platformRole` from the database on every
- * request rather than trusting anything baked into the token, which is
- * exactly what makes a second login call unnecessary here.
- */
+/** Signs up, then promotes to ADMIN with a direct write, since no route does it.
+ * The signup cookie keeps working because SessionGuard re-reads `platformRole`
+ * from the database rather than trusting the token. */
 export async function loginAsAdmin(
   app: INestApplication,
   overrides: SignupInput = {},
@@ -138,12 +115,8 @@ export async function loginAsAdmin(
   return student;
 }
 
-/**
- * Signs up a fresh STUDENT and keeps its refresh cookie too, not just the
- * session cookie `loginAsStudent` returns, for a test that needs to present
- * the refresh cookie again later (e.g. after suspending the account, to
- * check whether the token that was live at signup still works).
- */
+/** As loginAsStudent, but keeps the refresh cookie too, for a test that presents
+ * it again after acting on the account. */
 export async function signupAndKeepCookies(
   app: INestApplication,
   overrides: SignupInput = {},
@@ -173,11 +146,8 @@ export function patchStatus(
     .send({ status, reason });
 }
 
-/**
- * Suspends `targetId` as a freshly-minted ADMIN (created here, thrown away
- * after), the shortest path to "some admin suspended this user" for a test
- * that doesn't care which admin did it.
- */
+/** Suspends `targetId` as a throwaway ADMIN, for a test that does not care which
+ * admin did it. */
 export async function suspendAsAdmin(
   app: INestApplication,
   targetId: string,

@@ -53,12 +53,10 @@ describe('report:read', () => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId);
-    // One of each status that behaves differently. The WAITLISTED row is
-    // what catches `status: { not: 'CANCELLED' }` standing in for EXPECTED,
-    // and the CHECKED_IN row catches an `attended` that counts only
-    // 'ATTENDED'. Those are the two defects the constants in
-    // reporting.service exist to prevent, and both pass an
-    // ATTENDED-plus-NO_SHOW fixture.
+    // One of each status that behaves differently. The WAITLISTED row catches
+    // `status: { not: 'CANCELLED' }` standing in for EXPECTED, and the
+    // CHECKED_IN row an `attended` counting only 'ATTENDED'. Both defects pass
+    // an ATTENDED-plus-NO_SHOW fixture.
     const a = await mkUser();
     const b = await mkUser();
     const c = await mkUser();
@@ -109,7 +107,7 @@ describe('report:read', () => {
       .send({ reason: 'Issued against a corrected attendance record' })
       .expect(200);
 
-    // Still one. A revoked certificate was issued, and a number labelled
+    // Still one: a revoked certificate was issued, and a count labelled
     // "Certificates issued" that falls is reporting something else.
     expect((await get('/reports/overview', admin.sessionCookie)).body.certificatesIssued).toBe(1);
     expect(

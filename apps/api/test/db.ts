@@ -1,32 +1,15 @@
 import { PrismaClient } from '../src/generated/prisma/client';
 import { pgAdapter } from '../src/prisma/pg-adapter';
 
-/**
- * Resolves the test connection string, refusing to run against anything
- * else.
- *
- * The database name is parsed out of the URL rather than matched as a
- * substring of the whole string. A substring check on
- * `postgresql://majlis_test_ro:pw@prod-host/majlis_prod` would pass (the
- * marker matches the username) and truncateAll would then TRUNCATE every
- * table in a production database's public schema.
- */
+/** Resolves the test connection string, refusing anything else. */
 export function testDatabaseUrl(): string {
   return assertTestDb(process.env.TEST_DATABASE_URL ?? derive(process.env.DATABASE_URL, 'DATABASE_URL'));
 }
 
-/**
- * The same test database, reached without the connection pooler.
- *
- * `prisma migrate` cannot run through pgBouncer: it takes an advisory lock and
- * issues DDL, and in transaction pooling mode it simply hangs, with no error
- * and no timeout. Supabase's `DATABASE_URL` is the pooled `:6543` endpoint, so
- * deriving the migrate URL from it wedged `global-setup.ts` forever and the
- * integration suite could not start at all.
- *
- * Only the migration step needs this. The Prisma client the tests themselves
- * run on stays on the pooled URL, which is what the app uses in production.
- */
+/** The same test database without the connection pooler. `prisma migrate` takes
+ * an advisory lock and issues DDL, which hangs forever through pgBouncer in
+ * transaction pooling mode, with no error and no timeout. Only the migration
+ * step needs this; the tests themselves stay on the pooled URL, like production. */
 export function testDirectDatabaseUrl(): string {
   return assertTestDb(
     process.env.TEST_DIRECT_URL ??
@@ -35,13 +18,9 @@ export function testDirectDatabaseUrl(): string {
   );
 }
 
-/**
- * The database name is parsed out of the URL rather than matched as a
- * substring of the whole string. A substring check on
- * `postgresql://majlis_test_ro:pw@prod-host/majlis_prod` would pass (the
- * marker matches the username) and truncateAll would then TRUNCATE every
- * table in a production database's public schema.
- */
+/** The name is parsed out of the URL, not matched as a substring: a substring
+ * check passes on `postgresql://majlis_test_ro:pw@prod-host/majlis_prod`, and
+ * truncateAll would then TRUNCATE a production schema. */
 function assertTestDb(url: string): string {
   const { pathname } = new URL(url);
   if (pathname !== '/majlis_test') {
@@ -50,8 +29,8 @@ function assertTestDb(url: string): string {
   return url;
 }
 
-// Same server and credentials as the development database, different name.
-// CI overrides it with TEST_DATABASE_URL.
+// Same server and credentials as development, different name. CI overrides with
+// TEST_DATABASE_URL.
 function derive(base: string | undefined, name: string): string {
   if (!base) throw new Error(`${name} is not set. Copy .env.example to .env.`);
 
@@ -68,10 +47,8 @@ export async function disconnectTestPrisma(prisma: PrismaClient): Promise<void> 
   await prisma.$disconnect();
 }
 
-/**
- * Empties every application table between tests. `_prisma_migrations` is
- * preserved so migrations are applied once per run rather than once per test.
- */
+/** Empties every application table between tests. `_prisma_migrations` is kept
+ * so migrations run once per suite rather than once per test. */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   const tables = await prisma.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables
