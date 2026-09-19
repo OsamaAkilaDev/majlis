@@ -43,7 +43,13 @@ import {
   removeAssignment,
   updateEvent,
 } from '@/lib/events';
-import { EventFields, fromEvent, toPatchBody, type EventFormValues } from '../EventFields';
+import {
+  EventFields,
+  fromEvent,
+  toPatchBody,
+  validateSchedule,
+  type EventFormValues,
+} from '../EventFields';
 import { useAsyncError } from '@/lib/use-async-error';
 
 const RESPONSIBILITIES: EventResponsibility[] = ['EVENT_LEAD', 'OPERATIONS', 'MARKETING'];
@@ -253,6 +259,9 @@ export function EventEditor({
   const override = needsOverrideReason(platformRole, roles);
   const overrideReason = override ? reason.trim() || undefined : undefined;
   const canPublish = isAdmin || roles.includes('LEAD') || roles.includes('VICE_LEAD');
+  // The four window rules the API enforces, applied as the officer types.
+  // Submitting into a 422 the form could already name is the whole defect.
+  const scheduleBroken = Object.keys(validateSchedule(values)).length > 0;
   const canCancel = isAdmin || roles.includes('LEAD');
   // Mirrors 'attendance:correct': an EventAssignment grants the right to scan
   // a queue, never to rewrite the record, so Vice Lead and an assigned
@@ -355,7 +364,7 @@ export function EventEditor({
         ) : null}
 
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={pending} className="self-start">
+          <Button type="submit" disabled={pending || scheduleBroken} className="self-start">
             Save changes
           </Button>
           <span aria-live="polite" className="text-sm text-ink-2 empty:hidden">

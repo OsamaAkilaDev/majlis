@@ -1,18 +1,29 @@
 'use client';
 
+import { DateTimeRange } from '@/components/DateTimeRange';
 import { Field } from '@/components/Field';
+import { ScheduleTimeline, WINDOW_COLOUR } from '@/components/ScheduleTimeline';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ProblemError } from '@/lib/api';
 import type { CreateEventBody, EventDetail, PatchEventBody } from '@majlis/contracts';
 import type { EventField } from '@/lib/event-fields';
-import { fromDateTimeLocal, toDateTimeLocal } from '@/lib/event-time';
+import {
+  validateSchedule,
+  windowLength,
+  type Schedule,
+  type ScheduleWindow,
+} from '@/lib/event-schedule';
 
 /**
  * Every writable field of an event, shared by the create panel and the editor
  * so the two cannot drift into different forms of the same object. Strings
  * throughout: an <input> holds text, and the caller converts on submit.
+ *
+ * The six timestamps hold absolute ISO instants, not the wall clock a
+ * `datetime-local` meant, which was always the editor's own zone rather than
+ * the venue's.
  */
 export interface EventFormValues {
   title: string;
@@ -63,6 +74,7 @@ export const EMPTY_EVENT: EventFormValues = {
 /** The runtime's own tz database, so a zone the server cannot resolve cannot be chosen. */
 const ZONES = Intl.supportedValuesOf('timeZone');
 
+
 function Group({ legend, children }: { legend: string; children: React.ReactNode }) {
   return (
     <fieldset className="flex flex-col gap-4">
@@ -95,16 +107,30 @@ export function EventFields({
     </Field>
   );
 
-  const moment = (key: keyof EventFormValues & EventField, label: string, required = false) => (
-    <Field label={label} error={error?.fieldError(key)}>
-      <Input
-        type="datetime-local"
-        value={values[key] as string}
-        onChange={(e) => set(key, e.target.value as EventFormValues[typeof key])}
-        disabled={disabled(key)}
-        required={required}
-      />
-    </Field>
+  const schedule = values as unknown as Schedule;
+  const scheduleErrors = validateSchedule(schedule);
+
+  // Both ends of every window sit in the same EVENT_FIELDS bucket, so one
+  // control cannot be half-writable.
+  const range = (
+    window: ScheduleWindow,
+    label: string,
+    [from, to]: [keyof EventFormValues & EventField, keyof EventFormValues & EventField],
+  ) => (
+    <DateTimeRange
+      label={label}
+      timeZone={values.timezone}
+      swatch={WINDOW_COLOUR[window]}
+      from={values[from] as string}
+      to={values[to] as string}
+      disabled={disabled(from)}
+      error={scheduleErrors[window] ?? error?.fieldError(from) ?? error?.fieldError(to)}
+      hint={windowLength(values[from] as string, values[to] as string)}
+      onChange={(a, b) => {
+        set(from, a as EventFormValues[typeof from]);
+        set(to, b as EventFormValues[typeof to]);
+      }}
+    />
   );
 
   const toggle = (key: keyof EventFormValues & EventField, label: string) => (
@@ -166,14 +192,12 @@ export function EventFields({
       </Group>
 
       <Group legend="Schedule">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {moment('startsAt', 'Starts', true)}
-          {moment('endsAt', 'Ends', true)}
-          {moment('registrationOpensAt', 'Registration opens', true)}
-          {moment('registrationClosesAt', 'Registration closes', true)}
-          {moment('checkInOpensAt', 'Check-in opens')}
-          {moment('checkInClosesAt', 'Check-in closes')}
-        </div>
+        {/* Three windows, not six timestamps. Every rule the API enforces is
+            about how two of them sit against each other. */}
+        {range('event', 'Event', ['startsAt', 'endsAt'])}
+        {range('registration', 'Registration', ['registrationOpensAt', 'registrationClosesAt'])}
+        {range('checkIn', 'Check-in', ['checkInOpensAt', 'checkInClosesAt'])}
+        <ScheduleTimeline schedule={schedule} timeZone={values.timezone} errors={scheduleErrors} />
       </Group>
 
       <Group legend="Capacity">
@@ -216,6 +240,8 @@ const DATETIME_KEYS = [
 /** Empty text means "no value" for the four nullable columns. */
 const NULLABLE_KEYS = ['venue', 'onlineUrl', 'certificateTitle', 'certificateSignatory'] as const;
 
+export { validateSchedule };
+
 export function fromEvent(event: EventDetail): EventFormValues {
   return {
     title: event.title,
@@ -226,12 +252,12 @@ export function fromEvent(event: EventDetail): EventFormValues {
     venue: event.venue ?? '',
     onlineUrl: event.onlineUrl ?? '',
     timezone: event.timezone,
-    startsAt: toDateTimeLocal(event.startsAt),
-    endsAt: toDateTimeLocal(event.endsAt),
-    registrationOpensAt: toDateTimeLocal(event.registrationOpensAt),
-    registrationClosesAt: toDateTimeLocal(event.registrationClosesAt),
-    checkInOpensAt: toDateTimeLocal(event.checkInOpensAt),
-    checkInClosesAt: toDateTimeLocal(event.checkInClosesAt),
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+    registrationOpensAt: event.registrationOpensAt,
+    registrationClosesAt: event.registrationClosesAt,
+    checkInOpensAt: event.checkInOpensAt,
+    checkInClosesAt: event.checkInClosesAt,
     capacity: String(event.capacity),
     waitlistEnabled: event.waitlistEnabled,
     requiresClubMembership: event.requiresClubMembership,
@@ -243,10 +269,8 @@ export function fromEvent(event: EventDetail): EventFormValues {
 
 /** One value converted from its form representation to its wire representation. */
 function wire(key: keyof EventFormValues, values: EventFormValues): unknown {
-  if ((DATETIME_KEYS as readonly string[]).includes(key)) {
-    const local = values[key] as string;
-    return local ? fromDateTimeLocal(local) : undefined;
-  }
+  // Already an absolute instant; an empty one means the API should default it.
+  if ((DATETIME_KEYS as readonly string[]).includes(key)) return (values[key] as string) || undefined;
   if (key === 'capacity') return Number(values.capacity);
   if ((NULLABLE_KEYS as readonly string[]).includes(key)) return (values[key] as string) || null;
   return values[key];

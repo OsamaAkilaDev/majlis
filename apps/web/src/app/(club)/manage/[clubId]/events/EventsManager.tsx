@@ -25,6 +25,7 @@ import {
   EMPTY_EVENT,
   EventFields,
   toCreateBody,
+  validateSchedule,
   type EventFormValues,
 } from './EventFields';
 
@@ -53,6 +54,10 @@ function CreatePanel({
       setValues((prev) => ({ ...prev, [key]: value })),
     [],
   );
+
+  // The four window rules the API enforces, applied as the officer types.
+  // Submitting into a 422 the form could already name is the whole defect.
+  const scheduleBroken = Object.keys(validateSchedule(values)).length > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -98,7 +103,7 @@ function CreatePanel({
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending || scheduleBroken} className="self-start">
         Create event
       </Button>
     </form>
