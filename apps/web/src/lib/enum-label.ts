@@ -1,8 +1,5 @@
-/**
- * "VICE_LEAD" -> "Vice Lead". Every screen that renders a database enum
- * value goes through this, so club roles and event responsibilities cannot
- * end up cased differently from each other.
- */
+/** "VICE_LEAD" -> "Vice Lead". Every enum rendering goes through this, so two
+ *  screens cannot case the same role differently. */
 export function enumLabel(value: string): string {
   return value
     .split('_')

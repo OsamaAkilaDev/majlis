@@ -1,12 +1,8 @@
 import { cn } from '@/lib/cn';
 
 /**
- * The shapes every route's `loading.tsx` is built from.
- *
- * A skeleton earns its place only by matching the screen it stands in for. If
- * a row is a different height or a grid a different shape, the real content
- * arriving makes the page jump, which reads worse than having shown nothing.
- * Each of these is sized from the component it mirrors, named in its comment.
+ * The shapes every route's `loading.tsx` is built from, each sized from the
+ * component named in its comment.
  *
  * The standing risk: change one of those components and the shape here has to
  * follow, and nothing in the suite will notice if it does not.

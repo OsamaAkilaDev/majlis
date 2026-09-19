@@ -1,11 +1,7 @@
 /**
- * Bar lengths as percentages of the largest bar, so the mark reflows with its
- * container rather than being drawn into a fixed viewBox that would scale the
- * labels down with it.
- *
- * Normalised on the maximum, not on the total: these are counts by category,
- * and a share-of-total reading would be a different chart. An all-zero series
- * returns all zeros rather than NaN, which SVG renders as nothing at all.
+ * Percentages of the largest bar, not of the total: these are counts by
+ * category, and a share-of-total reading is a different chart. An all-zero
+ * series returns zeros rather than NaN, which SVG renders as nothing.
  */
 export function barPercents(values: number[]): number[] {
   const max = Math.max(0, ...values);
@@ -13,13 +9,10 @@ export function barPercents(values: number[]): number[] {
 }
 
 /**
- * A status tally as ordered bars. The API's `groupBy` returns only the
- * statuses that actually occur, so the canonical order has to be supplied
- * here rather than read off the object's keys, whose order is the database's.
- *
- * A status missing from `order` is kept, at the end: a value added to the
- * enum must show up in the report rather than vanish from a chart that
- * silently filtered it out.
+ * `groupBy` returns only the statuses that occur, so the canonical order is
+ * supplied rather than read off the object's keys. A status missing from
+ * `order` is kept at the end: a new enum value must show up in the report
+ * rather than vanish from a chart that filtered it out.
  */
 export function statusBars(
   counts: Record<string, number>,

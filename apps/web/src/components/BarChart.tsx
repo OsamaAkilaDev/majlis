@@ -11,17 +11,12 @@ const TRACK_Y = 16;
 const TRACK_H = 8;
 
 /**
- * A single-series horizontal bar chart, drawn as inline SVG. No charting
- * dependency: this is a handful of counts on an admin screen and a library
- * would cost more bundle than the whole page.
+ * Inline SVG, no charting dependency: a handful of counts would cost more
+ * bundle in a library than the whole page.
  *
- * One series, one colour, and the category is named beside its own bar: the
- * categories here are statuses, and the palette's rule is that status colours
- * stay reserved for state and never become series colours. Nothing is encoded
- * by colour alone.
- *
- * Widths are percentages rather than viewBox units so the chart reflows with
- * its container without scaling the type down with it.
+ * Nothing is encoded by colour alone, and status colours stay reserved for
+ * state rather than becoming series colours. Widths are percentages so the
+ * chart reflows without scaling the type down with it.
  */
 export function BarChart({ title, bars }: { title: string; bars: Bar[] }) {
   const percents = barPercents(bars.map((b) => b.value));

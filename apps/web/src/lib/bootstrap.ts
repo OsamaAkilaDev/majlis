@@ -3,19 +3,12 @@ import { bootstrapStatusSchema } from '@majlis/contracts';
 import { API_ORIGIN } from '@/lib/api-origin';
 
 /**
- * Whether the platform still has no admin, and so whether the create-admin
- * screen is open. Memoised per request the same way getSessionUser is:
- * /login checks it to decide whether to redirect, and /setup checks it again
- * to decide whether to render.
+ * Fails CLOSED: anything but a 200 saying otherwise answers "an admin
+ * exists", so an outage shows the sign-in screen rather than offering the
+ * platform to whoever reloads during it.
  *
- * Fails CLOSED. An unreachable API, a non-JSON body, or any status but 200
- * answers "an admin exists", so an outage shows the ordinary sign-in screen
- * instead of offering the platform to whoever reloads during it. Guessing
- * the other way would turn every blip into an open claim on the deployment.
- *
- * Never cached across requests: `needsAdmin` flips exactly once in the life
- * of a deployment, and a stale `true` keeps offering a screen that now
- * hands out a 409 while a stale `false` locks the real admin out of setup.
+ * Memoised per request, never across them: a stale `true` keeps offering a
+ * screen that now 409s, a stale `false` locks the real admin out of setup.
  */
 export const needsAdmin = cache(async (): Promise<boolean> => {
   try {

@@ -1,7 +1,6 @@
 export function PageError({ title }: { title: string }) {
   return (
-    // Centred in the viewport: with no shell around it, a refusal pinned to the
-    // top of a desktop screen reads as a fragment of a page that failed to load.
+
     <main id="main" className="grid min-h-dvh place-items-center px-6 py-16 text-center">
       <h1 className="max-w-xl font-display text-display text-balance text-ink">{title}</h1>
     </main>

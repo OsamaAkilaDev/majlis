@@ -4,29 +4,19 @@ export const API_BASE = '/api/v1';
 
 const REFRESH_PATH = '/auth/refresh';
 
-/**
- * Paths where a 401 is an answer the caller renders rather than a dead
- * session: a wrong password, a probe for the current viewer, the refresh
- * itself.
- */
+// Paths where a 401 is an answer the caller renders, not a dead session. The
+// reset route is here because an expired link answers 401 and that message is
+// the only thing that screen exists to report.
 const OWN_401 = [
   '/auth/login',
   '/auth/signup',
   '/auth/me',
-  // An expired or already-used reset link answers 401, and it is the one
-  // thing that screen exists to report. Redirecting to /login instead throws
-  // away the message and leaves the visitor, who by definition cannot sign
-  // in, on the form they came from.
   '/auth/reset-password',
   REFRESH_PATH,
 ];
 
-/**
- * Drops every page the Router Cache is holding. next.config.ts lets it keep a
- * dynamic page for 30s, which is what makes going back to a list instant; this
- * is what stops that list being the one from before you wrote to it.
- * Registered once, by components/RouterCacheInvalidator.tsx.
- */
+// Drops the Router Cache, which next.config.ts lets hold a dynamic page for
+// 30s. Registered once, by components/RouterCacheInvalidator.tsx.
 let invalidate: (() => void) | undefined;
 
 export function onMutation(fn: () => void): void {
@@ -87,33 +77,27 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
-/**
- * One request, with the refresh retry and the dead-session exit. Everything
- * that talks to the API goes through here; only the decoding differs, which
- * is why the CSV exports are not a second copy of this logic.
- */
+/** One request, with the refresh retry and the dead-session exit. */
 async function request(path: string, init?: RequestInit): Promise<Response> {
   let res = await send(path, init);
 
-  // The refresh token does not rotate, so concurrent refreshes are harmless
-  // and no client-side dedupe is needed. Retry exactly once, and never from
-  // the refresh path itself, which would recurse.
+  // Never from the refresh path itself, which would recurse. The token does
+  // not rotate, so concurrent refreshes need no dedupe.
   if (res.status === 401 && path !== REFRESH_PATH) {
     const refreshed = await send(REFRESH_PATH, { method: 'POST' });
     if (refreshed.ok) res = await send(path, init);
   }
 
-  // The refresh token is gone or revoked, and nothing on the screen can
-  // recover from that. Ending the session here rather than in each caller is
-  // what stops a revoked session from leaving every screen on its skeleton.
+  // Ended here rather than in each caller, or a revoked session leaves every
+  // screen stuck on its skeleton.
   if (res.status === 401 && !OWN_401.includes(path) && typeof window !== 'undefined') {
     window.location.assign('/login');
   }
 
   if (!res.ok) throw await toProblem(res);
 
-  // A write, and one that landed. Here rather than in send() so a request
-  // retried after a refresh invalidates once rather than twice.
+  // Here rather than in send(), so a request retried after a refresh
+  // invalidates once rather than twice.
   if (init?.method && init.method !== 'GET') invalidate?.();
 
   return res;
@@ -121,10 +105,9 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await request(path, init);
-  // Read as text and parse only what is there. `res.json()` on an empty body
-  // throws SyntaxError, which is not a ProblemError and so reaches the form
-  // as "could not reach the server", on a request that succeeded. A 204 is
-  // not the only bodyless success: /auth/forgot-password answers 202.
+  // `res.json()` on an empty body throws SyntaxError, which is not a
+  // ProblemError and reaches the form as "could not reach the server" on a
+  // request that succeeded. 204 is not the only bodyless success; 202 is one.
   const body = await res.text();
   return (body ? JSON.parse(body) : undefined) as T;
 }
@@ -136,15 +119,8 @@ export const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-/**
- * Query string from a sparse record; an undefined value is omitted entirely.
- *
- * Numbers and booleans are stringified here rather than at each call site,
- * which is what every list query was doing: `String(query.limit)` on one line
- * and `query.unread === undefined ? undefined : String(query.unread)` on the
- * next, where the ternary existed only to keep `undefined` from becoming the
- * string "undefined" and filtering every list by it.
- */
+/** Query string from a sparse record. An undefined value is omitted entirely,
+ *  never stringified to "undefined" and sent as a filter. */
 export function qs(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

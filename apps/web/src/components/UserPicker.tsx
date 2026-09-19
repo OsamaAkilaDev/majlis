@@ -12,11 +12,10 @@ import { useAsyncError } from '@/lib/use-async-error';
 const MIN_QUERY = 2;
 
 /**
- * Two sources, one list. With a `clubId` the search runs server-side behind
- * `user:search`, which is what a club officer holds; without one it is an
- * Admin screen and loads the first page of `GET /users`, behind `user:list`,
- * which only an Admin holds. Pointing an officer's screen at the Admin route
- * is what made every club Lead's picker render empty on a 403.
+ * Two sources, one list. With a `clubId` the search runs behind `user:search`,
+ * which an officer holds; without one it reads `GET /users`, behind
+ * `user:list`, which only an Admin holds. Pointing an officer's screen at the
+ * Admin route rendered every club Lead's picker empty on a 403.
  */
 export function UserPicker({
   value,
@@ -45,8 +44,8 @@ export function UserPicker({
       setUsers([]);
       return;
     }
-    // Debounced, and the result of a query the officer has already typed
-    // past is dropped rather than rendered over the newer one.
+    // `live` drops the result of a query already typed past, rather than
+    // letting it render over the newer one.
     let live = true;
     const timer = setTimeout(() => {
       searchClubUsers(clubId, needle)
@@ -63,8 +62,7 @@ export function UserPicker({
 
   const needle = q.trim().toLowerCase();
   const candidates = users.filter((u) => !exclude.includes(u.id));
-  // Harmless on the club path, where the server matched the same way; on the
-  // Admin path it is the only filtering there is.
+
   const filtered = needle
     ? candidates.filter(
         (u) => u.fullName.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle),

@@ -11,15 +11,9 @@ import { ShellBrand } from './ShellBrand';
 import { SideNav, type NavItem } from './SideNav';
 
 /**
- * Everything on a console that must survive a navigation: the sidebar, the
- * phone navigation sheet, and the session the header reads.
- *
- * Rendered by each console's layout, so moving between its pages does not
- * rebuild the navigation or refetch the viewer, and a route's skeleton renders
- * with the console still standing around it.
- *
- * `children` is the page, which renders `ConsoleShell`: its header and main
- * fill the rows below.
+ * Rendered by each console's layout, so moving between pages does not rebuild
+ * the navigation or refetch the viewer. `children` is the page, which renders
+ * `ConsoleShell`.
  */
 export function ConsoleFrame({
   items,
@@ -32,17 +26,10 @@ export function ConsoleFrame({
 }) {
   const pathname = usePathname();
 
-  /**
-   * One screen forces the dark palette whatever the viewer's theme is: the
-   * scanner. An operator standing in a lit hall holding a viewfinder needs the
-   * surround dark for the feed to read, and needs not to be blinded by a white
-   * bar between two people. The use scene decides it, not the toggle.
-   *
-   * Derived from the path rather than passed down, because the frame now lives
-   * in the layout and the page can no longer tell it. Overlays render in a
-   * portal on <body> and so keep following the viewer's theme, which is the
-   * one seam this leaves, exactly as before.
-   */
+  // The scanner forces dark whatever the viewer's theme is: a viewfinder in a
+  // lit hall needs a dark surround. Derived from the path because the frame
+  // lives in the layout and the page cannot tell it. Overlays portal to
+  // <body> and so keep following the viewer's theme, which is the one seam.
   const dark = pathname.endsWith('/scan');
 
   const nav = (
@@ -60,8 +47,7 @@ export function ConsoleFrame({
         </aside>
 
         <div className="flex min-w-0 flex-col">
-          {/* The hamburger belongs to the frame, not the page: it opens the
-              navigation, which the frame owns. */}
+
           <Sheet>
             <SheetTrigger
               aria-label="Open navigation"

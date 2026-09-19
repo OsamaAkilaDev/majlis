@@ -1,8 +1,5 @@
-/**
- * Event times render in the venue's zone with the viewer's as secondary
- * (spec 3, 13). `Event.timezone` is an IANA name, so Intl does the whole job
- * and no date library is needed.
- */
+// Event times render in the venue's zone with the viewer's as secondary
+// (spec 3, 13). `Event.timezone` is an IANA name, so Intl does the whole job.
 
 const DATE: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
 const TIME: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
@@ -11,7 +8,7 @@ function part(value: Date, timeZone: string, options: Intl.DateTimeFormatOptions
   return new Intl.DateTimeFormat('en-GB', { ...options, timeZone }).format(value);
 }
 
-/** "Sat 14 Sep, 18:00 to 21:00 GMT+4", carrying the second date only when the event crosses midnight there. */
+/** "Sat 14 Sep, 18:00 to 21:00 GMT+4", repeating the date only across midnight. */
 export function formatRange(startsAt: string, endsAt: string, timeZone: string): string {
   const start = new Date(startsAt);
   const end = new Date(endsAt);
@@ -32,11 +29,9 @@ export function formatMoment(at: string, timeZone: string): string {
 }
 
 /**
- * A certificate's date, to the day, in UTC. A certificate carries no venue, so
- * there is no zone of its own to render it in, and the viewer's would differ
- * between the server and the browser: that is a hydration mismatch, and React
- * answers one by throwing the whole tree away. UTC to the day is the same
- * string on both sides, which is what a credential check needs.
+ * UTC, to the day. A certificate carries no venue, and the viewer's zone
+ * differs between server and browser: that is a hydration mismatch, which
+ * React answers by throwing the whole tree away.
  */
 export function formatDay(at: string): string {
   return new Intl.DateTimeFormat('en-GB', {
@@ -52,14 +47,13 @@ export function viewerTimeZone(): string {
 }
 
 /**
- * The venue's rendering, plus the viewer's when it actually differs. Compared
- * on the rendered strings rather than the zone names, so a viewer in
- * Asia/Muscat reading an Asia/Dubai event is not shown the same line twice.
+ * The venue's rendering, plus the viewer's only where the STRING differs, so a
+ * viewer in Asia/Muscat reading an Asia/Dubai event is not shown the same line
+ * twice.
  *
- * `viewerZone` has no default: a Server Component renders in the server's zone,
- * which for any viewer elsewhere is a hydration mismatch, and React answers one
- * by throwing the whole tree away. Callers pass `useViewerZone()`, which is
- * undefined until mounted, so the secondary line appears only in the browser.
+ * `viewerZone` deliberately has no default: on the server it would be the
+ * server's zone, and the hydration mismatch above. Callers pass
+ * `useViewerZone()`, undefined until mounted.
  */
 export function eventTimes(
   startsAt: string,
@@ -73,12 +67,8 @@ export function eventTimes(
   return { venue, viewer: viewer === venue ? null : viewer };
 }
 
-/**
- * The value an <input type="datetime-local"> wants: a wall clock with no zone.
- * Rendered in the editor's own zone, which is what that control means, and
- * read back the same way. A venue in another zone is a single-campus
- * non-problem today; the editor shows the venue-zone rendering beside it.
- */
+/** The wall clock an <input type="datetime-local"> wants, in the editor's own
+ *  zone, which is what that control means. Read back by fromDateTimeLocal. */
 export function toDateTimeLocal(iso: string): string {
   const value = new Date(iso);
   return new Date(value.getTime() - value.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);

@@ -9,13 +9,9 @@ import { ProblemError } from '@/lib/api';
 import { ICON_WEIGHT } from '@/lib/icons';
 
 /**
- * The body of every `error.tsx`. One component, five boundaries: a shell that
- * refuses to render is still a shell the viewer has to get out of, and each of
- * them offers the same two ways out.
- *
- * A 401 is not something the viewer can retry. The session is gone and the only
- * exit is signing in again, so this takes them there rather than leaving them
- * pressing a button that will keep failing.
+ * The body of every `error.tsx`. A 401 is not retryable: the session is gone,
+ * so this takes them to sign in rather than leaving them pressing a button
+ * that will keep failing.
  */
 export function ErrorPanel({
   error,
@@ -40,8 +36,7 @@ export function ErrorPanel({
     if (status === 401) router.replace('/login');
   }, [status, router]);
 
-  // The API's own words when there are any. A rewritten message drifts from
-  // the server the moment either side is reworded.
+  // The API's own words: a rewritten message drifts the moment either side is.
   const detail = error instanceof ProblemError ? (error.detail ?? error.title) : null;
   const trace = (error instanceof ProblemError ? error.requestId : undefined) ?? error.digest;
 

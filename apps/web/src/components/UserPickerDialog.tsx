@@ -15,14 +15,12 @@ import { UserPicker } from '@/components/UserPicker';
 import { ProblemError } from '@/lib/api';
 
 /**
- * Pick a person, send it. The three screens that do this differ only in their
- * trigger, their wording and whether they carry an extra field, so the state
- * they all got wrong the same way (reset the picker and the error on close,
- * hold the submit button while in flight) lives here once.
+ * Pick a person, send it. Holds the state all three callers got wrong the same
+ * way: reset picker and error on close, hold submit while in flight.
  *
- * `children` renders between the picker and the error, for a caller that needs
- * a second field; that field's state stays with the caller, which is also what
- * closes over it in `onSubmit`.
+ * `children` renders between the picker and the error for a caller needing a
+ * second field; that field's state stays with the caller, which also closes
+ * over it in `onSubmit`.
  */
 export function UserPickerDialog({
   trigger,

@@ -8,12 +8,10 @@ import { ICON_WEIGHT } from '@/lib/icons';
 import { activeNavHref } from '@/lib/routing';
 import { SideNav } from './SideNav';
 
-// One list behind both student navigations: the phone's dock and the desktop
-// sidebar cannot drift into offering different destinations.
-//
-// The inbox and the profile are deliberately absent. Both are reached from
-// the header at every width, the bell and the avatar, so a screen under
-// /profile lights no tab at all and the avatar carries the current state.
+// One list behind both student navigations, so the dock and the desktop
+// sidebar cannot drift apart. The inbox and profile are deliberately absent:
+// both live in the header, so a screen under /profile lights no tab and the
+// avatar carries the current state instead.
 const TABS = [
   { href: '/home', label: 'Home', icon: House },
   { href: '/clubs', label: 'Clubs', icon: Users },
@@ -24,16 +22,11 @@ const TABS = [
 const HREFS = TABS.map((t) => t.href);
 
 /**
- * Phone and small-tablet navigation: a dock inset from all three edges with
- * the page scrolling under it.
+ * Rendered by the layout, never a page: it must survive navigation for the
+ * pill to travel, and stay up during a `loading.tsx` fallback.
  *
- * Rendered by the student layout, not by a page, for two reasons. It survives
- * navigation, which is the only way the pill can travel rather than blink from
- * one tab to another; and it stays on screen while a `loading.tsx` fallback is
- * up, so a tap never makes the navigation disappear.
- *
- * Because it is positioned over the scroll area rather than sitting in the
- * grid, `StudentShell` pads the bottom of `main` to clear it.
+ * Positioned over the scroll area rather than sitting in the grid, so
+ * `StudentShell` pads the bottom of `main` to clear it.
  */
 export function TabBar() {
   const pathname = usePathname();
@@ -42,19 +35,16 @@ export function TabBar() {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 lg:hidden">
-      {/* Content passing under a translucent dock reads as noise behind glass.
-          The page fades into its own background first, so what shows through
-          is a suggestion of the list rather than half a legible row. */}
+      {/* The page fades into its own background before reaching the
+          translucent dock, so what shows through is not half a legible row. */}
       <div aria-hidden className="h-28 bg-gradient-to-t from-bg from-30% to-transparent" />
 
       <nav
         aria-label="Sections"
         className="pointer-events-auto absolute inset-x-4 bottom-[calc(1rem+var(--safe-b))] grid grid-cols-4 rounded-full border border-border bg-surface/80 p-1.5 shadow-[var(--shadow-float)] backdrop-blur-xl"
       >
-        {/* One pill that travels, rather than four backgrounds switching off
-            and on. The four tabs are equal width, so the arithmetic is exact.
-            Hidden outright when no tab is lit: under /profile the avatar is
-            current instead, and a pill parked on Home would contradict it. */}
+        {/* Hidden outright when no tab is lit: under /profile the avatar is
+            current, and a pill parked on Home would contradict it. */}
         {index >= 0 ? (
           <span
             aria-hidden
@@ -71,10 +61,8 @@ export function TabBar() {
               href={href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                // The glyph leads and the word is a caption under it: at a
-                // glance on a phone the icon is what is read, so it takes the
-                // room. Not text-label, whose 0.07em tracking is meant for
-                // uppercase eyebrows and pulls a four-letter word apart.
+                // Not text-label: its 0.07em tracking is for uppercase eyebrows
+                // and pulls a four-letter word apart.
                 'relative z-10 flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-full text-[0.6875rem] leading-none tracking-normal transition-colors duration-(--dur) ease-(--ease-out)',
                 active ? 'font-semibold text-primary-fg' : 'text-ink-3 hover:text-ink-2',
               )}

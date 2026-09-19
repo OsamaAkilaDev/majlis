@@ -3,23 +3,16 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { SessionUser } from '@majlis/contracts';
 
-/** `unread` is student-only: a console header carries the theme toggle and the
- *  avatar, and no bell, so its layout supplies no count rather than a zero
- *  standing in for one. */
+/** `unread` is student-only: a console header has no bell, so its layout
+ *  supplies no count rather than a zero standing in for one. */
 export type ShellSession = { user: SessionUser; unread?: number };
 
 const Ctx = createContext<ShellSession | null>(null);
 
 /**
- * The viewer and their unread count, fetched once by the layout and read by
- * the header from here.
- *
- * This exists so the header can render without awaiting anything. A
- * `loading.tsx` is a Suspense fallback: if the shell it renders has to await
- * `/auth/me` first, the fallback suspends too and the navigation goes back to
- * blocking, which is the whole problem the skeletons were added to solve.
- * Layouts do not re-render when you move between their children, so the fetch
- * happens once per shell mount rather than once per navigation.
+ * Lets the header render without awaiting anything. `loading.tsx` is a
+ * Suspense fallback, so a shell that awaited `/auth/me` would suspend inside
+ * the fallback and put the blocking navigation back.
  */
 export function ShellSessionProvider({
   value,

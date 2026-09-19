@@ -3,7 +3,7 @@ import type { ProblemError } from '@/lib/api';
 export type RoutedProblem = {
   /** Keyed by the form control the message belongs on. */
   fields: Record<string, string>;
-  /** Everything that names no single control, including a request that never landed. */
+  /** Everything naming no single control, including a request that never landed. */
   form: string | null;
 };
 
@@ -12,34 +12,25 @@ const FIELDS = {
   signup: ['fullName', 'email', 'password'],
   setup: ['fullName', 'email', 'password'],
   forgot: ['email'],
-  // No token. It left the reset form when the link started being resolved on
-  // the server, and a path listed here that nothing renders is a message
-  // written to a control the user cannot see.
+  // No token: a path listed here that nothing renders writes a message to a
+  // control the user cannot see.
   reset: ['password'],
 } as const;
 
-/**
- * Which control a bare 401 belongs on, or null for the form itself.
- *
- * On the sign-in form it is the password. On the reset form it is nothing:
- * the failing credential is the link, which is no longer a control, and
- * putting "This reset link is no longer valid" under the new password sends
- * the user to change a field that was never the problem. null sends it to the
- * form-level alert, which is the only place left that can carry it.
- */
+// Which control a bare 401 belongs on. `reset` is null deliberately: the
+// failing credential is the link, not a control, and putting "this link is no
+// longer valid" under the new password sends the user to fix the wrong field.
 const UNAUTHORIZED_FIELD: Record<keyof typeof FIELDS, string | null> = {
   login: 'password',
   signup: 'password',
-  // Unreachable in practice: POST /auth/bootstrap has no 401 to answer with.
   setup: 'password',
   forgot: 'email',
   reset: null,
 };
 
 /**
- * Places a failure where the user can act on it, and always in the API's own
- * words: a rewritten message drifts from the server the moment either changes.
- * Nothing may be dropped: a message that maps to no rendered control still has
+ * Places a failure where the user can act on it, in the API's own words.
+ * Nothing may be dropped: a message mapping to no rendered control still has
  * to reach the form, or the submit silently does nothing.
  */
 export function routeProblem(
