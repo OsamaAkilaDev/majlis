@@ -16,6 +16,11 @@ export function SideNav({ items }: { items: readonly NavItem[] }) {
   // light no entry at all and leave the viewer with no sense of place.
   const current = activeNavHref(pathname, items.map((i) => i.href));
 
+  // See TabBar: `prefetch` defaults to partial for a dynamic route, which
+  // fetches the loading.tsx boundary and nothing else, so the skeleton is
+  // guaranteed on arrival. These five destinations are fixed and always on
+  // screen, so the whole payload is worth having before the click.
+
   return (
     <nav aria-label="Sections" className="flex flex-col gap-0.5">
       {items.map(({ href, label, icon }) => {
@@ -24,6 +29,7 @@ export function SideNav({ items }: { items: readonly NavItem[] }) {
           <Link
             key={href}
             href={href}
+            prefetch
             aria-current={active ? 'page' : undefined}
             className={cn(
               'flex min-h-9 items-center gap-2.5 rounded-control px-2.5 py-2 text-sm transition-colors duration-(--dur-fast) ease-(--ease-out)',

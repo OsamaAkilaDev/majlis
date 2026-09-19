@@ -96,6 +96,9 @@ export function ClubWorkspace({
               <Link
                 key={href}
                 href={href}
+                // Seven fixed tabs the officer moves between constantly. See
+                // TabBar: without this each one arrives on its skeleton.
+                prefetch
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'border-b-2 px-2.5 py-2 text-sm font-semibold whitespace-nowrap transition-colors duration-(--dur-fast) ease-(--ease-out)',

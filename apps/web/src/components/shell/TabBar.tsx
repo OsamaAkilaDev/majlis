@@ -42,12 +42,18 @@ export function TabBar() {
           />
         ) : null}
 
+        {/* `prefetch` rather than the default. Every screen here is dynamic,
+            and for a dynamic route the default prefetch fetches the
+            loading.tsx boundary and stops, so a tap always landed on a
+            skeleton while the real payload started only then. Four fixed
+            destinations, permanently on screen: fetch them whole up front. */}
         {TABS.map(({ href, label, icon: Icon }) => {
           const active = href === current;
           return (
             <Link
               key={href}
               href={href}
+              prefetch
               aria-current={active ? 'page' : undefined}
               className={cn(
                 // Not text-label: its 0.07em tracking is for uppercase eyebrows

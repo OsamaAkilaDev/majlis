@@ -307,9 +307,13 @@ export class ClubsService {
   }
 
   /**
-   * Sequential on purpose. This runs inside `update`'s and `updateStatus`'s
-   * transaction, and concurrent queries on one interactive transaction client
-   * deadlock against themselves.
+   * Two round trips, not six. The database is remote, so each one is real
+   * latency on the club page's first paint: the club, its department, its
+   * committee, both counts and the viewer's own membership all come back in
+   * one read, and the two event previews run together.
+   *
+   * Callable in parallel because nothing here runs inside a transaction any
+   * more: `update` and `updateStatus` re-read AFTER theirs commits.
    */
   private async detailWhere(
     actor: Actor,
@@ -320,6 +324,15 @@ export class ClubsService {
       include: {
         department: { select: { name: true } },
         appointments: COMMITTEE_INCLUDE,
+        // Scoped to `actor.id`, and ordered: without the filter this answers
+        // with whichever row comes first and tells a student they belong to a
+        // club they never joined.
+        memberships: {
+          where: { userId: actor.id },
+          orderBy: { requestedAt: 'desc' },
+          take: 1,
+          select: { status: true },
+        },
         _count: { select: { memberships: { where: ACTIVE_ONLY }, events: { where: RAN } } },
       },
     });
@@ -332,10 +345,6 @@ export class ClubsService {
       throw new NotFoundError('No such club.');
     }
 
-    const membership = await this.host.tx.clubMembership.findFirst({
-      where: { clubId, userId: actor.id },
-      orderBy: { requestedAt: 'desc' },
-    });
     const viewerClubRoles = club.appointments
       .filter((a) => a.userId === actor.id)
       .map((a) => a.role);
@@ -343,21 +352,23 @@ export class ClubsService {
     // One row past the preview, so the page knows whether there is more to
     // show without a second count query.
     const take = CLUB_EVENT_PREVIEW + 1;
-    const upcoming = await this.host.tx.event.findMany({
-      where: { clubId, ...PUBLIC_UPCOMING, endsAt: { gte: new Date() } },
-      orderBy: { startsAt: 'asc' },
-      take,
-      select: CLUB_EVENT_SELECT,
-    });
-    const past = await this.host.tx.event.findMany({
-      where: { clubId, ...RAN },
-      orderBy: { startsAt: 'desc' },
-      take,
-      select: CLUB_EVENT_SELECT,
-    });
+    const [upcoming, past] = await Promise.all([
+      this.host.tx.event.findMany({
+        where: { clubId, ...PUBLIC_UPCOMING, endsAt: { gte: new Date() } },
+        orderBy: { startsAt: 'asc' },
+        take,
+        select: CLUB_EVENT_SELECT,
+      }),
+      this.host.tx.event.findMany({
+        where: { clubId, ...RAN },
+        orderBy: { startsAt: 'desc' },
+        take,
+        select: CLUB_EVENT_SELECT,
+      }),
+    ]);
 
     return toClubDetail(club, club.department.name, club._count.memberships, {
-      viewerMembershipStatus: membership?.status ?? null,
+      viewerMembershipStatus: club.memberships[0]?.status ?? null,
       viewerClubRoles,
       committee: toCommittee(club.appointments),
       upcoming: upcoming.map(toClubEvent),
@@ -370,7 +381,7 @@ export class ClubsService {
   // `slug` cannot smuggle either into the update. The schema has no such keys,
   // but a service must not rely on that alone.
   async update(actor: Actor, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
-    return this.host.run(async () => {
+    await this.host.run(async () => {
       await loadClub(this.host, clubId, assertAcceptsEdits);
 
       // Re-derived from the database, not carried over from the guard: the field
@@ -404,15 +415,18 @@ export class ClubsService {
         ...(reason ? { reason } : {}),
         after: data as Record<string, unknown>,
       });
-
-      return this.detail(actor, clubId);
     });
+
+    // Outside the transaction on purpose. The write and its audit row are what
+    // had to be atomic; the response is a read of what committed, and out here
+    // `detailWhere` may run its queries in parallel.
+    return this.detail(actor, clubId);
   }
 
   // `assertTransition` is the only gate on the write; nothing assigns `status`
   // outside it.
   async updateStatus(actor: Actor, clubId: string, body: PatchClubStatusBody): Promise<ClubDetail> {
-    return this.host.run(async () => {
+    await this.host.run(async () => {
       const before = await loadClub(this.host, clubId);
       assertTransition(before.status, body.status);
 
@@ -431,8 +445,9 @@ export class ClubsService {
         before: { status: before.status },
         after: { status: after.status },
       });
-
-      return this.detail(actor, clubId);
     });
+
+    // Outside the transaction, for the same reason `update`'s is.
+    return this.detail(actor, clubId);
   }
 }
