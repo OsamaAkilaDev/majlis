@@ -6,7 +6,20 @@ import { StorageService } from '../src/storage/storage.service';
 import { createTestApp } from './app';
 import { loginAsAdmin, loginAsStudent } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { aDepartment, makeClub, uniq } from './factories';
+import {
+  aDepartment,
+  inviteOfficer,
+  makeActiveLead,
+  makeClub,
+  mkEvent,
+  mkUser,
+  uniq,
+} from './factories';
+
+const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+const in7Days = (plusHours = 0) => new Date(Date.now() + 7 * DAY + plusHours * HOUR);
+const daysAgo = (days: number, plusHours = 0) => new Date(Date.now() - days * DAY + plusHours * HOUR);
 
 const CLUBS_PATH = `${API_PREFIX}/clubs`;
 const UPLOAD_PATH = `${API_PREFIX}/uploads/club-logo`;
@@ -189,20 +202,36 @@ describe('GET /clubs', () => {
     expect(res.body.items[0].departmentName).toBe(a.name);
   });
 
-  it('filters by status, holding department constant', async () => {
+  it('filters by status for an Admin, holding department constant', async () => {
     // The two fixtures differ ONLY in status: varying department too would let an
     // implementation that ignores `status` pass.
-    const student = await loginAsStudent(app);
+    const admin = await loginAsAdmin(app);
     const dept = await prisma.department.create({ data: aDepartment() });
     const archived = await makeClub({ departmentId: dept.id, status: 'ARCHIVED' });
     await makeClub({ departmentId: dept.id });
 
     const res = await request(app.getHttpServer())
       .get(`${CLUBS_PATH}?status=ARCHIVED`)
-      .set('Cookie', student.sessionCookie);
+      .set('Cookie', admin.sessionCookie);
 
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].id).toBe(archived.id);
+  });
+
+  it('gives a student ACTIVE clubs only, whatever status they ask for', async () => {
+    // Catches the filter being the only thing that hid a suspended club: before
+    // the gate, asking for SUSPENDED returned it to anyone.
+    const student = await loginAsStudent(app);
+    const dept = await prisma.department.create({ data: aDepartment() });
+    await makeClub({ departmentId: dept.id, status: 'SUSPENDED' });
+    const active = await makeClub({ departmentId: dept.id });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?departmentId=${dept.id}&status=SUSPENDED`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].id).toBe(active.id);
   });
 
   it('filters by name, case-insensitively', async () => {
@@ -248,6 +277,53 @@ describe('GET /clubs/:clubId', () => {
     expect(res.body.memberCount).toBe(1);
   });
 
+  it('carries the club own events, and never a draft', async () => {
+    // A club page shows what the club is. The draft is the discriminator: an
+    // implementation that just listed the club's events would leak it to every
+    // student holding the slug.
+    const lead = await loginAsStudent(app);
+    const club = await makeClub();
+    const soon = await mkEvent(club.id, lead.userId, { startsAt: in7Days(), endsAt: in7Days(2) });
+    await mkEvent(club.id, lead.userId, { status: 'DRAFT', startsAt: in7Days(), endsAt: in7Days(2) });
+    const ran = await mkEvent(club.id, lead.userId, {
+      status: 'COMPLETED',
+      startsAt: daysAgo(9),
+      endsAt: daysAgo(9, 2),
+      registrationOpensAt: daysAgo(12),
+      registrationClosesAt: daysAgo(10),
+      checkInOpensAt: daysAgo(9),
+      checkInClosesAt: daysAgo(9, 3),
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/${club.id}`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(res.body.upcoming.map((e: { id: string }) => e.id)).toEqual([soon.id]);
+    expect(res.body.past.map((e: { id: string }) => e.id)).toEqual([ran.id]);
+    expect(res.body.eventsRun).toBe(1);
+  });
+
+  it('carries the committee, active appointments only', async () => {
+    // The invited officer is the discriminator: listing every appointment would
+    // publish a name on the club page before that person accepted.
+    const student = await loginAsStudent(app);
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const pending = await mkUser();
+    await inviteOfficer(club.id, pending.id, 'CTO');
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/${club.id}`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.body.committee).toHaveLength(1);
+    expect(res.body.committee[0].userId).toBe(lead.userId);
+    expect(res.body.committee[0].role).toBe('LEAD');
+    // An address is directory data; the club page is open to every signed-in user.
+    expect(res.body.committee[0]).not.toHaveProperty('userEmail');
+  });
+
   it('returns 404 for a well-formed but unknown id', async () => {
     const student = await loginAsStudent(app);
     const res = await request(app.getHttpServer())
@@ -284,6 +360,44 @@ describe('GET /clubs/by-slug/:slug', () => {
       .set('Cookie', student.sessionCookie);
 
     expect(res.body.viewerMembershipStatus).toBeNull();
+  });
+
+  it('is 404 on a suspended club for a student holding its slug', async () => {
+    // The whole defect: the slug is public, the club is not, and a UI query
+    // parameter was the only thing hiding it.
+    const student = await loginAsStudent(app);
+    const club = await makeClub({ status: 'SUSPENDED' });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/by-slug/${club.slug}`)
+      .set('Cookie', student.sessionCookie);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('still opens that club for one of its own active officers', async () => {
+    // Paired with the test above: a gate that refused everybody would pass that
+    // one and lock every officer out of their own suspended club.
+    const club = await makeClub({ status: 'SUSPENDED' });
+    const lead = await makeActiveLead(app, club.id);
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/by-slug/${club.slug}`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(club.id);
+  });
+
+  it('still opens that club for an Admin', async () => {
+    const admin = await loginAsAdmin(app);
+    const club = await makeClub({ status: 'ARCHIVED' });
+
+    const res = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}/by-slug/${club.slug}`)
+      .set('Cookie', admin.sessionCookie);
+
+    expect(res.status).toBe(200);
   });
 
   it('returns 404 for an unknown slug', async () => {

@@ -9,10 +9,33 @@ export interface RosterReader {
 }
 
 /**
+ * Whether this reader may see a club that is not ACTIVE at all: its own
+ * officers and Admin, nobody else. Without it a slug is enough to open a
+ * suspended club, and hiding one in a list query is presentation, not
+ * protection.
+ */
+export async function canReadInactiveClub(
+  host: TransactionHost,
+  actor: RosterReader,
+  clubId: string,
+): Promise<boolean> {
+  if (actor.platformRole === 'ADMIN') return true;
+
+  const appointment = await host.tx.clubTeamAppointment.findFirst({
+    where: { clubId, userId: actor.id, status: 'ACTIVE' },
+    select: { id: true },
+  });
+  return appointment !== null;
+}
+
+/**
  * Who may read a club's member and team lists. An ACTIVE club's are open to any
  * signed-in user; a SUSPENDED or ARCHIVED club's stay with its own officers and
  * Admin, or enumerating suspended clubs hands any student every member's name.
  * Email addresses are a separate, narrower gate: see `canReadRosterEmail`.
+ *
+ * 403, not 404 like the club page itself: this is reached through a club whose
+ * existence the caller already established.
  */
 export async function assertCanReadRoster(
   host: TransactionHost,
@@ -22,13 +45,10 @@ export async function assertCanReadRoster(
   const club = await host.tx.club.findUnique({ where: { id: clubId }, select: { status: true } });
   if (!club) throw new NotFoundError('No such club.');
   if (club.status === 'ACTIVE') return;
-  if (actor.platformRole === 'ADMIN') return;
 
-  const appointment = await host.tx.clubTeamAppointment.findFirst({
-    where: { clubId, userId: actor.id, status: 'ACTIVE' },
-    select: { id: true },
-  });
-  if (!appointment) throw new ForbiddenError('You do not have permission to do that.');
+  if (!(await canReadInactiveClub(host, actor, clubId))) {
+    throw new ForbiddenError('You do not have permission to do that.');
+  }
 }
 
 /**

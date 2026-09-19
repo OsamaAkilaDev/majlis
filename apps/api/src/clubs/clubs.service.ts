@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CLUB_EVENT_PREVIEW,
   IMAGE_KINDS,
   type ClubDetail,
+  type ClubEvent,
+  type CommitteeMember,
   type ClubListQuery,
   type ClubPage,
   type ClubSummary,
@@ -26,9 +29,73 @@ import { objectPath } from '../storage/image-kinds';
 import { StorageService } from '../storage/storage.service';
 import { assertAcceptsEdits, assertTransition } from './club-status';
 import { loadClub } from './load-club';
+import { canReadInactiveClub } from './roster-access';
 import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
+
+/** What a club has actually run. Drives the `eventsRun` stat and the `past` list. */
+const RAN: Prisma.EventWhereInput = { status: { in: ['COMPLETED', 'CERTIFIED'] } };
+
+/**
+ * What the club page may show as upcoming. DRAFT is excluded for everybody,
+ * officers included: this is the club's public face, and its own drafts belong
+ * on the workspace's events tab.
+ */
+const PUBLIC_UPCOMING: Prisma.EventWhereInput = {
+  status: { in: ['PUBLISHED', 'REGISTRATION_CLOSED', 'ONGOING'] },
+};
+
+const CLUB_EVENT_SELECT = {
+  id: true,
+  title: true,
+  startsAt: true,
+  endsAt: true,
+  timezone: true,
+  venue: true,
+  onlineUrl: true,
+  capacity: true,
+  confirmedCount: true,
+  status: true,
+} as const;
+
+type ClubEventRow = Prisma.EventGetPayload<{ select: typeof CLUB_EVENT_SELECT }>;
+
+function toClubEvent(row: ClubEventRow): ClubEvent {
+  return {
+    ...row,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+  };
+}
+
+/** Lead first, then the order the roles are listed in the enum. A committee
+ *  sorted by id puts whoever was appointed first at the top, which is noise. */
+const ROLE_ORDER: Record<CommitteeMember['role'], number> = {
+  LEAD: 0,
+  VICE_LEAD: 1,
+  OPERATIONS: 2,
+  CTO: 3,
+  MARKETING: 4,
+};
+
+const COMMITTEE_INCLUDE = {
+  where: ACTIVE_ONLY,
+  select: { userId: true, role: true, acceptedAt: true, user: { select: { fullName: true } } },
+} as const;
+
+function toCommittee(
+  rows: { userId: string; role: CommitteeMember['role']; acceptedAt: Date | null; user: { fullName: string } }[],
+): CommitteeMember[] {
+  return rows
+    .map((a) => ({
+      userId: a.userId,
+      fullName: a.user.fullName,
+      role: a.role,
+      since: a.acceptedAt?.toISOString() ?? null,
+    }))
+    .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role]);
+}
 
 interface Actor {
   id: string;
@@ -49,12 +116,20 @@ function toClubSummary(row: ClubRow, departmentName: string, memberCount: number
   };
 }
 
+interface DetailExtras {
+  viewerMembershipStatus: ClubDetail['viewerMembershipStatus'];
+  viewerClubRoles: ClubDetail['viewerClubRoles'];
+  committee: CommitteeMember[];
+  upcoming: ClubEvent[];
+  past: ClubEvent[];
+  eventsRun: number;
+}
+
 function toClubDetail(
   row: ClubRow,
   departmentName: string,
   memberCount: number,
-  viewerMembershipStatus: ClubDetail['viewerMembershipStatus'],
-  viewerClubRoles: ClubDetail['viewerClubRoles'],
+  extras: DetailExtras,
 ): ClubDetail {
   return {
     ...toClubSummary(row, departmentName, memberCount),
@@ -62,10 +137,19 @@ function toClubDetail(
     academicYear: row.academicYear,
     bannerUrl: row.bannerUrl,
     departmentId: row.departmentId,
-    viewerMembershipStatus,
-    viewerClubRoles,
+    ...extras,
   };
 }
+
+/** A club nobody has joined, run an event for, or appointed anyone to. */
+const NO_EXTRAS: DetailExtras = {
+  viewerMembershipStatus: null,
+  viewerClubRoles: [],
+  committee: [],
+  upcoming: [],
+  past: [],
+  eventsRun: 0,
+};
 
 /**
  * `uniqueSlug`'s pre-check is not a guarantee under READ COMMITTED: two
@@ -177,15 +261,20 @@ export class ClubsService {
         after: { name: row.name, slug: row.slug, departmentId: row.departmentId },
       });
 
-      // A brand new club has no memberships yet.
-      return toClubDetail(row, row.department.name, 0, null, []);
+      // A brand new club has no memberships, officers or events yet.
+      return toClubDetail(row, row.department.name, 0, NO_EXTRAS);
     });
   }
 
-  async list(query: ClubListQuery): Promise<ClubPage> {
+  async list(actor: Actor, query: ClubListQuery): Promise<ClubPage> {
+    // Anyone but an Admin sees ACTIVE clubs only, whatever they asked for. A
+    // suspended club is hidden, and a filter the caller controls is not what
+    // hides it.
+    const status = actor.platformRole === 'ADMIN' ? query.status : 'ACTIVE';
+
     const where: Prisma.ClubWhereInput = {
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
-      ...(query.status ? { status: query.status } : {}),
+      ...(status ? { status } : {}),
       ...(query.q ? { name: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
 
@@ -209,43 +298,72 @@ export class ClubsService {
   // The membership and appointment reads in detailWhere are scoped to
   // `actor.id`: without that filter they answer with whichever row comes first,
   // telling a student they belong to a club they never joined.
-  async detail(actor: { id: string }, clubId: string): Promise<ClubDetail> {
+  async detail(actor: Actor, clubId: string): Promise<ClubDetail> {
     return this.detailWhere(actor, { id: clubId });
   }
 
-  async detailBySlug(actor: { id: string }, slug: string): Promise<ClubDetail> {
+  async detailBySlug(actor: Actor, slug: string): Promise<ClubDetail> {
     return this.detailWhere(actor, { slug });
   }
 
+  /**
+   * Sequential on purpose. This runs inside `update`'s and `updateStatus`'s
+   * transaction, and concurrent queries on one interactive transaction client
+   * deadlock against themselves.
+   */
   private async detailWhere(
-    actor: { id: string },
+    actor: Actor,
     where: { id: string } | { slug: string },
   ): Promise<ClubDetail> {
     const club = await this.host.tx.club.findUnique({
       where,
       include: {
         department: { select: { name: true } },
-        _count: { select: { memberships: { where: ACTIVE_ONLY } } },
+        appointments: COMMITTEE_INCLUDE,
+        _count: { select: { memberships: { where: ACTIVE_ONLY }, events: { where: RAN } } },
       },
     });
     if (!club) throw new NotFoundError('No such club.');
     const clubId = club.id;
 
+    // 404 rather than 403: that a club exists under this slug is itself the
+    // leak, and a student must never learn a suspended club is there.
+    if (club.status !== 'ACTIVE' && !(await canReadInactiveClub(this.host, actor, clubId))) {
+      throw new NotFoundError('No such club.');
+    }
+
     const membership = await this.host.tx.clubMembership.findFirst({
       where: { clubId, userId: actor.id },
       orderBy: { requestedAt: 'desc' },
     });
-    const appointments = await this.host.tx.clubTeamAppointment.findMany({
-      where: { clubId, userId: actor.id, status: 'ACTIVE' },
+    const viewerClubRoles = club.appointments
+      .filter((a) => a.userId === actor.id)
+      .map((a) => a.role);
+
+    // One row past the preview, so the page knows whether there is more to
+    // show without a second count query.
+    const take = CLUB_EVENT_PREVIEW + 1;
+    const upcoming = await this.host.tx.event.findMany({
+      where: { clubId, ...PUBLIC_UPCOMING, endsAt: { gte: new Date() } },
+      orderBy: { startsAt: 'asc' },
+      take,
+      select: CLUB_EVENT_SELECT,
+    });
+    const past = await this.host.tx.event.findMany({
+      where: { clubId, ...RAN },
+      orderBy: { startsAt: 'desc' },
+      take,
+      select: CLUB_EVENT_SELECT,
     });
 
-    return toClubDetail(
-      club,
-      club.department.name,
-      club._count.memberships,
-      membership?.status ?? null,
-      appointments.map((a) => a.role),
-    );
+    return toClubDetail(club, club.department.name, club._count.memberships, {
+      viewerMembershipStatus: membership?.status ?? null,
+      viewerClubRoles,
+      committee: toCommittee(club.appointments),
+      upcoming: upcoming.map(toClubEvent),
+      past: past.map(toClubEvent),
+      eventsRun: club._count.events,
+    });
   }
 
   // `data` is built key by key, never spread, so a body carrying `status` or
@@ -293,7 +411,7 @@ export class ClubsService {
 
   // `assertTransition` is the only gate on the write; nothing assigns `status`
   // outside it.
-  async updateStatus(actor: { id: string }, clubId: string, body: PatchClubStatusBody): Promise<ClubDetail> {
+  async updateStatus(actor: Actor, clubId: string, body: PatchClubStatusBody): Promise<ClubDetail> {
     return this.host.run(async () => {
       const before = await loadClub(this.host, clubId);
       assertTransition(before.status, body.status);

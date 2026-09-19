@@ -43,7 +43,7 @@ export class ClubsController {
   @Get('clubs')
   @ApiResponse({ status: 400, description: 'limit is over MAX_PAGE_LIMIT.', type: ProblemDetailsDto })
   list(@Actor() actor: User, @Query() query: ClubListQueryDto): Promise<ClubPage> {
-    return this.clubs.list(query);
+    return this.clubs.list(actor, query);
   }
 
   // Two path segments after `clubs`, so this cannot collide with the

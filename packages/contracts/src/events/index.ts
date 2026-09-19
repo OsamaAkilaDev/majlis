@@ -1,18 +1,10 @@
 import { z } from 'zod';
-import { clubRoleSchema } from '../common/enums';
+import { clubRoleSchema, eventStatusSchema } from '../common/enums';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 import { overrideBodySchema, overrideReasonSchema } from '../common/override';
 import { httpsUrlSchema, signedUploadSchema } from '../clubs';
 
-export const eventStatusSchema = z.enum([
-  'DRAFT',
-  'PUBLISHED',
-  'REGISTRATION_CLOSED',
-  'ONGOING',
-  'COMPLETED',
-  'CERTIFIED',
-  'CANCELLED',
-]);
+export { eventStatusSchema };
 
 export const eventResponsibilitySchema = z.enum(['EVENT_LEAD', 'OPERATIONS', 'MARKETING']);
 
@@ -267,7 +259,6 @@ export const sweepResultSchema = z.object({
   certificatesIssued: z.number().int(),
 });
 
-export type EventStatus = z.infer<typeof eventStatusSchema>;
 export type EventResponsibility = z.infer<typeof eventResponsibilitySchema>;
 export type RegistrationStatus = z.infer<typeof registrationStatusSchema>;
 export type AttendancePolicy = z.infer<typeof attendancePolicySchema>;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { clubRoleSchema, membershipStatusSchema } from '../common/enums';
+import { clubRoleSchema, eventStatusSchema, membershipStatusSchema } from '../common/enums';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 
 export const clubStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'ARCHIVED']);
@@ -113,6 +113,40 @@ export const clubSummarySchema = z.object({
   memberCount: z.number().int().nonnegative(),
 });
 
+export const committeeMemberSchema = z.object({
+  userId: z.uuid(),
+  fullName: z.string(),
+  role: clubRoleSchema,
+  /** When the appointment was accepted. No address: the club page is open to
+   *  every signed-in user and an address is directory data. */
+  since: z.string().nullable(),
+});
+
+/**
+ * The slice of an event a club page draws. Deliberately not
+ * `eventSummarySchema`: that lives in ../events, which imports from here.
+ */
+export const clubEventSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  timezone: z.string(),
+  venue: z.string().nullable(),
+  onlineUrl: z.string().nullable(),
+  capacity: z.number().int(),
+  confirmedCount: z.number().int(),
+  status: eventStatusSchema,
+});
+
+/**
+ * `upcoming` and `past` are bounded previews, never pages. One row beyond
+ * CLUB_EVENT_PREVIEW is included so the page can tell whether to offer "see
+ * all" without paying for a second count query; the full lists live on
+ * /events.
+ */
+export const CLUB_EVENT_PREVIEW = 3;
+
 export const clubDetailSchema = clubSummarySchema.extend({
   description: z.string(),
   academicYear: z.string(),
@@ -121,6 +155,11 @@ export const clubDetailSchema = clubSummarySchema.extend({
   /** The viewer's own relationship to this club. Never another user's. */
   viewerMembershipStatus: membershipStatusSchema.nullable(),
   viewerClubRoles: z.array(clubRoleSchema),
+  committee: z.array(committeeMemberSchema),
+  upcoming: z.array(clubEventSchema),
+  past: z.array(clubEventSchema),
+  /** Events this club has actually run: COMPLETED or CERTIFIED. */
+  eventsRun: z.number().int().nonnegative(),
 });
 
 export const clubPageSchema = cursorPageSchema(clubSummarySchema);
@@ -140,6 +179,8 @@ export type AppointLeadBody = z.infer<typeof appointLeadBodySchema>;
 export type SignedUpload = z.infer<typeof signedUploadSchema>;
 export type NewClubUpload = z.infer<typeof newClubUploadSchema>;
 export type ClubSummary = z.infer<typeof clubSummarySchema>;
+export type CommitteeMember = z.infer<typeof committeeMemberSchema>;
+export type ClubEvent = z.infer<typeof clubEventSchema>;
 export type ClubDetail = z.infer<typeof clubDetailSchema>;
 export type ClubPage = z.infer<typeof clubPageSchema>;
 export type ClubListQuery = z.infer<typeof clubListQuerySchema>;
