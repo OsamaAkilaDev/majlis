@@ -1,6 +1,6 @@
 import type { ClubDetail, DepartmentPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ClubProfileForm } from '@/components/ClubProfileForm';
+import { ClubProfile } from '@/components/ClubProfile';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
 
@@ -15,7 +15,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ clubI
   ]);
 
   return (
-    <ClubProfileForm
+    <ClubProfile
       clubId={clubId}
       platformRole={user.platformRole}
       initialClub={club}

@@ -127,7 +127,7 @@ export function ClubsManager({
               {items.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell>
-                    <Link href={`/admin/clubs/${c.id}`} className="flex items-center gap-2 font-medium text-ink hover:underline">
+                    <Link href={`/manage/${c.id}/overview`} className="flex items-center gap-2 font-medium text-ink hover:underline">
                       <img src={c.logoUrl} alt="" className="size-6 shrink-0 rounded-control border border-border object-cover" />
                       {c.name}
                     </Link>

@@ -1,31 +1,16 @@
-import type { AppointmentPage, ClubDetail, DepartmentPage } from '@majlis/contracts';
-import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
-import { serverFetch } from '@/lib/server-api';
-import { ClubDetailManager } from './ClubDetailManager';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Club' };
-
+/**
+ * There is one club screen now, not two. The workspace at /manage/[clubId]
+ * carries everything this page used to: the profile, the committee, the Lead
+ * appointment and the status transitions, all gated on the same platform role
+ * the admin console checks. The route stays so existing links still land.
+ */
 export default async function AdminClubDetailPage({
   params,
 }: {
   params: Promise<{ clubId: string }>;
 }) {
   const { clubId } = await params;
-  const [club, team, departments] = await Promise.all([
-    serverFetch<ClubDetail>(`/clubs/${clubId}`),
-    serverFetch<AppointmentPage>(`/clubs/${clubId}/team?limit=100`),
-    serverFetch<DepartmentPage>('/departments?limit=100'),
-  ]);
-
-  return (
-    <ConsoleShell title="Club">
-      <ClubDetailManager
-        clubId={clubId}
-        initialClub={club}
-        initialTeam={team?.items ?? null}
-        initialDepartments={departments?.items ?? null}
-      />
-    </ConsoleShell>
-  );
+  redirect(`/manage/${clubId}/overview`);
 }

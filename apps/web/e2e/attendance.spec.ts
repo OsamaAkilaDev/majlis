@@ -37,12 +37,13 @@ async function officerClubId(page: Page): Promise<string> {
   return clubId!;
 }
 
-/** admin@ holds no club role, so its club id comes from the admin club list. */
+/** admin@ holds no club role, so its club id comes from the admin club list,
+ *  which opens the same club workspace an officer gets. */
 async function adminClubId(page: Page): Promise<string> {
   await page.goto('/admin/clubs');
   await page.getByRole('link', { name: /Robotics Club/ }).click();
-  await page.waitForURL(/\/admin\/clubs\/[0-9a-f-]{36}/);
-  return new URL(page.url()).pathname.split('/').pop()!;
+  await page.waitForURL(/\/manage\/[0-9a-f-]{36}\/overview/);
+  return new URL(page.url()).pathname.split('/')[2]!;
 }
 
 async function axe(page: Page) {
