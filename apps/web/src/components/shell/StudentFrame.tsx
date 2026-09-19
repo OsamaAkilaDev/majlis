@@ -27,8 +27,13 @@ export function StudentFrame({
         </aside>
 
         {/* relative: the dock is positioned over the scroll area, not given a
-            row of its own. */}
-        <div className="relative grid min-w-0 flex-1 grid-rows-[auto_1fr] overflow-hidden">
+            row of its own.
+
+            `grid-cols-1` is load-bearing. Declaring rows and no columns leaves
+            the single implicit column at `auto`, which sizes to max-content:
+            on a 320px screen this grid measured 342px and quietly clipped
+            every page inside it, header included. */}
+        <div className="relative grid min-w-0 flex-1 grid-cols-1 grid-rows-[auto_1fr] overflow-hidden">
           {children}
           <TabBar />
         </div>

@@ -155,35 +155,48 @@ export function ClubProfile({
         <div className="relative">
           <ClubBanner clubId={club.id} bannerUrl={club.bannerUrl} className="rounded-card" />
           {can('bannerUploaded') ? (
-            // No `currentUrl`: the banner behind it is the preview, so the
-            // control is the label alone, lifted onto its own surface to read
-            // against whatever artwork is under it.
-            <div className="absolute right-3 bottom-3 [&_label]:bg-surface [&_label]:shadow-[var(--shadow-sm)]">
-              <ImageUpload kind="club-banner" clubId={clubId} onUploaded={() => onImageUploaded('club-banner')} />
+            // Top right, not bottom: the crest and the name occupy the banner's
+            // foot. No `currentUrl` either, because the banner behind it is
+            // already the preview.
+            <div className="absolute top-2 right-2">
+              <ImageUpload
+                kind="club-banner"
+                clubId={clubId}
+                compact
+                onUploaded={() => onImageUploaded('club-banner')}
+              />
             </div>
           ) : null}
         </div>
 
         {/* `relative` is load-bearing: the banner above is positioned, so
-            without a stacking position of its own this row paints under it. */}
-        <div className="relative z-10 -mt-9 flex items-end gap-4 px-3 sm:-mt-11 sm:px-5">
+            without a stacking position of its own this row paints under it.
+            Stacked below sm, side by side above it: see ClubDetail. On a
+            narrow screen the banner is 112px tall, so a name beside the crest
+            lands inside the artwork. */}
+        <div className="relative z-10 -mt-8 flex flex-col gap-2 px-3 sm:-mt-11 sm:flex-row sm:items-end sm:gap-4 sm:px-5">
           <div className="relative shrink-0">
             <img
               src={club.logoUrl}
               alt=""
-              className="size-19 rounded-card border-[3px] border-bg bg-surface object-cover shadow-[var(--shadow-md)] sm:size-24"
+              className="size-16 rounded-card border-[3px] border-bg bg-surface object-cover shadow-[var(--shadow-md)] sm:size-22 lg:size-24"
             />
             {can('logoUploaded') ? (
-              <div className="absolute -right-1 -bottom-1 [&_label]:bg-surface [&_label]:shadow-[var(--shadow-sm)]">
-                <ImageUpload kind="club-logo" clubId={clubId} onUploaded={() => onImageUploaded('club-logo')} />
+              <div className="absolute -right-1.5 -bottom-1.5">
+                <ImageUpload
+                  kind="club-logo"
+                  clubId={clubId}
+                  compact
+                  onUploaded={() => onImageUploaded('club-logo')}
+                />
               </div>
             ) : null}
           </div>
 
-          <div className="min-w-0 flex-1 pb-1">
+          <div className="min-w-0 flex-1 sm:pb-1">
             {/* The name is not patchable: it is what the slug was derived
                 from, so renaming a club is not an edit to this field. */}
-            <h2 className="truncate font-display text-title text-ink">{club.name}</h2>
+            <h2 className="font-display text-h1 text-ink text-balance sm:text-title">{club.name}</h2>
             <div className="-ml-1.5 flex flex-wrap items-center gap-x-1 text-sm text-ink-2">
               <InlineEdit
                 label="Department"
@@ -238,8 +251,10 @@ export function ClubProfile({
         </Fact>
       </dl>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
-        <div className="flex flex-col gap-6">
+      {/* grid-cols-1 below lg: see ClubDetail. An implicit `auto` column
+          sizes to max-content and clips the page on a narrow screen. */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <div className="flex min-w-0 flex-col gap-6">
           <section className="flex flex-col gap-2">
             <h3 className="font-display text-h1 text-ink">About</h3>
             <div className="-ml-1.5 text-body leading-relaxed text-ink">
@@ -260,7 +275,7 @@ export function ClubProfile({
           ) : null}
         </div>
 
-        <aside className="flex flex-col gap-6">
+        <aside className="flex min-w-0 flex-col gap-6">
           <section className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-display text-h1 text-ink">Committee</h3>

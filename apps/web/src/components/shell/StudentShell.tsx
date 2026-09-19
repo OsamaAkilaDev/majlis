@@ -17,7 +17,12 @@ export function StudentShell({ title, children }: { title: string; children: Rea
   return (
     <>
       <header className="flex items-center gap-1 border-b border-border px-4 pb-3 pt-[calc(0.75rem+var(--safe-t))] lg:px-8">
-        <h1 className="min-w-0 flex-1 truncate pr-2 font-display text-title text-ink">{title}</h1>
+        {/* Smaller below sm: at the full title ramp a club's name and the two
+            44px controls beside it do not fit across 320px, and the name is
+            the half that loses. */}
+        <h1 className="min-w-0 flex-1 truncate pr-2 font-display text-h1 text-ink sm:text-title">
+          {title}
+        </h1>
         <NotificationBell unread={unread} />
         <ProfileButton user={user} />
       </header>

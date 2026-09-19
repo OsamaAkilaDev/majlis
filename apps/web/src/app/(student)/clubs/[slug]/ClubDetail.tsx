@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
+import { cn } from '@/lib/cn';
 import { getClubBySlug } from '@/lib/clubs';
 import { ICON_WEIGHT } from '@/lib/icons';
 import { useAsyncError } from '@/lib/use-async-error';
@@ -28,17 +29,18 @@ function EventRow({ event, past }: { event: ClubEvent; past?: boolean }) {
       href={`/events/${event.id}`}
       className="flex items-center gap-3 rounded-card border border-border bg-surface p-2.5 transition-colors duration-(--dur-fast) ease-(--ease-out) hover:bg-surface-2"
     >
-      <span className="w-12 shrink-0 overflow-hidden rounded-control border border-border bg-surface-2 text-center">
-        <span className="block bg-primary py-0.5 text-[0.625rem] font-bold tracking-[0.09em] text-primary-fg uppercase">
+      <span className="w-11 shrink-0 overflow-hidden rounded-control border border-border bg-surface-2 text-center">
+        <span className="block bg-primary py-0.5 text-[0.5625rem] font-bold tracking-[0.06em] text-primary-fg uppercase">
           {datePart(event.startsAt, event.timezone, { month: 'short' })}
         </span>
-        <span className="block py-0.5 text-lg font-bold tabular-nums text-ink">
+        <span className="block py-0.5 text-base font-bold tabular-nums text-ink">
           {datePart(event.startsAt, event.timezone, { day: '2-digit' })}
         </span>
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-semibold text-ink">{event.title}</span>
+        {/* Two lines before it gives up: the title is what the row is for. */}
+        <span className="block font-semibold text-ink line-clamp-2">{event.title}</span>
         <span className="block truncate text-sm tabular-nums text-ink-2">
           {datePart(event.startsAt, event.timezone, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
           {' · '}
@@ -47,9 +49,14 @@ function EventRow({ event, past }: { event: ClubEvent; past?: boolean }) {
       </span>
 
       {past ? (
-        <StatusBadge status={event.status} />
+        <StatusBadge status={event.status} compact />
       ) : (
-        <span className={left === 0 ? 'shrink-0 text-sm tabular-nums text-warn-fg' : 'shrink-0 text-sm tabular-nums text-ink-2'}>
+        <span
+          className={cn(
+            'shrink-0 text-sm tabular-nums',
+            left === 0 ? 'text-warn-fg' : 'text-ink-2',
+          )}
+        >
           {left === 0 ? 'Full' : `${left} left`}
         </span>
       )}
@@ -106,11 +113,20 @@ function EventSection({
   );
 }
 
+/** "2026/2027" -> "2026/27". The full form does not fit a third of a 320px
+ *  screen, and a year clipped to "2026/2..." says less than the short one. */
+function shortYear(value: string): string {
+  return value.replace(/^(\d{4})\/\d{2}(\d{2})$/, '$1/$2');
+}
+
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex flex-1 flex-col gap-0.5 border-border px-3.5 py-2.5 not-first:border-l">
-      <dt className="text-label font-semibold tracking-[0.08em] text-ink-3 uppercase">{label}</dt>
-      <dd className="text-h2 font-semibold tabular-nums text-ink">{value}</dd>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5 border-border px-2.5 py-2.5 not-first:border-l sm:px-3.5">
+      {/* One line each, or three stats sit at three different heights. */}
+      <dt className="truncate text-[0.625rem] font-semibold tracking-[0.06em] text-ink-3 uppercase sm:text-label sm:tracking-[0.08em]">
+        {label}
+      </dt>
+      <dd className="truncate text-base font-semibold tabular-nums text-ink sm:text-h2">{value}</dd>
     </div>
   );
 }
@@ -149,21 +165,30 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
             `relative` is load-bearing: the banner is positioned, so without a
             stacking position of its own this row paints UNDER it and the crest
             disappears. */}
-        <div className="relative z-10 -mt-9 flex items-end gap-4 px-3 sm:-mt-11 sm:px-5">
+        {/* Stacked below sm, side by side above it. The crest still rides up
+            over the banner either way, but the name does not: on a narrow
+            screen the banner is only 112px tall, so a name beside the crest
+            lands inside the artwork and turns dark text on a dark ground. */}
+        <div className="relative z-10 -mt-8 flex flex-col gap-2 px-3 sm:-mt-11 sm:flex-row sm:items-end sm:gap-4 sm:px-5">
           <img
             src={club.logoUrl}
             alt=""
-            className="size-19 shrink-0 rounded-card border-[3px] border-bg bg-surface object-cover shadow-[var(--shadow-md)] sm:size-26"
+            className="size-16 shrink-0 rounded-card border-[3px] border-bg bg-surface object-cover shadow-[var(--shadow-md)] sm:size-22 lg:size-26"
           />
-          <div className="min-w-0 flex-1 pb-1">
-            <h2 className="truncate font-display text-title text-ink">{club.name}</h2>
-            <p className="truncate text-sm text-ink-2">
-              {club.departmentName} · {club.category}
-            </p>
+
+          <div className="flex min-w-0 flex-1 items-end gap-3 sm:pb-1">
+            <div className="min-w-0 flex-1">
+              {/* Wraps rather than truncates: a club's name is the one thing on
+                  this page nobody should have to guess at. */}
+              <h2 className="font-display text-h1 text-ink text-balance sm:text-title">{club.name}</h2>
+              <p className="truncate text-sm text-ink-2">
+                {club.departmentName} · {club.category}
+              </p>
+            </div>
+            {/* Only an officer or an Admin can see a club that is not active,
+                and for them the state is the first thing worth knowing. */}
+            {club.status === 'ACTIVE' ? null : <StatusBadge status={club.status} className="mb-1" />}
           </div>
-          {/* Only an officer or an Admin can see a club that is not active,
-              and for them the state is the first thing worth knowing. */}
-          {club.status === 'ACTIVE' ? null : <StatusBadge status={club.status} className="mb-1.5" />}
         </div>
       </header>
 
@@ -171,12 +196,15 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
 
       <dl className="flex border-y border-border">
         <Stat label="Members" value={club.memberCount} />
-        <Stat label="Events run" value={club.eventsRun} />
-        <Stat label="Year" value={club.academicYear} />
+        <Stat label="Events" value={club.eventsRun} />
+        <Stat label="Year" value={shortYear(club.academicYear)} />
       </dl>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
-        <div className="flex flex-col gap-6">
+      {/* `grid-cols-1` is load-bearing below lg. With no template at all the
+          single implicit track is `auto`, which sizes to max-content, so one
+          long venue line pushed the whole column past a 320px screen. */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <div className="flex min-w-0 flex-col gap-6">
           <EventSection
             title="Upcoming"
             events={club.upcoming}
@@ -205,7 +233,7 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
           </Link>
         </div>
 
-        <aside className="hidden flex-col gap-6 lg:flex">
+        <aside className="hidden min-w-0 flex-col gap-6 lg:flex">
           <AboutBlock club={club} />
           <CommitteeBlock club={club} />
           <DepartmentBlock club={club} />

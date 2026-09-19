@@ -74,17 +74,48 @@ const TONE_CLASS: Record<Tone, string> = {
   mute: 'bg-mute-soft text-mute-fg',
 };
 
-export function StatusBadge({ status, className }: { status: StatusKey; className?: string }) {
+/**
+ * `compact` drops the word and keeps the icon, for a row that has to hold a
+ * date, a title, a venue and a state inside 320px. The label does not vanish:
+ * it moves to the accessible name, so a screen reader reads "Completed" either
+ * way and a pointer gets it back on hover.
+ */
+export function StatusBadge({
+  status,
+  compact,
+  className,
+}: {
+  status: StatusKey;
+  compact?: boolean;
+  className?: string;
+}) {
   const { label, tone, icon: Icon } = STATUS[status];
+
+  if (compact) {
+    return (
+      <span
+        title={label}
+        aria-label={label}
+        className={cn(
+          'inline-grid size-6 shrink-0 place-items-center rounded-control',
+          TONE_CLASS[tone],
+          className,
+        )}
+      >
+        <Icon size={14} weight={ICON_WEIGHT} aria-hidden />
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full py-0.5 pl-1.5 pr-2.5 text-label font-semibold',
+        'inline-flex shrink-0 items-center gap-1 rounded-control px-1.5 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap',
         TONE_CLASS[tone],
         className,
       )}
     >
-      <Icon size={14} weight={ICON_WEIGHT} className="shrink-0" aria-hidden />
+      <Icon size={12} weight={ICON_WEIGHT} className="shrink-0" aria-hidden />
       {label}
     </span>
   );

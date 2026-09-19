@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.build.json",
-    "start:dev": "node --watch -r @swc-node/register src/main.ts",
+    "start:dev": "node --watch --watch-path=./src --max-old-space-size=1536 -r @swc-node/register src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern src test prisma",
     "test": "vitest run --config vitest.config.ts",

@@ -35,7 +35,11 @@ export function ClubBanner({
   bannerUrl: string | null;
   className?: string;
 }) {
-  const box = cn('relative w-full overflow-hidden bg-surface-2', className);
+  // A floor, not a second ratio: the artwork is still 4:1 and still validated
+  // at 4:1, but 4:1 of a 288px column is 72px, which is shorter than the crest
+  // that sits on it. Below sm the box keeps a usable height and `object-cover`
+  // shows the middle of the same image.
+  const box = cn('relative min-h-28 w-full overflow-hidden bg-surface-2 sm:min-h-0', className);
 
   if (bannerUrl) {
     return (

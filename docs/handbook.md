@@ -257,6 +257,22 @@ Development data, idempotent, safe to re-run. It refuses to run when
 Re-running it refreshes the demo check-in window, so a seeded event is always
 scannable now rather than at whatever time it was first seeded.
 
+For a populated university rather than a fixture set, there is a second seed:
+
+```bash
+pnpm --filter @majlis/api db:seed:demo
+```
+
+Six departments, eighteen clubs, sixty-one accounts, and events across the
+whole lifecycle with their memberships, waitlists, attendance and
+certificates. Additive and idempotent: it writes nothing on a second run, and
+the only row it touches that it did not create is an account already in the
+database, which gains memberships and a Vice Lead appointment so whoever owns
+it can open the screens.
+
+It shares `db:seed`'s two refusals, so the same `ALLOW_REMOTE_SEED=yes` is
+needed against anything but localhost.
+
 ### Demo logins
 
 Seeded data only, never present in a production database. Password `Passw0rd!`.
@@ -292,6 +308,29 @@ stored or logged anywhere.
 | Notifications appear in the inbox but no email arrives | `RESEND_API_KEY` unset, so every row is `SKIPPED`, or nothing is calling the notification sweep |
 | Certificate QR codes point at the wrong host | `PUBLIC_WEB_ORIGIN`. Already-issued certificates keep the old URL |
 | Scanner will not open the camera | Not a secure context. Use HTTPS or `localhost` |
+
+### When node is eating the machine
+
+`apps/api`'s dev loop is `node --watch`, and the watcher leaks across
+restarts. One session left an orphan holding **4.4 GB**: the API had been
+stopped by killing whatever was listening on 3001, which is the *child*. The
+supervisor survived, kept restarting, and kept the memory.
+
+Two things follow from that:
+
+- Stop the dev loop with Ctrl-C, or kill the `node --watch` parent. Killing
+  the process on the port leaves the supervisor running.
+- `start:dev` passes `--watch-path=./src` so an edit to `prisma/`, a doc or a
+  test no longer restarts the server, and `--max-old-space-size=1536` so a
+  leak fails loudly instead of quietly taking the machine. Note that
+  `prisma generate` writes into `src/generated`, so it still triggers one
+  restart.
+
+`next dev` bloats the same way over a long session, which is the reason the
+Playwright notes say to restart it between full runs. It also panics
+occasionally inside Turbopack (`turbo-tasks: an internal panic occurred`), a
+Next bug rather than anything in this repo: delete `apps/web/.next` and start
+it again.
 
 ### When a test looks broken
 

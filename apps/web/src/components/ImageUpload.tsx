@@ -1,10 +1,12 @@
 'use client';
 
 import type { ImageKind } from '@majlis/contracts';
+import { UploadSimple } from '@phosphor-icons/react/ssr';
 import { useId, useState } from 'react';
 import { convertToWebp } from '@/lib/image';
 import { mintClubEditUpload, mintClubLogoUpload } from '@/lib/clubs';
 import { cn } from '@/lib/cn';
+import { ICON_WEIGHT } from '@/lib/icons';
 
 type State = 'idle' | 'converting' | 'uploading' | 'done' | 'refused';
 
@@ -28,12 +30,16 @@ export function ImageUpload({
   clubId,
   currentUrl,
   mint,
+  compact,
   onUploaded,
 }: {
   kind: ImageKind;
   clubId?: string;
   currentUrl?: string | null;
   mint?: () => Promise<{ signedUrl: string; publicUrl: string; id: string }>;
+  /** An icon the size of a control, for sitting on the artwork it replaces
+   *  rather than beside it. The word moves to the accessible name. */
+  compact?: boolean;
   onUploaded: (publicUrl: string, id: string) => void;
 }) {
   const [state, setState] = useState<State>('idle');
@@ -95,9 +101,15 @@ export function ImageUpload({
       <div className="flex items-center gap-2">
         <label
           htmlFor={inputId}
-          className="inline-flex h-8 cursor-pointer items-center rounded-control border border-border-control px-2.5 text-sm font-medium text-ink hover:bg-surface-2"
+          aria-label={compact ? `Replace ${label.toLowerCase()}` : undefined}
+          title={compact ? `Replace ${label.toLowerCase()}` : undefined}
+          className={
+            compact
+              ? 'grid size-7 cursor-pointer place-items-center rounded-control border border-border bg-surface text-ink shadow-[var(--shadow-sm)] hover:bg-surface-2'
+              : 'inline-flex h-8 cursor-pointer items-center rounded-control border border-border-control px-2.5 text-sm font-medium text-ink hover:bg-surface-2'
+          }
         >
-          {label}
+          {compact ? <UploadSimple size={14} weight={ICON_WEIGHT} aria-hidden /> : label}
         </label>
         <input
           id={inputId}
