@@ -2,7 +2,9 @@
   "name": "@majlis/api",
   "version": "0.0.0",
   "private": true,
-  "engines": { "node": "22.x" },
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start:dev": "node --watch -r @swc-node/register src/main.ts",
@@ -14,7 +16,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "db:seed": "dotenv -e ../../.env -c -- tsx prisma/seed.ts"
+    "db:seed": "dotenv -e ../../.env -c -- tsx prisma/seed.ts",
+    "db:seed:demo": "dotenv -e ../../.env -c -- tsx prisma/seed-demo.ts"
   },
   "dependencies": {
     "@majlis/contracts": "workspace:*",
