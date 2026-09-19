@@ -105,9 +105,8 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('a club detail with a refused join control has no violations', async ({ page }) => {
-      // A disabled control still needs an accessible name carrying the
-      // reason, or the refusal exists only in the layout and a screen
-      // reader user learns nothing about why they cannot act.
+      // A disabled control still needs an accessible name carrying the reason,
+      // or the refusal exists only in the layout.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/clubs/chess-club');
       await expect(
@@ -132,9 +131,7 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('an event detail with a refused register control has no violations', async ({ page }) => {
-      // A disabled control still needs an accessible name carrying the reason,
-      // or the refusal exists only in the layout and a screen reader user
-      // learns nothing about why they cannot act.
+      // As above: the refusal must be in the accessible name, not the layout.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/events');
       await page.getByRole('link', { name: /Robotics Showcase/ }).click();
@@ -145,9 +142,7 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('the student registrations page has no violations', async ({ page }) => {
-      // Rows, not the empty state: Stage 6's seed registers this student for
-      // two events so the scanner and the certificates have something to work
-      // on, and a list with rows in it is the harder scan anyway.
+      // Rows, not the empty state, which is the harder scan.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/profile/registrations');
       await expect(page.getByRole('link', { name: /Drone Build Night/ })).toBeVisible();
@@ -158,9 +153,8 @@ for (const theme of ['light', 'dark'] as const) {
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/profile');
       await expect(page.getByRole('heading', { name: 'My clubs' })).toBeVisible();
-      // The identity banner puts text on a tinted ground the rest of the
-      // product never uses, and the theme control is three toggle buttons
-      // whose only label is their own text. Both are in this scan.
+      // The identity banner puts text on a tinted ground nothing else uses,
+      // and the theme control is three toggle buttons labelled by their text.
       await expect(page.getByRole('group', { name: 'Theme' })).toBeVisible();
       await scan(page);
     });
@@ -194,8 +188,7 @@ for (const theme of ['light', 'dark'] as const) {
 
     test('an event editor with fields the viewer may not change has no violations', async ({ page }) => {
       // Operations holds venue and capacity but not the title, so this is the
-      // only scan that covers a disabled input. A disabled input still needs
-      // an accessible name.
+      // only scan covering a disabled input.
       await signIn(page, 'ops@uni.ac.ae');
       await page.goto(`/manage/${await officerClubId(page)}/events`);
       await page.getByRole('link', { name: 'Introduction to ROS 2' }).click();
@@ -217,10 +210,9 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('a spent reset link has no violations', async ({ page }) => {
-      // The form behind a live token is unreachable from here: the raw token
-      // exists only in an inbox, so this scans the state a bad link lands on.
-      // The password meter and the confirm field it would have covered are
-      // the same markup the signup scan above already renders.
+      // The raw token exists only in an inbox, so this scans the state a bad
+      // link lands on. The meter and confirm field are the same markup the
+      // signup scan already renders.
       await page.goto('/reset-password?token=whatever');
       await expect(page.getByRole('link', { name: 'Request a new link' })).toBeVisible();
       await scan(page);
@@ -271,11 +263,9 @@ test('sign-in is reachable by keyboard alone', async ({ page }) => {
 });
 
 test('the header pair name themselves and announce which one is lit', async ({ page }) => {
-  // Replaces the scan of the account dropdown, which no longer exists: the
-  // avatar is a link to /profile and the bell a link to the inbox. Their risk
-  // moved with them. Both are an icon or an image with no text, so the whole
-  // accessible name is an aria-label, and the lit state is a tinted ground,
-  // which is colour alone unless aria-current carries it too.
+  // Both are an icon with no text, so the whole accessible name is an
+  // aria-label, and the lit state is a tinted ground: colour alone unless
+  // aria-current carries it too.
   await signIn(page, 'student@uni.ac.ae');
   const bell = page.getByRole('link', { name: /^Notifications/ });
   const avatar = page.getByRole('link', { name: 'Profile' });
@@ -318,9 +308,8 @@ test('the admin override dialog has no violations while open', async ({ page }) 
 });
 
 test('the student shell swaps the tab bar for a side nav above the breakpoint', async ({ page }) => {
-  // Exactly one "Sections" landmark at any width. Two would mean a shell
-  // rendering both navigations at once: duplicate links, an ambiguous
-  // landmark, and every destination announced twice.
+  // Two would mean a shell rendering both navigations at once: duplicate
+  // links, an ambiguous landmark, every destination announced twice.
   await page.setViewportSize({ width: 1440, height: 900 });
   await signIn(page, 'student@uni.ac.ae');
 

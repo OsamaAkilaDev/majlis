@@ -7,8 +7,8 @@ async function signIn(page: Page, email: string) {
   await page.getByLabel('University email').fill(email);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  // Without this, callers that read cookies or navigate right after race the
-  // sign-in redirect and see an unauthenticated request.
+  // Without this, a caller that reads cookies or navigates straight after
+  // races the sign-in redirect and sees an unauthenticated request.
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
@@ -28,8 +28,8 @@ test('a student lands on /home', async ({ page }) => {
 });
 
 test('a student is refused the admin console', async ({ page }) => {
-  // The IDOR case from spec 12. Hiding the link is presentation, never
-  // protection, so this navigates directly.
+  // Spec 12's IDOR case. Hiding the link is presentation, never protection,
+  // so this navigates directly.
   await signIn(page, 'student@uni.ac.ae');
   await page.goto('/admin/users');
   await expect(page.getByRole('heading', { name: /do not have access/i })).toBeVisible();
@@ -41,8 +41,8 @@ test('a wrong password reports on the field in the API words, and no shell rende
   await page.getByLabel('Password').fill('wrong-password-here');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  // The exact server string, not a client paraphrase: a rewritten message
-  // drifts silently the moment either side is reworded.
+  // The exact server string: a paraphrase drifts the moment either side is
+  // reworded.
   const password = page.getByLabel('Password');
   await expect(page.getByText('Email or password is incorrect.')).toBeVisible();
   await expect(password).toHaveAttribute('aria-invalid', 'true');

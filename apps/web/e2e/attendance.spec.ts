@@ -5,13 +5,10 @@ const PASSWORD = 'Passw0rd!';
 const STUDENT = 'student@uni.ac.ae';
 
 /**
- * Serial, and one project. Every test here walks the same seeded rows through
- * the same state machine: a check-in, a correction, a revocation. Run in
- * parallel, or run twice at two viewports at once, they answer each other's
- * questions and the failures read as flake rather than as the race they are.
- *
- * The mobile requirement is met inside the file instead, by the one test that
- * sets a phone viewport explicitly and measures the scanner's controls.
+ * Serial, and one project: every test walks the same seeded rows through the
+ * same state machine, so in parallel they answer each other's questions and
+ * the failures read as flake rather than the race they are. The mobile
+ * requirement is met by the one test that sets a phone viewport itself.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -23,8 +20,8 @@ test.beforeEach(async ({}, testInfo) => {
 });
 
 async function signIn(page: Page, email: string) {
-  // Cleared first: /login bounces a signed-in visitor to their own landing,
-  // so switching persona mid-test otherwise never reaches the form.
+  // Cleared first: /login bounces a signed-in visitor, so switching persona
+  // mid-test otherwise never reaches the form.
   await page.context().clearCookies();
   await page.goto('/login');
   await page.getByLabel('University email').fill(email);
@@ -55,12 +52,8 @@ async function axe(page: Page) {
   expect(results.violations).toEqual([]);
 }
 
-/**
- * The camera cannot be driven from Playwright, and headless Chromium carries no
- * BarcodeDetector at all, which is exactly the branch that falls through to the
- * email form. Both paths render the same verdict from the same response, so
- * this drives the form.
- */
+/** Headless Chromium has no BarcodeDetector, which is the branch that falls
+ *  through to the email form. Both paths render the same verdict. */
 async function openScanner(page: Page, eventTitle: string) {
   const clubId = await officerClubId(page);
   await page.goto(`/manage/${clubId}/scan`);
@@ -83,13 +76,9 @@ async function pickCertificateEvent(page: Page, clubId: string) {
 }
 
 /**
- * The student's own verification code. It reaches the world on the PDF's QR
- * rather than through any screen, so the test collects it the same way nothing
- * in the UI does.
- *
- * limit=100, not a handful: every run of this file leaves one more revoked
- * certificate behind, ids are uuid v7 and the page is ordered by id, so the
- * live one is the LAST row and a short page stops containing it.
+ * limit=100, not a handful: every run leaves one more revoked certificate
+ * behind, ids are uuid v7 and the page is ordered by id, so the live one is
+ * the LAST row and a short page stops containing it.
  */
 async function verificationCode(page: Page): Promise<string> {
   const code = await page.evaluate(async () => {
@@ -110,12 +99,9 @@ function attendanceRow(page: Page, name: string): Locator {
 }
 
 /**
- * Puts the seeded student back to "not arrived yet", through the product,
- * so this walk starts in the same place on every run instead of passing once
- * and then asserting against the state its own first run left behind.
- *
- * Drone Build Night is ONGOING, so the correction window is open and no
- * override reason is needed.
+ * Resets through the product, so the walk starts in the same place on every
+ * run rather than asserting against the state its own first run left behind.
+ * Drone Build Night is ONGOING, so no override reason is needed.
  */
 async function clearCheckIn(page: Page) {
   await signIn(page, 'lead@uni.ac.ae');
@@ -147,14 +133,13 @@ test('an operator checks a student in and the verdict names them', async ({ page
 
   const verdict = page.getByRole('status');
   await expect(verdict).toContainText('Checked in');
-  // The name and the email, because eyeballing the person against them is the
-  // task. A verdict that only said "checked in" would pass a status assertion
-  // and be useless in a hall.
+  // Catches a verdict that only says "checked in": it passes a status
+  // assertion and is useless in a hall, where the task is eyeballing a person.
   await expect(verdict).toContainText('Layla Hassan');
   await expect(verdict).toContainText(STUDENT);
 
-  // The same person again. Not a success, and carrying the ORIGINAL time: a
-  // rewritten timestamp answers the operator's actual question wrongly.
+  // Carries the ORIGINAL time: a rewritten timestamp answers the operator's
+  // actual question wrongly.
   await verdict.getByRole('button', { name: 'Next' }).click();
   await checkIn(page, STUDENT, 'Camera would not focus');
   await expect(page.getByRole('status')).toContainText('Already checked in');
@@ -163,11 +148,8 @@ test('an operator checks a student in and the verdict names them', async ({ page
 test('the scanner counter follows the roster permission, not the scan permission', async ({
   page,
 }) => {
-  // registration:read is a bulk read of attendee personal data and club
-  // OPERATIONS does not hold it, so the same screen shows the same operator a
-  // counter or no counter depending on the club role they hold. A test that
-  // only signed in as Lead would pass against a screen showing everyone the
-  // counter.
+  // Catches a screen that shows everyone the counter: club OPERATIONS does not
+  // hold registration:read, so a test signing in only as Lead would pass.
   await signIn(page, 'ops@uni.ac.ae');
   await openScanner(page, 'Drone Build Night');
   await expect(page.getByText(/^\d+ \/ \d+$/)).toHaveCount(0);
@@ -178,8 +160,8 @@ test('the scanner counter follows the roster permission, not the scan permission
 });
 
 test('an unregistered address is refused without naming anybody', async ({ page }) => {
-  // Spec 7.5's disclosure rule. A refusal that leaked a name would let whoever
-  // holds the scanner enumerate the directory one address at a time.
+  // Spec 7.5: a refusal that leaked a name lets whoever holds the scanner
+  // enumerate the directory one address at a time.
   await signIn(page, 'ops@uni.ac.ae');
   await openScanner(page, 'Drone Build Night');
 
@@ -190,8 +172,8 @@ test('an unregistered address is refused without naming anybody', async ({ page 
 });
 
 test('the scanner controls stay within a thumb of the bottom edge', async ({ page }) => {
-  // One-handed reach, spec 9.4, and the mobile-viewport pass. A control bar
-  // that drifted into a header would pass every other assertion in this file.
+  // Spec 9.4, one-handed reach: a control bar that drifted into a header
+  // passes every other assertion in this file.
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, 'ops@uni.ac.ae');
   await openScanner(page, 'Drone Build Night');
@@ -217,8 +199,7 @@ test('an officer corrects attendance and the roster follows', async ({ page }) =
   await page.getByRole('dialog').getByLabel('Reason').fill('Left before the session started');
   await page.getByRole('dialog').getByRole('button', { name: 'Mark absent' }).click();
 
-  // The control flips, which is the only proof the write landed rather than
-  // the dialog merely closing.
+  // The only proof the write landed rather than the dialog merely closing.
   await expect(row.getByRole('button', { name: 'Mark present' })).toBeVisible();
 
   await row.getByRole('button', { name: 'Mark present' }).click();
@@ -230,9 +211,8 @@ test('an officer corrects attendance and the roster follows', async ({ page }) =
 test('a correction past the window is refused in the API words, inside the dialog', async ({
   page,
 }) => {
-  // Line Follower Sprint ended 72 hours ago, so the 48-hour window has shut and
-  // an Admin needs a recorded reason. Catches a screen that sends the override
-  // reason on every action, or on none.
+  // Ended 72 hours ago, so the 48-hour window has shut. Catches a screen that
+  // sends the override reason on every action, or on none.
   await signIn(page, 'admin@uni.ac.ae');
   await page.goto('/admin/events');
   await page.getByRole('link', { name: 'Line Follower Sprint' }).click();
@@ -249,9 +229,8 @@ test('a correction past the window is refused in the API words, inside the dialo
 });
 
 test('an officer sees the certificate list and none of its controls', async ({ page }) => {
-  // certificate:manage ticks no club role at all (spec 6.1), which is what
-  // keeps a certificate an institutional record rather than a thing a club
-  // hands out. Hiding the controls is presentation; the API is the gate.
+  // certificate:manage ticks no club role at all (spec 6.1). Hiding the
+  // controls is presentation; the API is the gate.
   await signIn(page, 'lead@uni.ac.ae');
   await pickCertificateEvent(page, await officerClubId(page));
 
@@ -264,8 +243,8 @@ test('an admin issues, and the student reaches the document', async ({ page }) =
   await pickCertificateEvent(page, await adminClubId(page));
   await page.getByRole('button', { name: 'Issue certificates' }).click();
 
-  // Issuance is idempotent by design, so a second press has to report the
-  // totals rather than look like nothing happened.
+  // Idempotent by design: a second press reports the totals rather than
+  // looking like nothing happened.
   await expect(page.getByText(/^Issued \d+\. \d+ active\.$/)).toBeVisible();
 
   await signIn(page, STUDENT);
