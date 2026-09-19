@@ -22,52 +22,35 @@ import { TokensService } from './tokens.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { Env } from '../config/env.schema';
 
-/**
- * Short on purpose. A reset link is a bearer credential sitting in an inbox,
- * and thirty minutes is long enough to walk to a laptop and short enough
- * that a mailbox read months later is worthless.
- */
+/** A reset link is a bearer credential sitting in an inbox: long enough to
+ *  walk to a laptop, short enough that a mailbox read later is worthless. */
 export const PASSWORD_RESET_TTL_MINUTES = 30;
 
-/**
- * Expired, already used, unknown, and belonging to a suspended account all
- * answer with this exact string. Distinguishing them would tell a caller
- * holding a guessed token which half of the guess was right.
- */
+/** Expired, used, unknown and suspended all answer this exact string:
+ *  distinguishing them tells a caller which half of a guess was right. */
 export const RESET_LINK_INVALID = 'That password reset link is no longer valid.';
 
 /**
- * Every refresh failure path throws this exact message: expiry, an
- * unknown token, a suspended user, and (in the controller) a missing
- * cookie. The client cannot tell which case occurred, and does not need
- * to: distinguishing them would only help an attacker probe which sessions
- * are real. Exported so AuthController's missing-cookie check uses the same
- * literal rather than a second copy that could drift from this one.
+ * Every refresh failure throws this exact message, so a caller cannot probe
+ * which sessions are real. Exported so AuthController's missing-cookie check
+ * uses the same literal rather than a second copy that drifts.
  */
 export const SESSION_EXPIRED = 'Session expired.';
 
 /**
- * Advisory lock key for the create-first-admin path, an arbitrary constant
- * that means nothing except "whoever holds it is bootstrapping".
- *
- * Every other serialised write in this codebase locks the row it is about
- * to change (`SELECT ... FOR UPDATE`, see UsersService.updateStatus). That
- * is not available here: the whole point of the guard is that no admin row
- * exists yet, and an empty result set locks nothing. Two concurrent
- * requests would both count zero admins, both pass the guard, and both
- * insert — handing the deployment a second platform owner. A
- * transaction-scoped advisory lock is the one thing Postgres offers that
- * serialises on the absence of a row. Released on commit or rollback
- * without an unlock call, so a failed bootstrap cannot wedge the endpoint.
+ * An advisory lock, not the `SELECT ... FOR UPDATE` every other serialised
+ * write here uses, because the guard's whole premise is that no admin row
+ * exists and an empty result set locks nothing: two concurrent requests would
+ * both count zero and both insert. This is the one thing Postgres offers that
+ * serialises on the ABSENCE of a row. Transaction-scoped, so a failed
+ * bootstrap cannot wedge the endpoint.
  */
 const BOOTSTRAP_LOCK_KEY = 8_273_645_521;
 
 /**
- * OWASP's current minimum for argon2id. Exported so the exact same
- * parameters govern real password hashing, the dummy hash below (which must
- * cost the same ~100ms as a real hash to close the timing oracle it
- * defeats), and Task 12's seed, three call sites that must never drift out
- * of step with each other.
+ * OWASP's current minimum for argon2id. Exported so real hashing, the dummy
+ * hash below and the seed share one set of parameters: the dummy must cost
+ * the same ~100ms as a real hash or the timing oracle it closes reopens.
  */
 export const ARGON2_OPTIONS: Options = {
   algorithm: Algorithm.Argon2id,
@@ -88,15 +71,12 @@ export class AuthService {
   private readonly webOrigin: string;
 
   /**
-   * A fixed argon2id hash of a throwaway string (generated once with
-   * ARGON2_OPTIONS, pasted here as a literal), verified against on every
-   * login where no matching user row exists.
+   * Verified against on every login with no matching user row. Without it,
+   * "no user, return immediately" and "user found, spend ~100ms hashing" are
+   * separable over a few timed requests: an account-existence oracle that an
+   * identical response body cannot fix, the gap being before any body exists.
    *
-   * Without it, "no user, return immediately" and "user found, spend ~100ms
-   * hashing" are separable over a handful of timed requests: a reliable
-   * account-existence oracle that an identical response BODY does not fix,
-   * since the timing gap happens before any body is built. Not a secret: it
-   * hashes a throwaway value and guards nothing.
+   * Not a secret. It hashes a throwaway value and guards nothing.
    */
   private static readonly DUMMY_HASH =
     '$argon2id$v=19$m=19456,t=2,p=1$GN9bchqBHn2ULEyDayXtaA$zLq1pol3Oya16hlWQFjRnoaPrXLIdDjj7dSf5ht/stU';
@@ -112,11 +92,8 @@ export class AuthService {
     this.webOrigin = config.get('PUBLIC_WEB_ORIGIN', { infer: true }).replace(/\/+$/, '');
   }
 
-  /**
-   * `input.email` was already normalised by `signupBodySchema` at the
-   * validation boundary, the same `emailSchema` login's lookup uses, so
-   * the two directions can never drift apart (see @majlis/contracts).
-   */
+  /** Already normalised by `signupBodySchema`, which shares `emailSchema`
+   *  with login's lookup so the two directions cannot drift. */
   async signup(input: SignupBody): Promise<AuthResult> {
     const passwordHash = await hash(input.password, ARGON2_OPTIONS);
 
@@ -127,8 +104,7 @@ export class AuthService {
           data: { email: input.email, passwordHash, fullName: input.fullName },
         });
       } catch (e) {
-        // A lost race on the unique email index is an expected outcome, not
-        // a server fault: reported as a domain conflict, never a 500.
+        // A lost race on the unique email index is expected, not a fault.
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
           throw new ConflictError('An account with this email already exists.');
         }
@@ -138,39 +114,27 @@ export class AuthService {
     });
   }
 
-  /**
-   * GET /auth/bootstrap. Drives the create-admin screen, and is the only
-   * unauthenticated route that reports anything about the account table:
-   * one boolean, nothing else.
-   */
+  /** The only unauthenticated route reporting anything about the account
+   *  table: one boolean, nothing else. */
   async bootstrapStatus(): Promise<BootstrapStatus> {
     return { needsAdmin: !(await this.adminExists()) };
   }
 
   /**
-   * POST /auth/bootstrap. Creates the platform's first ADMIN, and only
-   * while there is none.
+   * The only thing that can produce the FIRST admin: `PATCH /users/{id}`
+   * writes `platformRole` but needs `user:edit`, so it multiplies admins and
+   * cannot mint one, and the seed is development-only.
    *
-   * This exists because nothing else can produce the FIRST admin. Since
-   * 2026-09-17 `PATCH /users/{id}` does write `platformRole`, but only for a
-   * caller who already holds `user:edit`, i.e. an admin: it multiplies admins
-   * and cannot mint one from nothing. The seed is development-only, so a
-   * fresh deployment would otherwise have no reachable path to an admin
-   * account and therefore none to a club, since only an admin can create one.
+   * The guard reads the database, not a flag this endpoint sets, so an admin
+   * created by any other means closes it just as firmly.
    *
-   * The guard reads the database rather than a flag this endpoint sets, so
-   * an admin created by any other means (the seed, hand-written SQL)
-   * closes the endpoint just as firmly as one created here.
-   *
-   * Deliberately open: anyone who reaches a deployment that has no admin
-   * can claim the account. That is the accepted trade (decided 2026-09-15,
-   * see spec §3) and the window closes on first use, so claim it
-   * immediately after a deploy rather than leaving it open.
+   * DELIBERATELY OPEN: whoever reaches a deployment with no admin can claim
+   * it. Accepted trade (2026-09-15, spec 3); the window shuts on first use,
+   * so claim it immediately after a deploy.
    */
   async bootstrapAdmin(input: SignupBody): Promise<AuthResult> {
-    // Hashed before the transaction opens, same reasoning as signup: ~100ms
-    // of argon2 has no business holding a pooled connection, and here it
-    // would hold the advisory lock along with it.
+    // Hashed before the transaction opens: ~100ms of argon2 has no business
+    // holding a pooled connection, and here it would hold the lock too.
     const passwordHash = await hash(input.password, ARGON2_OPTIONS);
 
     return this.host.run(async () => {
@@ -189,19 +153,17 @@ export class AuthService {
           },
         });
       } catch (e) {
-        // Same treatment as signup's lost race on the unique email index:
-        // reachable here when the address already belongs to a student who
-        // signed up before anyone claimed the admin account.
+        // Reachable when the address already belongs to a student who signed
+        // up before anyone claimed the admin account.
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
           throw new ConflictError('An account with this email already exists.');
         }
         throw e;
       }
 
-      // No actorUserId: nobody was signed in to do this, and AuditLog's
-      // actor column is nullable for exactly this kind of action. The
-      // subject is the new admin. Written inside the same transaction as
-      // the insert, so there is no committed admin without its audit row.
+      // No actorUserId: nobody was signed in to do this, which is what the
+      // nullable actor column is for. Same transaction as the insert, so
+      // there is no committed admin without its audit row.
       await this.audit.record({
         action: 'user.admin_bootstrapped',
         entityType: 'User',
@@ -220,50 +182,37 @@ export class AuthService {
   }
 
   async login(input: LoginBody): Promise<AuthResult> {
-    // Looked up outside any transaction, same reasoning as signup's hash()
-    // call: the read plus the ~100ms argon2 verify below have no need of one,
-    // and only issueSession (minting a token and persisting the refresh-token
-    // row) does. The pre-fix version wrapped this whole method in host.run,
-    // pinning a pooled connection idle for the entire CPU-bound verify,
-    // the first thing to fall over under a semester-start login burst on a
-    // small serverless pool.
+    // Outside any transaction: wrapping this method in host.run pinned a
+    // pooled connection idle for the whole CPU-bound verify, the first thing
+    // to fall over under a login burst. Only issueSession needs one.
     const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
 
-    // Runs unconditionally, even when no user was found, and still outside
-    // any transaction. Verifying against DUMMY_HASH instead of
-    // short-circuiting is what keeps "no such account" and "wrong password"
-    // costing the same ~100ms.
+    // Unconditional, even with no user found: verifying against DUMMY_HASH
+    // rather than short-circuiting is what keeps "no such account" and
+    // "wrong password" costing the same ~100ms.
     const ok = await verify(user?.passwordHash ?? AuthService.DUMMY_HASH, input.password);
 
     if (!user || !ok) throw new UnauthorizedError('Email or password is incorrect.');
 
-    // Reported only once the caller has already proven the password, the
-    // one deliberate exception to enumeration resistance (spec: this
-    // leaks account state only to someone who already knows it). A wrong
-    // password against a suspended account still falls through the branch
-    // above, indistinguishable from an unknown email.
+    // Only after the password is proven: the one deliberate exception to
+    // enumeration resistance, leaking account state to someone who already
+    // knows it. A wrong password on a suspended account still falls through
+    // the branch above, indistinguishable from an unknown email.
     if (user.status !== 'ACTIVE') throw new ForbiddenError('This account is suspended.');
 
     return this.host.run(() => this.issueSession(user));
   }
 
-  /**
-   * Mints a fresh access token and starts a brand-new refresh-token family.
-   * Both signup and login begin a new family; refresh (below) is what grows
-   * one from here.
-   */
+  /** Starts a brand-new refresh-token family. Signup and login both begin
+   *  one; refresh grows it. */
   private async issueSession(user: User): Promise<AuthResult> {
     const accessToken = await this.tokens.signAccessToken(user.id);
     const { raw } = await this.mintRefreshTokenRow(user.id, uuidv7());
     return { user: await this.buildSessionUser(user), accessToken, refreshToken: raw };
   }
 
-  /**
-   * Inserts one refresh_token row and returns its id and raw value. Shared
-   * by issueSession (a brand-new family) and refresh (a rotation within an
-   * existing family) so both mint through the exact same code: there is
-   * only one place a raw token is ever generated or a row ever created.
-   */
+  /** Shared by issueSession and refresh, so there is exactly one place a raw
+   *  token is generated or a row created. */
   private async mintRefreshTokenRow(
     userId: string,
     familyId: string,
@@ -311,12 +260,9 @@ export class AuthService {
   }
 
   /**
-   * Revokes the whole family the presented token belongs to (not just the
-   * one row) and returns regardless of what it finds: no cookie, an
-   * unknown token, or one already revoked all succeed identically. A user
-   * who cannot log out is a worse outcome than a redundant no-op, and there
-   * is nothing sensitive to report by failing here: unlike reuse, presenting
-   * your own most-recent token to log out is completely routine.
+   * Revokes the whole family, not one row, and succeeds whatever it finds:
+   * no cookie, unknown token, already revoked. A user who cannot log out is
+   * worse than a redundant no-op.
    */
   async logout(raw: string | undefined): Promise<void> {
     if (!raw) return;
@@ -330,19 +276,13 @@ export class AuthService {
         where: { familyId: row.familyId, revokedAt: null },
         data: { revokedAt: now },
       });
-      // Revoking the family ends the ability to RENEW; the access token
-      // already in the cookie is a stateless 15 minute JWT and outlived the
-      // logout without this. Same mechanism a password reset uses, in the
-      // same transaction as the revocation, so a logout cannot half-happen.
+      // Revoking the family only ends RENEWAL; the access token in the cookie
+      // is a stateless 15-minute JWT and outlived logout without this. Same
+      // transaction as the revocation, so a logout cannot half-happen.
       //
-      // It is account-wide rather than per family, because the stamp is a
-      // single instant on the user, so signing out on one device signs out
-      // every device. That is the behaviour, not an accident: the web
-      // middleware only renews when the session cookie is ABSENT, and this
-      // leaves it present but rejected, so another device lands on /login.
-      // Narrowing it to one family would need a per-family stamp the access
-      // token could be checked against, and nobody has asked for multi-device
-      // sessions to survive a sign-out.
+      // Account-wide, so signing out on one device signs out every device.
+      // That is the behaviour, not an accident: narrowing it would need a
+      // per-family stamp the access token could be checked against.
       await this.host.tx.user.update({
         where: { id: row.userId },
         data: { sessionsInvalidatedAt: now },
@@ -351,21 +291,16 @@ export class AuthService {
   }
 
   /**
-   * POST /auth/forgot-password. Always succeeds, and always with the same
-   * empty answer: an unknown address, a suspended account and a real one are
-   * indistinguishable to the caller, or this endpoint is an
+   * Always succeeds with the same empty answer: unknown address, suspended
+   * account and real one must be indistinguishable, or this is an
    * account-existence oracle.
    *
-   * The raw token exists on this function's stack and nowhere else. It is
-   * handed to the channel in memory and the email is composed from it there;
-   * the row stores only its sha256, like RefreshToken, and the notification
-   * records only THAT a reset was requested.
+   * The raw token exists on this stack and nowhere else. The row stores only
+   * its sha256, and the notification records only THAT a reset was requested.
    *
-   * This is the one notification delivered inline rather than by the sweep.
-   * A sweep would have to find the link in `notification.payload`, and a
-   * live reset URL sitting in a JSONB column gives back exactly what hashing
-   * the token was for: one read of that table would yield working links for
-   * every pending request, outliving each token's own expiry.
+   * The one notification delivered inline rather than by the sweep: a sweep
+   * would need the link in `notification.payload`, and a live reset URL in a
+   * JSONB column gives back exactly what hashing the token was for.
    */
   async forgotPassword(input: ForgotPasswordBody): Promise<void> {
     const user = await this.host.tx.user.findUnique({ where: { email: input.email } });
@@ -374,10 +309,9 @@ export class AuthService {
     const { raw, hash: tokenHash } = this.tokens.mintOpaqueToken();
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
 
-    // Before the transaction, not after it: the outcome is written onto the
-    // row, so the row is never PENDING and the sweep can never pick up a
-    // password reset it has no link for. A send whose transaction then fails
-    // leaves a link that answers exactly like an expired one.
+    // Before the transaction: the outcome is written onto the row, so it is
+    // never PENDING and the sweep cannot pick up a reset it has no link for.
+    // A send whose transaction then fails leaves a link that reads as expired.
     const delivered = await this.notifications.deliverNow({
       type: 'auth.password_reset',
       // This payload is never any row's payload.
@@ -398,17 +332,16 @@ export class AuthService {
         userId: user.id,
         type: 'auth.password_reset',
         // The token row, not the user: a second request must record a second
-        // notification rather than being absorbed as a repeat of the first.
+        // notification rather than be absorbed as a repeat of the first.
         subject: token.id,
-        // No token and no URL. This row records that a reset was requested
-        // and when the link stops working, and nothing else.
+        // No token and no URL: that a reset was requested, and nothing else.
         payload: { expiresInMinutes: PASSWORD_RESET_TTL_MINUTES },
         delivered,
       });
 
-      // No actorUserId: nobody authenticated here. Whoever typed the address
-      // has not proven they are the account holder, and recording them as
-      // the actor would put a claim in the trail that nothing verified.
+      // No actorUserId: whoever typed the address has not proven they are the
+      // account holder, and recording them would put an unverified claim in
+      // the trail.
       await this.audit.record({
         action: 'auth.password_reset_requested',
         entityType: 'User',
@@ -419,19 +352,13 @@ export class AuthService {
   }
 
   /**
-   * GET /auth/reset-password. Names the account a link belongs to, so the
-   * screen can show whose password it is about to change without ever
-   * rendering the token.
+   * Read-only by design. It REPEATS resetPassword's predicate rather than
+   * sharing a lookup, because the two must not converge: this may never write
+   * `usedAt`, and a shared helper that grew a write would spend the token on
+   * page load and break every reset silently.
    *
-   * Read-only by design. It repeats resetPassword's predicate rather than
-   * sharing a lookup with it, because the two must not converge: this one
-   * may never write `usedAt`, and a shared helper that grew a write would
-   * spend the token on page load and break every reset silently.
-   *
-   * The predicate itself is the same in every other respect, and that is the
-   * point: a link this answers for is a link the POST will accept, so the
-   * user is never told a link is good and then refused after typing a
-   * password twice.
+   * Identical in every other respect on purpose, so a link this accepts is
+   * one the POST accepts too.
    */
   async previewReset(query: ResetPasswordPreviewQuery): Promise<ResetPasswordPreview> {
     const tokenHash = this.tokens.hashOpaqueToken(query.token);

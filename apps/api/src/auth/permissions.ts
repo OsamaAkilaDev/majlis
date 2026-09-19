@@ -1,41 +1,26 @@
 /**
- * The permission matrix: pure data plus a deciding function. No I/O, no
- * database, no Nest. The guard (PermissionsGuard) loads ActorFacts from the
- * database per request and calls `evaluate`; this module only decides.
+ * The permission matrix: pure data plus a deciding function. No I/O, no Nest.
+ * The guard loads ActorFacts per request and calls `evaluate`.
  *
- * The matrix is data. Later stages add rows (e.g. `club:edit`); neither this
- * function nor the guard changes.
- *
- * ADMIN is listed explicitly in every rule that admits it. There is
- * deliberately no `if (platformRole === 'ADMIN') return true` shortcut.
- * Spec §6.1's "Register for an event" row reads "as student" in the Admin
- * column, not "override". A blanket Admin-wins branch would silently grant
- * the one permission the matrix deliberately withholds. See the
- * "no implicit Admin superuser branch" test in permissions.spec.ts.
+ * ADMIN is listed explicitly in every rule that admits it, and there is
+ * deliberately NO `platformRole === 'ADMIN'` shortcut: spec 6.1's "Register
+ * for an event" row reads "as student" in the Admin column, so a blanket
+ * Admin-wins branch grants the one permission the matrix withholds.
  */
 
 export type PlatformRole = 'STUDENT' | 'ADMIN';
 export type ClubRole = 'LEAD' | 'VICE_LEAD' | 'MARKETING' | 'CTO' | 'OPERATIONS';
 export type EventResponsibility = 'EVENT_LEAD' | 'OPERATIONS' | 'MARKETING';
 
-// The three unions above are declared locally, by literal, rather than
-// imported as values from the generated Prisma client: that would drag
-// Prisma's runtime into a module whose whole point is to have none. But a
-// role RENAMED or REMOVED in the schema is dangerous if these silently
-// drift: Task 8's guard reconciles ActorFacts against the real enum, so a
-// renamed role would make facts.clubRoles carry the new string while
-// PERMISSIONS still lists the old one. `.includes()` quietly returns
-// false and an authorized officer is denied with no type error and no
-// failing test, just a support ticket.
+// Declared locally so Prisma's runtime stays out of this module, then
+// asserted against the generated types below. A role renamed in the schema
+// would otherwise leave facts.clubRoles carrying the new string while
+// PERMISSIONS lists the old one: `.includes()` returns false, an authorized
+// officer is denied, and nothing fails to compile.
 //
-// So import ONLY the generated *types* (elided at compile time by
-// `import type`, zero runtime, same as any other type-only import) and
-// assert both unions describe the same set of strings. `[T] extends [U]`
-// (not the naked `T extends U`) on both sides is deliberate: a bare
-// conditional distributes over a union member-by-member, which would let
-// this pass even when the two unions differ; wrapping each side in a
-// tuple suppresses that distribution and forces a single, whole-set
-// comparison.
+// `[T] extends [U]` on both sides, not the naked form: a bare conditional
+// distributes over the union member-by-member and would pass even when the
+// two differ. The tuples force a whole-set comparison.
 import type {
   ClubRole as PrismaClubRole,
   EventResponsibility as PrismaEventResponsibility,
@@ -64,14 +49,10 @@ type _SyncEventResponsibility = [EventResponsibility] extends [PrismaEventRespon
 const _syncEventResponsibility: _SyncEventResponsibility = true;
 
 /**
- * Facts about the actor making a request, already scoped by the guard.
- *
- * `clubRoles` holds only the actor's ACTIVE appointments in the club that
- * the current request is scoped to, NOT every club they hold a role in.
- * `eventResponsibilities` is the same narrowing for the event in scope. A
- * reader who takes `clubRoles` to mean "every club the actor leads anywhere"
- * will write a cross-club authorization bug: the guard, not this module, is
- * what narrows to the scoped club/event before calling evaluate.
+ * `clubRoles` holds ONLY the actor's ACTIVE appointments in the club this
+ * request is scoped to, never every club they hold a role in;
+ * `eventResponsibilities` likewise. Reading it as "every club the actor
+ * leads" is how a cross-club authorization bug gets written.
  */
 export interface ActorFacts {
   userId: string;
@@ -88,21 +69,14 @@ export interface PermissionRule {
 
 export const PERMISSIONS = {
   'user:list': { platform: ['ADMIN'] },
-  // The narrow club-scoped directory lookup behind every "pick a person"
-  // control an officer has: inviting to the team, adding a member,
-  // assigning an event responsibility. `user:list` is not widened for it,
-  // because that route returns platform role, status and creation date for
-  // every account in the university. This one returns a name and an
-  // address, and only to somebody who already leads a club.
-  //
-  // Club-scoped, so it must only ever be required on a route carrying a
-  // clubId: a club rule cannot authorize a bare unscoped route, which is
-  // why the route is nested under /clubs/:clubId.
+  // Club-scoped, so it must ONLY be required on a route carrying a clubId: a
+  // club rule cannot authorize a bare unscoped route. `user:list` is not
+  // widened for this, because that route returns platform role, status and
+  // creation date for every account in the university.
   'user:search': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
   'user:suspend': { platform: ['ADMIN'] },
-  // Platform-only and deliberately not club-scoped at any level. It writes
-  // `platformRole`, so a club officer holding it could mint a platform
-  // admin out of a club role, which is the whole permission model inverted.
+  // Never club-scoped at any level: it writes `platformRole`, so a club
+  // officer holding it could mint a platform admin out of a club role.
   'user:edit': { platform: ['ADMIN'] },
   'department:manage': { platform: ['ADMIN'] },
   'club:create': { platform: ['ADMIN'] },
@@ -112,76 +86,59 @@ export const PERMISSIONS = {
   'club:team-manage': { platform: ['ADMIN'], club: ['LEAD'] },
   'membership:decide': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD', 'OPERATIONS'] },
 
-  // Creating an event needs the whole object, including startsAt, which no
-  // field bucket gives Marketing, CTO or Operations. Field buckets govern
-  // editing; creation stays with Lead, Vice and Admin.
+  // Creation needs the whole object, including startsAt, which no field
+  // bucket gives Marketing, CTO or Operations. Buckets govern editing only.
   'event:create': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
-  // Every club role reaches the edit route; EVENT_FIELDS decides which keys
-  // of the body each of them may actually set.
+  // Every club role reaches the route; EVENT_FIELDS decides which keys.
   'event:edit': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'] },
   'event:publish': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
   'event:cancel': { platform: ['ADMIN'], club: ['LEAD'] },
   'event:assign': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
-  // Attendee personal data. Spec 6.1 gives club Operations this only 'for
-  // assigned event', which is an EventAssignment row and so belongs in the
-  // event column, not the club one. Marketing and CTO are excluded outright.
+  // Spec 6.1 gives Operations this only "for assigned event", which is an
+  // EventAssignment and so belongs in the event column, not the club one.
   'registration:read': {
     platform: ['ADMIN'],
     club: ['LEAD', 'VICE_LEAD'],
     event: ['EVENT_LEAD', 'OPERATIONS'],
   },
-  // Spec 6.1's "Scan QR / check in" row ticks Lead and Operations only.
-  // Vice Lead is absent deliberately, in both of these. The event column is
-  // what makes an EventAssignment grant scan rights for one event without
+  // Vice Lead is absent deliberately from both of these. The event column is
+  // what lets an EventAssignment grant scan rights for one event without
   // making anyone a standing officer (spec 5.1).
   'attendance:scan': {
     platform: ['ADMIN'],
     club: ['LEAD', 'OPERATIONS'],
     event: ['EVENT_LEAD', 'OPERATIONS'],
   },
-  // "Correct attendance" is club-scoped only: an assignment grants the right
-  // to scan a queue, not to rewrite the record afterwards. The 48-hour
-  // window and the Admin override past it are enforced in the service, not
-  // here: they are a property of the event's clock, not of the actor.
+  // Club-scoped only: an assignment grants the right to scan a queue, not to
+  // rewrite the record. The 48-hour window is enforced in the service, being
+  // a property of the event's clock rather than of the actor.
   'attendance:correct': { platform: ['ADMIN'], club: ['LEAD', 'OPERATIONS'] },
-  // Spec 6.1's "Issue / revoke certificate" row reads "Admin / system" and
-  // ticks no club role at all. A Lead cannot issue their own club's
-  // certificates, which is what keeps a certificate an institutional record
-  // rather than a thing a club hands out.
+  // No club role at all: a Lead cannot issue their own club's certificates,
+  // which is what keeps one an institutional record.
   'certificate:manage': { platform: ['ADMIN'] },
-  // Spec 6.1 has no reporting row of its own. A club's own numbers are the
-  // same data its Lead and Vice already read one screen at a time, so they
-  // hold it club-scoped; the platform totals at /reports/overview are
-  // unscoped, which is what leaves them to Admin alone.
+  // Club-scoped: a club's own numbers are what its Lead and Vice already read
+  // one screen at a time. /reports/overview is unscoped, so Admin alone.
   'report:read': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },
-  // Spec 6.1's "Read audit log" row: Admin, and Lead scoped to their own
-  // club. Vice Lead is absent deliberately, as it is in the matrix.
+  // Vice Lead is absent deliberately.
   'audit:read': { platform: ['ADMIN'], club: ['LEAD'] },
 } as const satisfies Record<string, PermissionRule>;
 
 export type Permission = keyof typeof PERMISSIONS;
 
-// A separately-typed indexed view of the same object, so an unrecognised
-// string key looks up to `undefined` instead of a type error. `evaluate`
-// takes the narrow `Permission` union at its own boundary (typo protection
-// at compile time), but must still handle an unknown value cast through at
-// runtime (e.g. `'x' as Permission`), which is exactly what the "denies an
-// unknown permission" test does.
+// Indexed view of the same object, so an unrecognised key looks up to
+// `undefined` rather than a type error: `evaluate` takes the narrow union at
+// its boundary but must still handle a value cast through at runtime.
 const RULES: Record<string, PermissionRule> = PERMISSIONS;
 
 export function evaluate(permission: Permission, facts: ActorFacts): boolean {
   const rule = RULES[permission];
-  // Unknown permission denies. A typo in a @RequirePermission argument must
-  // fail closed, not fail open.
+  // A typo in a @RequirePermission argument must fail closed.
   if (!rule) return false;
   return matches(rule, facts);
 }
 
-/**
- * Exported so a rule that is not (yet) in PERMISSIONS can be exercised
- * directly: that's how the "no implicit Admin superuser branch" test
- * proves ADMIN isn't silently granted a permission it wasn't listed for.
- */
+/** Exported so a rule not in PERMISSIONS can be exercised directly: that is
+ *  how the "no implicit Admin superuser branch" test works. */
 export function matches(rule: PermissionRule, facts: ActorFacts): boolean {
   if (rule.platform?.includes(facts.platformRole)) return true;
   if (rule.club?.some((r) => facts.clubRoles.includes(r))) return true;
