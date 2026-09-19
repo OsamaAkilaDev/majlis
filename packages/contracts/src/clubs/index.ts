@@ -83,12 +83,24 @@ export type ImageKind = z.infer<typeof imageKindSchema>;
  * converter (apps/web/src/lib/image.ts). It lives here so the two cannot
  * drift: the browser encodes toward these numbers and the API verifies
  * against them.
+ *
+ * The box IS the ratio. Every upload is centre-cropped to it, so a banner is
+ * 4:1 wherever it is stored and wherever it is drawn, and no screen has to
+ * guess how tall the artwork it was handed will turn out to be. A `square`
+ * flag used to say this for the logo alone and said nothing about the rest,
+ * which is why a banner could arrive at any shape at all.
  */
 export const IMAGE_KINDS = {
-  'club-logo': { maxBytes: 256 * 1024, box: { w: 512, h: 512 }, square: true },
-  'club-banner': { maxBytes: 512 * 1024, box: { w: 1600, h: 600 }, square: false },
-  'event-poster': { maxBytes: 512 * 1024, box: { w: 1600, h: 900 }, square: false },
-} as const satisfies Record<ImageKind, { maxBytes: number; box: { w: number; h: number }; square: boolean }>;
+  'club-logo': { maxBytes: 256 * 1024, box: { w: 512, h: 512 } },
+  'club-banner': { maxBytes: 512 * 1024, box: { w: 1600, h: 400 } },
+  'event-poster': { maxBytes: 512 * 1024, box: { w: 1600, h: 900 } },
+} as const satisfies Record<ImageKind, { maxBytes: number; box: { w: number; h: number } }>;
+
+/** The CSS `aspect-ratio` a kind's artwork always has, for the box it reserves. */
+export function imageAspectRatio(kind: ImageKind): string {
+  const { box } = IMAGE_KINDS[kind];
+  return `${box.w} / ${box.h}`;
+}
 
 export const signedUploadSchema = z.object({
   path: z.string(),

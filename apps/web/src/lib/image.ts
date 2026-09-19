@@ -5,18 +5,42 @@ export const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 
 const QUALITY_LADDER = [0.82, 0.7, 0.6];
 
-export function fitBox(
-  source: { w: number; h: number },
-  box: { w: number; h: number },
-  square: boolean,
-): { w: number; h: number } {
-  if (square) {
-    const side = Math.min(source.w, source.h, box.w);
-    return { w: side, h: side };
-  }
+export interface Crop {
+  /** The source rectangle to read. */
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  /** The canvas to draw it onto. */
+  w: number;
+  h: number;
+}
+
+/**
+ * The largest centred rectangle of `source` at the box's own ratio, scaled to
+ * fit the box and never above its own size.
+ *
+ * One path for every kind: the logo's box is square, so the square crop falls
+ * out of the same arithmetic rather than needing a flag of its own.
+ */
+export function cropToBox(source: { w: number; h: number }, box: { w: number; h: number }): Crop {
+  const ratio = box.w / box.h;
+
+  // Whichever side runs out first at that ratio decides the crop.
+  const sw = Math.min(source.w, source.h * ratio);
+  const sh = sw / ratio;
+
   // Never above 1: an image smaller than the box stays its own size.
-  const scale = Math.min(box.w / source.w, box.h / source.h, 1);
-  return { w: Math.round(source.w * scale), h: Math.round(source.h * scale) };
+  const scale = Math.min(box.w / sw, 1);
+
+  return {
+    sx: (source.w - sw) / 2,
+    sy: (source.h - sh) / 2,
+    sw,
+    sh,
+    w: Math.round(sw * scale),
+    h: Math.round(sh * scale),
+  };
 }
 
 /**
@@ -31,23 +55,15 @@ export async function convertToWebp(file: File, kind: ImageKind): Promise<Blob> 
 
   const spec = IMAGE_KINDS[kind];
   const bitmap = await createImageBitmap(file);
-  const target = fitBox({ w: bitmap.width, h: bitmap.height }, spec.box, spec.square);
+  const crop = cropToBox({ w: bitmap.width, h: bitmap.height }, spec.box);
 
   const canvas = document.createElement('canvas');
-  canvas.width = target.w;
-  canvas.height = target.h;
+  canvas.width = crop.w;
+  canvas.height = crop.h;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('This browser cannot process images.');
 
-  if (spec.square) {
-    // Centre crop: take the largest centred square of the source.
-    const side = Math.min(bitmap.width, bitmap.height);
-    const sx = (bitmap.width - side) / 2;
-    const sy = (bitmap.height - side) / 2;
-    ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, target.w, target.h);
-  } else {
-    ctx.drawImage(bitmap, 0, 0, target.w, target.h);
-  }
+  ctx.drawImage(bitmap, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.w, crop.h);
   bitmap.close();
 
   for (const quality of QUALITY_LADDER) {

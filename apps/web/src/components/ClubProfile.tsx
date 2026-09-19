@@ -164,7 +164,9 @@ export function ClubProfile({
           ) : null}
         </div>
 
-        <div className="-mt-9 flex items-end gap-4 px-3 sm:-mt-11 sm:px-5">
+        {/* `relative` is load-bearing: the banner above is positioned, so
+            without a stacking position of its own this row paints under it. */}
+        <div className="relative z-10 -mt-9 flex items-end gap-4 px-3 sm:-mt-11 sm:px-5">
           <div className="relative shrink-0">
             <img
               src={club.logoUrl}

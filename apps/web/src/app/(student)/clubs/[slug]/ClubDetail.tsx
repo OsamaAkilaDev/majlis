@@ -145,8 +145,11 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
         <ClubBanner clubId={club.id} bannerUrl={club.bannerUrl} className="rounded-card" />
 
         {/* The crest and the name ride up over the banner's foot, so the
-            identity is one object rather than a picture with a caption. */}
-        <div className="-mt-9 flex items-end gap-4 px-3 sm:-mt-11 sm:px-5">
+            identity is one object rather than a picture with a caption.
+            `relative` is load-bearing: the banner is positioned, so without a
+            stacking position of its own this row paints UNDER it and the crest
+            disappears. */}
+        <div className="relative z-10 -mt-9 flex items-end gap-4 px-3 sm:-mt-11 sm:px-5">
           <img
             src={club.logoUrl}
             alt=""

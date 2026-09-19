@@ -19,11 +19,16 @@ const nextConfig: NextConfig = {
    * Next's default is 0, which means the client Router Cache keeps nothing for
    * a dynamic route, and every screen here is dynamic: they read cookies() and
    * fetch no-store. Leaving a page and coming back therefore re-requested the
-   * whole RSC payload and showed loading.tsx again. 30s covers going to a
-   * detail screen and back; anything older refetches. Writes do not wait for
-   * it to lapse, because lib/api.ts refreshes the router after each one.
+   * whole RSC payload and showed loading.tsx again.
+   *
+   * Three minutes, not the 30 seconds this started at: browsing a club, an
+   * event under it and back is well over half a minute of reading, and every
+   * return paid for a full round trip and a skeleton. Nothing goes stale
+   * behind it, because lib/api.ts refreshes the router after every write from
+   * this tab; three minutes is only how long another person's change takes to
+   * show up on a screen nobody has touched.
    */
-  experimental: { staleTimes: { dynamic: 30 } },
+  experimental: { staleTimes: { dynamic: 180, static: 180 } },
   async rewrites() {
     return [{ source: '/api/v1/:path*', destination: `${apiOrigin()}/api/v1/:path*` }];
   },

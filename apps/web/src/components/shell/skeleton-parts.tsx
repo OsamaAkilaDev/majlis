@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { cn } from '@/lib/cn';
 
 /**
@@ -7,8 +8,8 @@ import { cn } from '@/lib/cn';
  * The standing risk: change one of those components and the shape here has to
  * follow, and nothing in the suite will notice if it does not.
  */
-export function Bar({ className }: { className?: string }) {
-  return <span className={cn('block animate-pulse rounded bg-surface-2', className)} />;
+export function Bar({ className, style }: { className?: string; style?: CSSProperties }) {
+  return <span style={style} className={cn('block animate-pulse rounded bg-surface-2', className)} />;
 }
 
 /** Mirrors the bordered row shared by My clubs, Invitations and the inbox:

@@ -59,7 +59,7 @@ export function Roster({ rows, empty }: { rows: RosterRow[]; empty: string }) {
 
           <span
             className={cn(
-              'text-label font-bold tracking-[0.06em] uppercase',
+              'text-[0.625rem] leading-none font-bold tracking-[0.05em] uppercase',
               row.role === 'LEAD' ? 'text-primary-soft-fg' : 'text-ink-3',
             )}
           >
