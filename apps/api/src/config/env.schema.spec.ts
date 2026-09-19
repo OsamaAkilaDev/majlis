@@ -26,7 +26,6 @@ describe('envSchema', () => {
   });
 
   it('rejects a missing DATABASE_URL rather than starting a broken server', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to omit it
     const { DATABASE_URL: _omitted, ...rest } = valid;
     expect(() => envSchema.parse(rest)).toThrow();
   });

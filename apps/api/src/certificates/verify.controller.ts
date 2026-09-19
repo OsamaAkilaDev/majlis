@@ -3,7 +3,6 @@ import { ApiResponse } from '@nestjs/swagger';
 import type { Verification } from '@majlis/contracts';
 import { Public } from '../auth/public.decorator';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { CertificatesService } from './certificates.service';
 
 /**

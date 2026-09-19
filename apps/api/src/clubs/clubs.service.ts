@@ -13,7 +13,6 @@ import {
   type SignedUpload,
 } from '@majlis/contracts';
 import { v7 as uuidv7 } from 'uuid';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
 import { CLUB_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
 import { resolveClubFacts } from '../auth/permissions.guard';
@@ -22,10 +21,8 @@ import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import { conflictOn } from '../common/prisma-constraint';
 import type { Prisma, Club as ClubRow } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../prisma/transaction.host';
 import { objectPath } from '../storage/image-kinds';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as AuditService above.
 import { StorageService } from '../storage/storage.service';
 import { assertAcceptsEdits, assertTransition } from './club-status';
 import { loadClub } from './load-club';

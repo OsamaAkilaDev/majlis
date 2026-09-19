@@ -9,7 +9,6 @@ import type {
   InvitationPage,
   InviteTeamMemberBody,
 } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
 import { clubOverrideReason } from '../../auth/override';
 import type { PlatformRole } from '../../auth/permissions';
@@ -17,12 +16,10 @@ import { cursorArgs, cursorPage } from '../../common/cursor-page';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/problem/domain-error';
 import { conflictOn } from '../../common/prisma-constraint';
 import type { ClubTeamAppointment as AppointmentRow } from '../../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
 import { assertCanReadRoster, canReadRosterEmail, type RosterReader } from '../roster-access';
 import { assertAcceptsEdits } from '../club-status';
 import { loadClub } from '../load-club';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from '../../notifications/notification.service';
 
 const INVITATION_TTL_DAYS = 14;

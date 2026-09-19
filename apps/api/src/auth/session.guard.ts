@@ -1,14 +1,11 @@
 import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { UnauthorizedError } from '../common/problem/domain-error';
 import type { User } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../prisma/transaction.host';
 import { SESSION_COOKIE } from './cookies';
 import { IS_PUBLIC_KEY } from './public.decorator';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TokensService } from './tokens.service';
 
 declare module 'express' {

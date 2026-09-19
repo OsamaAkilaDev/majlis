@@ -1,5 +1,4 @@
 import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
 import {
@@ -15,7 +14,6 @@ import {
 } from '@majlis/contracts';
 import type { Request, Response } from 'express';
 import { createZodDto } from 'nestjs-zod';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference. AuthResult is a type-only member of the same module, so it rides along here rather than a second import statement.
 import { AuthService, RESET_LINK_INVALID, SESSION_EXPIRED, type AuthResult } from './auth.service';
 import {
   refreshCookieOptions,

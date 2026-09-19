@@ -9,7 +9,6 @@ import type {
   RegistrationListQuery,
   RegistrationPage,
 } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
 import type { PlatformRole } from '../auth/permissions';
 import { assertAcceptsNewActivity } from '../clubs/club-status';
@@ -22,11 +21,8 @@ import {
 } from '../common/problem/domain-error';
 import { violatedConstraintName } from '../common/prisma-constraint';
 import { Prisma, type EventRegistration as RegistrationRow } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from '../notifications/notification.service';
 import { EVENT_SUMMARY_SELECT, toEventSummary } from './events.service';
 import { promoteFromWaitlist } from './waitlist';

@@ -5,7 +5,6 @@ import { createZodDto } from 'nestjs-zod';
 import { Actor } from '../auth/actor.decorator';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
 import type { User } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { NotificationService } from './notification.service';
 
 class NotificationListQueryDto extends createZodDto(notificationListQuerySchema) {}

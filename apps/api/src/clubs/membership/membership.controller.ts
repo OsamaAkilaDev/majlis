@@ -15,7 +15,6 @@ import { Actor } from '../../auth/actor.decorator';
 import { RequirePermission } from '../../auth/require-permission.decorator';
 import { ProblemDetailsDto } from '../../common/problem/problem-details.dto';
 import type { User } from '../../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { MembershipService } from './membership.service';
 
 class AddMemberDto extends createZodDto(addMemberBodySchema) {}

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ClubReport, OverviewReport } from '@majlis/contracts';
 import { NotFoundError } from '../common/problem/domain-error';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
 
 /**

@@ -114,7 +114,6 @@ describe('POST /auth/refresh', () => {
     // requestId differs per request by design, stripped so it can't mask a
     // real difference in the rest of the body.
     const stripBody = (res: request.Response) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to omit it
       const { requestId: _omitted, ...rest } = res.body as Record<string, unknown>;
       return rest;
     };

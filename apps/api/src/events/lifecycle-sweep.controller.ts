@@ -1,5 +1,4 @@
 import { Controller, Headers, HttpCode, Post } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
 import type { SweepResult } from '@majlis/contracts';
@@ -9,9 +8,7 @@ import { Public } from '../auth/public.decorator';
 import { UnauthorizedError } from '../common/problem/domain-error';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
 import type { Env } from '../config/env.schema';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { CertificatesService } from '../certificates/certificates.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
 
 export { SWEEP_SECRET_HEADER } from '../config/sweep-header';

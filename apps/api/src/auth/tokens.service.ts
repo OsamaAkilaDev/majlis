@@ -1,8 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as ConfigService above, this is a constructor-injected provider.
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { UnauthorizedError } from '../common/problem/domain-error';
 import type { Env } from '../config/env.schema';

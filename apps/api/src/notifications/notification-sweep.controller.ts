@@ -1,5 +1,4 @@
 import { Controller, Headers, HttpCode, Post } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { ConfigService } from '@nestjs/config';
 import { ApiResponse } from '@nestjs/swagger';
 import type { NotificationSweepResult } from '@majlis/contracts';
@@ -8,7 +7,6 @@ import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
 import { NOTIFICATION_SWEEP_SECRET_HEADER } from '../config/sweep-header';
 import type { Env } from '../config/env.schema';
 import { assertSweepSecret } from '../events/lifecycle-sweep.controller';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from './notification.service';
 
 /**

@@ -9,7 +9,6 @@ import type {
   MyClubPage,
   RemoveMemberBody,
 } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../../audit/audit.service';
 import { clubOverrideReason } from '../../auth/override';
 import type { PlatformRole } from '../../auth/permissions';
@@ -18,12 +17,10 @@ import { NotFoundError, UnprocessableError } from '../../common/problem/domain-e
 import { conflictOn } from '../../common/prisma-constraint';
 import type { ClubRole } from '../../generated/prisma/enums';
 import type { Prisma, ClubMembership as MembershipRow } from '../../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { TransactionHost } from '../../prisma/transaction.host';
 import { assertCanReadRoster, canReadRosterEmail, type RosterReader } from '../roster-access';
 import { assertAcceptsEdits, assertAcceptsNewActivity } from '../club-status';
 import { loadClub } from '../load-club';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from '../../notifications/notification.service';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;

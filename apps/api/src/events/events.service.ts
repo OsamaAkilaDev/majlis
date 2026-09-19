@@ -12,7 +12,6 @@ import type {
   SignedUpload,
 } from '@majlis/contracts';
 import { v7 as uuidv7 } from 'uuid';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
 import { EVENT_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
 import { clubOverrideReason } from '../auth/override';
@@ -20,20 +19,15 @@ import type { PlatformRole } from '../auth/permissions';
 import { resolveClubFacts, resolveEventFacts } from '../auth/permissions.guard';
 import { assertAcceptsNewActivity } from '../clubs/club-status';
 import { loadClub } from '../clubs/load-club';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { ClubsService } from '../clubs/clubs.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { CertificatesService } from '../certificates/certificates.service';
 import { deriveSlug, uniqueSlug } from '../clubs/slug';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import { conflictOn } from '../common/prisma-constraint';
 import type { Prisma, Event as EventRow } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService } from './event-lifecycle.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from '../notifications/notification.service';
 import { assertEventAcceptsEdits, assertTransition, dueStatus } from './event-status';
 import { promoteFromWaitlist } from './waitlist';

@@ -8,7 +8,6 @@ import type {
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError } from '../common/problem/domain-error';
 import type { Prisma, Notification as NotificationRow } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
 import {
   NOTIFICATION_CHANNEL,

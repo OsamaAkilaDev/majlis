@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { RequestContext } from '../common/request-context';
 import { Prisma } from '../generated/prisma/client';
 

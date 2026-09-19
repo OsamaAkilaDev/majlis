@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: see below.
 import { ConfigService } from '@nestjs/config';
 import {
   ADMIN_ALREADY_EXISTS,
@@ -14,17 +13,12 @@ import {
 } from '@majlis/contracts';
 import { Algorithm, hash, verify, type Options } from '@node-rs/argon2';
 import { v7 as uuidv7 } from 'uuid';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { AuditService } from '../audit/audit.service';
 import { ConflictError, ForbiddenError, UnauthorizedError } from '../common/problem/domain-error';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { RequestContext } from '../common/request-context';
 import { Prisma, type User } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as RequestContext above.
 import { TransactionHost } from '../prisma/transaction.host';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as RequestContext above.
 import { TokensService } from './tokens.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as RequestContext above.
 import { NotificationService } from '../notifications/notification.service';
 import type { Env } from '../config/env.schema';
 

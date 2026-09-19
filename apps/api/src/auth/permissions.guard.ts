@@ -1,12 +1,9 @@
 import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: see above.
 import { AuditService } from '../audit/audit.service';
 import { ForbiddenError, UnauthorizedError } from '../common/problem/domain-error';
 import type { User } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
 import { evaluate, type ActorFacts } from './permissions';
 import { PERMISSION_KEY, type RequiredPermission, type ScopeSpec } from './require-permission.decorator';

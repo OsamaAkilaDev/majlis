@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { EventStatus, SweepResult } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/problem/domain-error';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
 import { CHAIN, assertTransition, dueStatus, type DueStatusInput } from './event-status';
 

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { ConfigService } from '@nestjs/config';
 import type {
   Certificate,
@@ -11,7 +10,6 @@ import type {
   RevokeCertificateBody,
   Verification,
 } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { AuditService } from '../audit/audit.service';
 import type { PlatformRole } from '../auth/permissions';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
@@ -20,11 +18,8 @@ import { ForbiddenError, NotFoundError, UnprocessableError } from '../common/pro
 import type { Env } from '../config/env.schema';
 import { assertTransition } from '../events/event-status';
 import { Prisma, type Certificate as CertificateRow } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { NotificationService } from '../notifications/notification.service';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { StorageService } from '../storage/storage.service';
 import { CERTIFICATE_BUCKET, certificatePdfPath } from '../storage/image-kinds';
 import { serialNumber, verificationCode } from './certificate-codes';

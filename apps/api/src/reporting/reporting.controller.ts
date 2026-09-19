@@ -3,7 +3,6 @@ import { ApiResponse } from '@nestjs/swagger';
 import type { ClubReport, OverviewReport } from '@majlis/contracts';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { ReportingService } from './reporting.service';
 
 @Controller()

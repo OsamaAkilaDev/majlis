@@ -9,12 +9,10 @@ import type {
   UserSearchQuery,
   UserSearchResult,
 } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { AuditService } from '../audit/audit.service';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { ConflictError, NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import { Prisma, type User } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: same reason as AuditService above.
 import { TransactionHost } from '../prisma/transaction.host';
 
 /**

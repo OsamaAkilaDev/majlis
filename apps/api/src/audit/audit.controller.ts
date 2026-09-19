@@ -4,7 +4,6 @@ import { auditListQuerySchema, type AuditPage } from '@majlis/contracts';
 import { createZodDto } from 'nestjs-zod';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { AuditReadService } from './audit-read.service';
 
 class AuditListQueryDto extends createZodDto(auditListQuerySchema) {}

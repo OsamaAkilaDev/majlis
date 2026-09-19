@@ -1,5 +1,4 @@
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- must stay a value import: Nest's constructor DI resolves this provider from the emitted `design:paramtypes` metadata, which needs a real runtime reference.
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '../generated/prisma/client';
 import type { Env } from '../config/env.schema';

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { ConfigService } from '@nestjs/config';
 import type {
   AttendanceListQuery,
@@ -9,19 +8,15 @@ import type {
   ManualCheckInBody,
   ScanBody,
 } from '@majlis/contracts';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { AuditService } from '../audit/audit.service';
 import type { PlatformRole } from '../auth/permissions';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { CertificatesService } from '../certificates/certificates.service';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { violatedConstraintName } from '../common/prisma-constraint';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import type { Env } from '../config/env.schema';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { EventLifecycleService, type LifecycleRow } from '../events/event-lifecycle.service';
 import { Prisma, type AttendanceMethod } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: see above.
 import { TransactionHost } from '../prisma/transaction.host';
 import { verifyPass } from './qr-token';
 

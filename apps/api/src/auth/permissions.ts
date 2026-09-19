@@ -47,21 +47,21 @@ type _SyncPlatformRole = [PlatformRole] extends [PrismaPlatformRole]
     ? true
     : never
   : never;
-export const _syncPlatformRole: _SyncPlatformRole = true;
+const _syncPlatformRole: _SyncPlatformRole = true;
 
 type _SyncClubRole = [ClubRole] extends [PrismaClubRole]
   ? [PrismaClubRole] extends [ClubRole]
     ? true
     : never
   : never;
-export const _syncClubRole: _SyncClubRole = true;
+const _syncClubRole: _SyncClubRole = true;
 
 type _SyncEventResponsibility = [EventResponsibility] extends [PrismaEventResponsibility]
   ? [PrismaEventResponsibility] extends [EventResponsibility]
     ? true
     : never
   : never;
-export const _syncEventResponsibility: _SyncEventResponsibility = true;
+const _syncEventResponsibility: _SyncEventResponsibility = true;
 
 /**
  * Facts about the actor making a request, already scoped by the guard.

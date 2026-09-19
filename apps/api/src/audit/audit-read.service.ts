@@ -3,7 +3,6 @@ import type { AuditEntry, AuditListQuery, AuditPage } from '@majlis/contracts';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError } from '../common/problem/domain-error';
 import type { Prisma, AuditLog } from '../generated/prisma/client';
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import: Nest DI resolves this from design:paramtypes.
 import { TransactionHost } from '../prisma/transaction.host';
 
 /** A club with more events than this has outgrown the id-list scope below. */
