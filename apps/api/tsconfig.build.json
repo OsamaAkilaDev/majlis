@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "rootDir": "src" },
-  "exclude": ["dist", "node_modules", "test", "src/**/*.spec.ts", "prisma/seed.ts"]
+  // `prisma/**`, not a list of seed files by name: nothing under prisma/ is
+  // part of the deployed server. The seeds run through tsx, the client is
+  // generated into src/generated, and prisma.config.ts sits beside this file
+  // rather than in there. Naming `prisma/seed.ts` alone is what let a second
+  // seed file into a build with rootDir "src" and broke the deploy.
+  "exclude": ["dist", "node_modules", "test", "src/**/*.spec.ts", "prisma/**/*.ts"]
 }
