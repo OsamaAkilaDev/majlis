@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { placeholderIn } from './zoned';
 
-/** The venue zone in every fixture below; UTC+4, so a UTC instant of 20:00 on
+/** The zone every fixture below is read in; UTC+4, so a UTC instant of 20:00 on
  *  the 23rd is midnight on the 24th here. */
 const DUBAI = 'Asia/Dubai';
 
@@ -18,17 +18,14 @@ describe('placeholderIn', () => {
     expect(typeof value.toAbsoluteString()).toBe('string');
   });
 
-  it('starts at midnight in the venue zone, not in the editor own zone', () => {
-    // A placeholder built from the local zone shows the officer a date that is
-    // right for them and wrong for the event, which is the bug `Event.timezone`
-    // exists to prevent.
+  it('starts at midnight in the zone it was given, not the runtime default', () => {
+    // A placeholder built in some other zone puts the picker a day out for
+    // anyone whose midnight is not the runtime's.
     const value = placeholderIn(DUBAI);
 
     expect([value.hour, value.minute]).toEqual([0, 0]);
     expect(new Date(value.toAbsoluteString()).toISOString()).toBe(
-      new Date(
-        Date.UTC(value.year, value.month - 1, value.day) - 4 * 60 * 60 * 1000,
-      ).toISOString(),
+      new Date(Date.UTC(value.year, value.month - 1, value.day) - 4 * 60 * 60 * 1000).toISOString(),
     );
   });
 

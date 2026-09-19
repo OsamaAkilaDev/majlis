@@ -35,18 +35,31 @@ export function verdictOf(result: CheckInResult): Verdict {
       return {
         tone: 'warn',
         headline: 'Already checked in',
-        detail: new Date(result.checkedInAt).toLocaleTimeString([], {
-          hour: '2-digit',
+        // The operator's own clock, 12-hour, like every other time on screen.
+        detail: new Date(result.checkedInAt).toLocaleTimeString('en-US', {
+          hour: 'numeric',
           minute: '2-digit',
-          hourCycle: 'h23',
+          hour12: true,
         }),
         person: { fullName: result.fullName, email: result.email },
         pattern: REFUSED,
       };
     case 'NOT_REGISTERED':
-      return { tone: 'bad', headline: 'Not registered', detail: null, person: null, pattern: REFUSED };
+      return {
+        tone: 'bad',
+        headline: 'Not registered',
+        detail: null,
+        person: null,
+        pattern: REFUSED,
+      };
     case 'REGISTRATION_CANCELLED':
-      return { tone: 'bad', headline: 'Registration cancelled', detail: null, person: null, pattern: REFUSED };
+      return {
+        tone: 'bad',
+        headline: 'Registration cancelled',
+        detail: null,
+        person: null,
+        pattern: REFUSED,
+      };
     case 'EVENT_NOT_OPEN':
       return {
         tone: 'bad',
@@ -58,6 +71,12 @@ export function verdictOf(result: CheckInResult): Verdict {
         pattern: REFUSED,
       };
     case 'INVALID_PASS':
-      return { tone: 'bad', headline: 'Pass not valid', detail: null, person: null, pattern: REFUSED };
+      return {
+        tone: 'bad',
+        headline: 'Pass not valid',
+        detail: null,
+        person: null,
+        pattern: REFUSED,
+      };
   }
 }

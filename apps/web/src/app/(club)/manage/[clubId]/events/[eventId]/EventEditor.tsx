@@ -20,18 +20,30 @@ import { OverrideReason } from '@/components/OverrideReason';
 import { StatusBadge } from '@/components/StatusBadge';
 import { UserPicker } from '@/components/UserPicker';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ProblemError } from '@/lib/api';
 import { enumLabel } from '@/lib/enum-label';
 import { canEditEventField, type EventField } from '@/lib/event-fields';
 import { correctAttendance, listAttendance } from '@/lib/attendance';
-import { eventTimes, formatMoment } from '@/lib/event-time';
+import { Moment, TimeRange } from '@/components/LocalTime';
 import { needsOverrideReason } from '@/lib/override';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
-import { useViewerZone } from '@/lib/use-viewer-zone';
 import {
   assignResponsibility,
   cancelEvent,
@@ -68,7 +80,15 @@ async function optional<T>(promise: Promise<T>): Promise<T | null> {
   }
 }
 
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
@@ -117,7 +137,10 @@ function AssignPanel({
     <div className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4 sm:max-w-md">
       <UserPicker value={picked} onChange={setPicked} exclude={held} clubId={clubId} />
       <Field label="Responsibility">
-        <Select value={responsibility} onValueChange={(v) => setResponsibility(v as EventResponsibility)}>
+        <Select
+          value={responsibility}
+          onValueChange={(v) => setResponsibility(v as EventResponsibility)}
+        >
           {/* A SelectTrigger is a button, which no <label htmlFor> can name. */}
           <SelectTrigger aria-label="Responsibility">
             <SelectValue />
@@ -196,7 +219,6 @@ export function EventEditor({
   const [error, setError] = useState<ProblemError | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
-  const viewerZone = useViewerZone();
 
   // getEvent FIRST, then the other three together: reading the event is what
   // calls lifecycle.advance() server-side, and the other three read rows that
@@ -239,13 +261,10 @@ export function EventEditor({
     if (!initialEvent) load().catch(fail);
   }, [initialEvent, load]);
 
-  const set = useCallback(
-    <K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) => {
-      setSaved(false);
-      setValues((prev) => (prev ? { ...prev, [key]: value } : prev));
-    },
-    [],
-  );
+  const set = useCallback(<K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) => {
+    setSaved(false);
+    setValues((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }, []);
 
   if (!event || !values || !base) return <Skeleton className="h-96 w-full" />;
 
@@ -268,7 +287,6 @@ export function EventEditor({
   // operator are both absent. The API also enforces the correction window and
   // the CERTIFIED lock, which this cannot see at all.
   const canCorrect = isAdmin || roles.includes('LEAD') || roles.includes('OPERATIONS');
-  const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
 
   async function correct(registrationId: string, present: boolean, why: string | undefined) {
     // eventId, not event.id: hoisted, so TypeScript analyses it above the
@@ -301,13 +319,19 @@ export function EventEditor({
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="font-display text-title text-ink">{event.title}</h2>
-          <p className="tabular text-sm text-ink-2">{times.venue}</p>
-          {times.viewer ? <p className="tabular text-sm text-ink-3">{times.viewer}</p> : null}
+          <TimeRange
+            startsAt={event.startsAt}
+            endsAt={event.endsAt}
+            className="tabular text-sm text-ink-2"
+          />
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={event.status} />
           {canPublish && event.status === 'DRAFT' ? (
-            <Button onClick={() => act(() => publishEvent(event.id, { overrideReason }))} disabled={pending}>
+            <Button
+              onClick={() => act(() => publishEvent(event.id, { overrideReason }))}
+              disabled={pending}
+            >
               Publish
             </Button>
           ) : null}
@@ -348,10 +372,11 @@ export function EventEditor({
             kind="event-poster"
             currentUrl={event.bannerUrl}
             mint={async () => ({ ...(await mintEventPosterEditUpload(event.id)), id: event.id })}
-            onUploaded={() => void act(() => updateEvent(event.id, { posterUploaded: true, overrideReason }))}
+            onUploaded={() =>
+              void act(() => updateEvent(event.id, { posterUploaded: true, overrideReason }))
+            }
           />
         ) : null}
-
 
         <EventFields values={values} set={set} disabled={(field) => !can(field)} error={error} />
 
@@ -416,7 +441,9 @@ export function EventEditor({
                               Remove
                             </Button>
                           }
-                          onConfirm={() => act(() => removeAssignment(event.id, a.id, { overrideReason }))}
+                          onConfirm={() =>
+                            act(() => removeAssignment(event.id, a.id, { overrideReason }))
+                          }
                         />
                       </div>
                     </TableCell>
@@ -468,7 +495,6 @@ export function EventEditor({
         </Section>
       )}
 
-
       {attendance === null ? null : (
         <Section
           title="Attendance"
@@ -513,7 +539,7 @@ export function EventEditor({
                         <StatusBadge status={row.registrationStatus} />
                       </TableCell>
                       <TableCell className="tabular text-ink-2">
-                        {row.checkedInAt ? formatMoment(row.checkedInAt, event.timezone) : ''}
+                        {row.checkedInAt ? <Moment at={row.checkedInAt} /> : null}
                       </TableCell>
                       <TableCell className="text-ink-2">
                         {row.method ? METHOD[row.method] : ''}

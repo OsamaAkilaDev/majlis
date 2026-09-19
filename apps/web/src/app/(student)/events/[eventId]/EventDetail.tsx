@@ -6,15 +6,22 @@ import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
-import { eventTimes, formatMoment } from '@/lib/event-time';
+import { Moment, TimeRange } from '@/components/LocalTime';
 import { getEvent } from '@/lib/events';
-import { useViewerZone } from '@/lib/use-viewer-zone';
 import { RegisterControl } from './RegisterControl';
 import { useAsyncError } from '@/lib/use-async-error';
 
 /** A <dl> may only hold dt/dd groups, so a Fact is one flat div child of it,
  *  never wrapped in a second layout div. */
-function Fact({ term, span, children }: { term: string; span?: boolean; children: React.ReactNode }) {
+function Fact({
+  term,
+  span,
+  children,
+}: {
+  term: string;
+  span?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div className={span ? 'col-span-2' : undefined}>
       <dt className="text-sm text-ink-2">{term}</dt>
@@ -23,10 +30,15 @@ function Fact({ term, span, children }: { term: string; span?: boolean; children
   );
 }
 
-export function EventDetail({ eventId, initialEvent }: { eventId: string; initialEvent: Event | null }) {
+export function EventDetail({
+  eventId,
+  initialEvent,
+}: {
+  eventId: string;
+  initialEvent: Event | null;
+}) {
   const [event, setEvent] = useState<Event | null>(initialEvent);
   const [missing, setMissing] = useState(false);
-  const viewerZone = useViewerZone();
 
   const load = useCallback(async () => {
     try {
@@ -48,19 +60,25 @@ export function EventDetail({ eventId, initialEvent }: { eventId: string; initia
   if (missing) return <EmptyState title="No such event" />;
   if (!event) return <Skeleton className="h-64" />;
 
-  const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
-
   return (
     <div className="flex flex-col gap-5">
       {event.bannerUrl ? (
-        <img src={event.bannerUrl} alt="" className="aspect-video w-full max-w-full rounded-card object-cover" />
+        <img
+          src={event.bannerUrl}
+          alt=""
+          className="aspect-video w-full max-w-full rounded-card object-cover"
+        />
       ) : null}
 
       <div className="flex flex-col gap-1">
         {/* Not a link: the student club route resolves by slug, and an event
             carries its club's name and logo but not its slug. */}
         <p className="flex items-center gap-2 text-sm text-ink-2">
-          <img src={event.clubLogoUrl} alt="" className="size-5 shrink-0 rounded-control object-cover" />
+          <img
+            src={event.clubLogoUrl}
+            alt=""
+            className="size-5 shrink-0 rounded-control object-cover"
+          />
           <span className="truncate">{event.clubName}</span>
         </p>
         <h2 className="font-display text-display text-ink">{event.title}</h2>
@@ -80,8 +98,7 @@ export function EventDetail({ eventId, initialEvent }: { eventId: string; initia
 
       <dl className="grid grid-cols-2 gap-3">
         <Fact term="When" span>
-          <span className="block tabular">{times.venue}</span>
-          {times.viewer ? <span className="block tabular text-sm text-ink-2">{times.viewer}</span> : null}
+          <TimeRange startsAt={event.startsAt} endsAt={event.endsAt} className="block tabular" />
         </Fact>
         <Fact term="Where" span>
           {event.venue ?? (
@@ -96,7 +113,7 @@ export function EventDetail({ eventId, initialEvent }: { eventId: string; initia
           </span>
         </Fact>
         <Fact term="Registration closes">
-          <span className="tabular text-sm">{formatMoment(event.registrationClosesAt, event.timezone)}</span>
+          <Moment at={event.registrationClosesAt} className="tabular text-sm" />
         </Fact>
       </dl>
 

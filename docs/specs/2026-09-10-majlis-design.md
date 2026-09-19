@@ -105,7 +105,7 @@ Prisma 7 notes that shape the setup: **driver adapters are mandatory** (`@prisma
 
 - **English only.** No localisation fields in the schema, no translation layer, no RTL.
 
-- **Timezone is viewer-relative with a venue anchor.** All timestamps stored `timestamptz` in UTC. Each event carries an IANA `timezone` (default `Asia/Dubai`). An event's time renders in **the event's** timezone as the primary value, always labelled; the viewer's detected local time appears as a secondary line **only when it differs**. Non-event timestamps render in the viewer's detected timezone, falling back to `Asia/Dubai` when detection fails, always labelled.
+- **Every time reads on the viewer's own clock, 12-hour** (revised 2026-09-19; it was the event's timezone as the primary value with the viewer's as a second line only when it differed). All timestamps stored `timestamptz` in UTC. Times are both entered and rendered in the reader's detected zone, with no zone suffix, and written as AM or PM rather than a 24-hour reading. Naming the zone would label every time in the product with the one fact its reader cannot be wrong about. Each event still carries an IANA `timezone` (default `Asia/Dubai`), which is now the venue's own zone and no longer decides how anything is typed or shown. See §13 for what that leaves unanswered.
   *Rationale: showing a travelling student "7pm" for an event that starts at 7pm Dubai makes them an hour late.*
 
 - **Attendance eligibility for certificates: check-in only.** Check-in/out and minimum-duration logic are a later additive stage, and the schema must not preclude them.
@@ -1674,3 +1674,58 @@ axis, and on a schedule whose registration opens a fortnight out, the floor push
 final bar 0.13% past the end of the strip. The offset is clamped to `1 - length` now. The
 assertion that caught it was already in `event-schedule.test.ts`, written in Stage 5
 against a layout where it could not yet fail.
+
+### Times read on the reader's clock, and four form changes (2026-09-19)
+
+Four instructions, taken together because they all land on the event form.
+
+**Every time is the reader's local time, 12-hour, everywhere.** §3 used to render an
+event in the venue's zone and add the viewer's as a second line only when the two
+differed. That is gone. One zone is used for entry and for display, and it is whichever
+one the reader's browser reports. Nothing carries a zone suffix either: every time on
+screen is already the reader's own, so naming it would label each one with the single
+fact its reader cannot get wrong.
+
+This removed code rather than adding it. `eventTimes`, which computed the venue and
+viewer pair and suppressed the duplicate, is deleted along with its callers' zone
+threading, and the two dead `toDateTimeLocal` helpers went with it. In its place is
+`components/LocalTime.tsx` with `TimeRange` and `Moment`, which resolve the zone
+themselves. That placement is the point: the zone cannot be known on the server, and a
+call site that forgets the guard does not fail loudly, it quietly renders Vercel's UTC
+to everybody. There is now nowhere to forget it.
+
+Server-rendered screens therefore hold a non-breaking space for the one frame before the
+effect runs, rather than rendering a time that is about to change. The editor's date
+pickers and the schedule strip stay inert over the same frame, because putting a wrong
+time in a control someone can type into is worse than leaving it empty for a moment.
+
+**The 12-hour clock needs two locales.** `en-GB` writes the day before the month, which
+is how every date in the product reads, and writes a lowercase "pm" and calls Dubai
+"GST". `en-US` writes "6:00 PM" and "GMT+4" but puts the month first. No single English
+locale does both, so dates format in one and clocks in the other, and
+`event-time.test.ts` fails if either half moves. In the picker, where React Aria takes
+segment order from one locale, `en-GB` is kept for the order and the day-period segment
+is uppercased in CSS.
+
+**Registration comes before the event**, in the form and on the timeline strip, which is
+the order they happen in.
+
+**The three toggles are switches**, on `radix-ui`'s `Switch`, which the package already
+in the project provides; no new dependency. The off state uses `border-control` rather
+than `surface-2`, which sits a hair off white and made an off switch read as a disabled
+one.
+
+**Time entry inside the calendar popover, which the previous entry said was not done.**
+It needed `shouldCloseOnSelect={false}`, and the hazard recorded there was real:
+`useDateRangePickerState` then holds the range as a draft that commits only once both
+clocks are set, so picking two dates and closing would lose them silently. `SeedTimes`
+closes it by committing the range at midnight as soon as both dates exist, so closing
+early keeps them and the clocks edit a value that already exists. One `setValue` rather
+than two `setTime` calls, because `setTime` closes over the time range it was rendered
+with and a second call in the same tick overwrites the first.
+
+**Left open, and worth a decision.** The form's Time zone field no longer affects what
+an officer types or what anyone sees. `Event.timezone` is still required by the API and
+still names the venue's zone, so the field is honest, but it now looks more load-bearing
+than it is. Either it earns a purpose, such as labelling where the event physically is,
+or it comes off the form and takes its default. That is an owner's call.

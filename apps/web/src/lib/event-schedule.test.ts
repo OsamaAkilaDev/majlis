@@ -24,7 +24,9 @@ describe('validateSchedule', () => {
   });
 
   it('refuses registration that closes when or before it opens', () => {
-    expect(validateSchedule(of({ registrationClosesAt: BASE.registrationOpensAt })).registration).toBeTruthy();
+    expect(
+      validateSchedule(of({ registrationClosesAt: BASE.registrationOpensAt })).registration,
+    ).toBeTruthy();
   });
 
   it('refuses registration that closes after the event ends', () => {

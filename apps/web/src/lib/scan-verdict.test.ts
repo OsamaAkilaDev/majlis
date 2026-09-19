@@ -70,8 +70,10 @@ describe('verdictOf', () => {
   });
 
   it('carries the original check-in time, not the moment of the rescan', () => {
+    // 12-hour, like every clock in the product (decided 2026-09-19). A 24-hour
+    // reading and a bare "1:15" both fail this.
     const verdict = verdictOf({ result: 'ALREADY_CHECKED_IN', ...HOLDER });
-    expect(verdict.detail).toMatch(/^\d{2}:\d{2}$/);
+    expect(verdict.detail).toMatch(/^\d{1,2}:\d{2} (AM|PM)$/);
   });
 
   it('names the status that closed check-in', () => {

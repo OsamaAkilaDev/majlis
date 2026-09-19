@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 import { cn } from '@/lib/cn';
 import { getClubBySlug } from '@/lib/clubs';
 import { ICON_WEIGHT } from '@/lib/icons';
@@ -16,13 +17,21 @@ import { useAsyncError } from '@/lib/use-async-error';
 import { AboutBlock, CommitteeBlock, DepartmentBlock } from './ClubAbout';
 import { JoinControl } from './JoinControl';
 
-/** Month and day in the venue's zone, which is the date the event happens on. */
-function datePart(at: string, timeZone: string, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat('en-GB', { ...options, timeZone }).format(new Date(at));
+/** One piece of an instant, on the viewer's own clock. Blank until the zone is
+ *  known, because the server's is not it. */
+function datePart(
+  at: string,
+  timeZone: string | undefined,
+  options: Intl.DateTimeFormatOptions,
+  locale = 'en-GB',
+): string {
+  if (!timeZone) return ' ';
+  return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(new Date(at));
 }
 
 function EventRow({ event, past }: { event: ClubEvent; past?: boolean }) {
   const left = Math.max(event.capacity - event.confirmedCount, 0);
+  const zone = useViewerZone();
 
   return (
     <Link
@@ -31,10 +40,10 @@ function EventRow({ event, past }: { event: ClubEvent; past?: boolean }) {
     >
       <span className="w-11 shrink-0 overflow-hidden rounded-control border border-border bg-surface-2 text-center">
         <span className="block bg-primary py-0.5 text-[0.5625rem] font-bold tracking-[0.06em] text-primary-fg uppercase">
-          {datePart(event.startsAt, event.timezone, { month: 'short' })}
+          {datePart(event.startsAt, zone, { month: 'short' })}
         </span>
         <span className="block py-0.5 text-base font-bold tabular-nums text-ink">
-          {datePart(event.startsAt, event.timezone, { day: '2-digit' })}
+          {datePart(event.startsAt, zone, { day: '2-digit' })}
         </span>
       </span>
 
@@ -42,7 +51,12 @@ function EventRow({ event, past }: { event: ClubEvent; past?: boolean }) {
         {/* Two lines before it gives up: the title is what the row is for. */}
         <span className="block font-semibold text-ink line-clamp-2">{event.title}</span>
         <span className="block truncate text-sm tabular-nums text-ink-2">
-          {datePart(event.startsAt, event.timezone, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
+          {datePart(
+            event.startsAt,
+            zone,
+            { hour: 'numeric', minute: '2-digit', hour12: true },
+            'en-US',
+          )}
           {' · '}
           {event.venue ?? 'Online'}
         </span>
@@ -180,14 +194,18 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
             <div className="min-w-0 flex-1">
               {/* Wraps rather than truncates: a club's name is the one thing on
                   this page nobody should have to guess at. */}
-              <h2 className="font-display text-h1 text-ink text-balance sm:text-title">{club.name}</h2>
+              <h2 className="font-display text-h1 text-ink text-balance sm:text-title">
+                {club.name}
+              </h2>
               <p className="truncate text-sm text-ink-2">
                 {club.departmentName} · {club.category}
               </p>
             </div>
             {/* Only an officer or an Admin can see a club that is not active,
                 and for them the state is the first thing worth knowing. */}
-            {club.status === 'ACTIVE' ? null : <StatusBadge status={club.status} className="mb-1" />}
+            {club.status === 'ACTIVE' ? null : (
+              <StatusBadge status={club.status} className="mb-1" />
+            )}
           </div>
         </div>
       </header>
@@ -229,7 +247,12 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
                 {club.departmentName}
               </span>
             </span>
-            <CaretRight size={18} weight={ICON_WEIGHT} className="shrink-0 text-ink-3" aria-hidden />
+            <CaretRight
+              size={18}
+              weight={ICON_WEIGHT}
+              className="shrink-0 text-ink-3"
+              aria-hidden
+            />
           </Link>
         </div>
 

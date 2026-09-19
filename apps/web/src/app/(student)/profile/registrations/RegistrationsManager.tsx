@@ -9,10 +9,9 @@ import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { eventTimes } from '@/lib/event-time';
+import { TimeRange } from '@/components/LocalTime';
 import { cancelRegistration, myRegistrations } from '@/lib/events';
 import { useCursorPage } from '@/lib/use-cursor-page';
-import { useViewerZone } from '@/lib/use-viewer-zone';
 import { PAGE } from '@/lib/page-size';
 
 /** The API accepts a registration change only while the event is in one of these. */
@@ -21,7 +20,6 @@ const CHANGEABLE = ['PUBLISHED', 'REGISTRATION_CLOSED', 'CANCELLED'];
 export function RegistrationsManager({ initial }: { initial: MyRegistrationPage | null }) {
   const { items, cursor, show, append } = useCursorPage(initial);
   const [busy, setBusy] = useState<string | null>(null);
-  const viewerZone = useViewerZone();
 
   const load = useCallback(async () => {
     show(await myRegistrations({ limit: PAGE }));
@@ -73,7 +71,6 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
       <ul className="grid gap-2 lg:grid-cols-2">
         {items.map((registration) => {
           const event = registration.event;
-          const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
 
           return (
             <li
@@ -89,8 +86,7 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
               </div>
 
               <p className="flex flex-wrap items-baseline gap-x-3 text-sm text-ink-2">
-                <span className="tabular">{times.venue}</span>
-                {times.viewer ? <span className="tabular text-ink-3">{times.viewer}</span> : null}
+                <TimeRange startsAt={event.startsAt} endsAt={event.endsAt} className="tabular" />
               </p>
 
               <div className="mt-auto flex items-center justify-between gap-3">

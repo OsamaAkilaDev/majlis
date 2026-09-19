@@ -3,8 +3,8 @@ import { now, parseAbsolute, type ZonedDateTime } from '@internationalized/date'
 /**
  * The zone-carrying values React Aria's date pickers are driven with.
  *
- * Every timestamp on an event is an absolute instant, edited in the venue's
- * zone rather than the officer's. React Aria decides the type of every value a
+ * Every timestamp on an event is an absolute instant, edited on the reader's
+ * own clock. React Aria decides the type of every value a
  * picker emits from whichever of `value` or `placeholderValue` it was given,
  * and it infers nothing from a null value: an empty control with no placeholder
  * yields a `CalendarDateTime`, a wall clock with no zone and no

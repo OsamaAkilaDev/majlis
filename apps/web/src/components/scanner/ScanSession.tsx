@@ -10,12 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
 import { listAttendance, manualCheckIn, scanPass } from '@/lib/attendance';
-import { eventTimes } from '@/lib/event-time';
+import { TimeRange } from '@/components/LocalTime';
 import { listEvents } from '@/lib/events';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { verdictOf, type Verdict } from '@/lib/scan-verdict';
 import { useAsyncError } from '@/lib/use-async-error';
-import { useViewerZone } from '@/lib/use-viewer-zone';
 import { ScanCamera, type CameraState } from './ScanCamera';
 import { ScanVerdict } from './ScanVerdict';
 
@@ -95,7 +94,6 @@ export function ScanSession({
   const [error, setError] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const answered = useRef<{ raw: string; at: number } | null>(null);
-  const viewerZone = useViewerZone();
   const fail = useAsyncError();
 
   useEffect(() => {
@@ -134,9 +132,7 @@ export function ScanSession({
         if (released) void held.release().catch(() => {});
         else sentinel = held;
       })
-      .catch(() => {
-
-      });
+      .catch(() => {});
 
     return () => {
       released = true;
@@ -201,7 +197,6 @@ export function ScanSession({
             <EmptyState title="No events" />
           ) : (
             events.map((e) => {
-              const times = eventTimes(e.startsAt, e.endsAt, e.timezone, viewerZone);
               return (
                 <button
                   key={e.id}
@@ -213,7 +208,11 @@ export function ScanSession({
                     <span className="min-w-0 truncate font-semibold text-ink">{e.title}</span>
                     <StatusBadge status={e.status} />
                   </span>
-                  <span className="tabular text-sm text-ink-2">{times.venue}</span>
+                  <TimeRange
+                    startsAt={e.startsAt}
+                    endsAt={e.endsAt}
+                    className="tabular text-sm text-ink-2"
+                  />
                 </button>
               );
             })
@@ -241,7 +240,6 @@ export function ScanSession({
               </div>
             </div>
           ) : (
-
             <div className="flex shrink-0 flex-col gap-1 border-b border-border p-4">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0 truncate font-semibold text-ink">{event.title}</span>
@@ -258,7 +256,6 @@ export function ScanSession({
           {verdict ? (
             <ScanVerdict verdict={verdict} onClear={() => setVerdict(null)} />
           ) : (
-
             <div className="mt-auto flex flex-col gap-3 border-t border-border p-4 pb-[calc(1rem+var(--safe-b))]">
               {error ? (
                 <p role="alert" className="text-sm text-bad-fg">

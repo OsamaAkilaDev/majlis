@@ -1,22 +1,47 @@
-// Event times render in the venue's zone with the viewer's as secondary
-// (spec 3, 13). `Event.timezone` is an IANA name, so Intl does the whole job.
+// Every time in the product renders on the viewer's own clock, 12-hour
+// (revised 2026-09-19; it was the venue's zone with the viewer's as a second
+// line, spec 3). Instants are stored UTC and the zone is only ever a rendering
+// choice, so there is one choice and it is the reader's.
+//
+// Two locales, on purpose. `en-GB` puts the day before the month, which is how
+// every date in the product reads; it also writes a lowercase "pm" and names
+// Dubai "GST". `en-US` writes "6:00 PM" and "GMT+4". So the date is formatted
+// in one and the clock in the other, and `event-time.test.ts` fails if either
+// half moves to the other.
+const DATE_LOCALE = 'en-GB';
+const TIME_LOCALE = 'en-US';
 
 const DATE: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
-const TIME: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+const TIME: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
 
-function part(value: Date, timeZone: string, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat('en-GB', { ...options, timeZone }).format(value);
+function part(
+  value: Date,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+  locale: string,
+): string {
+  return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(value);
 }
 
-/** "Sat 14 Sep, 18:00 to 21:00 GMT+4", repeating the date only across midnight. */
+const date = (value: Date, timeZone: string) => part(value, timeZone, DATE, DATE_LOCALE);
+const clock = (value: Date, timeZone: string, extra: Intl.DateTimeFormatOptions = {}) =>
+  part(value, timeZone, { ...TIME, ...extra }, TIME_LOCALE);
+
+/**
+ * "Sat 12 Sept, 6:00 PM to 9:00 PM", repeating the date only across midnight.
+ *
+ * No zone suffix. Everything on screen is already the reader's own clock, so
+ * naming the zone labels every time in the product with the one fact the
+ * reader cannot be wrong about.
+ */
 export function formatRange(startsAt: string, endsAt: string, timeZone: string): string {
   const start = new Date(startsAt);
   const end = new Date(endsAt);
 
-  const startDate = part(start, timeZone, DATE);
-  const endDate = part(end, timeZone, DATE);
-  const from = part(start, timeZone, TIME);
-  const to = part(end, timeZone, { ...TIME, timeZoneName: 'short' });
+  const startDate = date(start, timeZone);
+  const endDate = date(end, timeZone);
+  const from = clock(start, timeZone);
+  const to = clock(end, timeZone);
 
   return startDate === endDate
     ? `${startDate}, ${from} to ${to}`
@@ -25,7 +50,7 @@ export function formatRange(startsAt: string, endsAt: string, timeZone: string):
 
 export function formatMoment(at: string, timeZone: string): string {
   const value = new Date(at);
-  return `${part(value, timeZone, DATE)}, ${part(value, timeZone, { ...TIME, timeZoneName: 'short' })}`;
+  return `${date(value, timeZone)}, ${clock(value, timeZone)}`;
 }
 
 /**
@@ -34,7 +59,7 @@ export function formatMoment(at: string, timeZone: string): string {
  * React answers by throwing the whole tree away.
  */
 export function formatDay(at: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(DATE_LOCALE, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -44,36 +69,4 @@ export function formatDay(at: string): string {
 
 export function viewerTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
-/**
- * The venue's rendering, plus the viewer's only where the STRING differs, so a
- * viewer in Asia/Muscat reading an Asia/Dubai event is not shown the same line
- * twice.
- *
- * `viewerZone` deliberately has no default: on the server it would be the
- * server's zone, and the hydration mismatch above. Callers pass
- * `useViewerZone()`, undefined until mounted.
- */
-export function eventTimes(
-  startsAt: string,
-  endsAt: string,
-  timeZone: string,
-  viewerZone?: string,
-): { venue: string; viewer: string | null } {
-  const venue = formatRange(startsAt, endsAt, timeZone);
-  if (!viewerZone) return { venue, viewer: null };
-  const viewer = formatRange(startsAt, endsAt, viewerZone);
-  return { venue, viewer: viewer === venue ? null : viewer };
-}
-
-/** The wall clock an <input type="datetime-local"> wants, in the editor's own
- *  zone, which is what that control means. Read back by fromDateTimeLocal. */
-export function toDateTimeLocal(iso: string): string {
-  const value = new Date(iso);
-  return new Date(value.getTime() - value.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
-
-export function fromDateTimeLocal(local: string): string {
-  return new Date(local).toISOString();
 }

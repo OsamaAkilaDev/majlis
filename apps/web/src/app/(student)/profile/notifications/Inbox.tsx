@@ -9,13 +9,12 @@ import { LoadMore } from '@/components/LoadMore';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
-import { formatMoment } from '@/lib/event-time';
+import { Moment } from '@/components/LocalTime';
 import { notificationLine } from '@/lib/notification-line';
 import { listNotifications, markNotificationRead } from '@/lib/notifications';
 import { PAGE } from '@/lib/page-size';
 import { useAsyncError } from '@/lib/use-async-error';
 import { useCursorPage } from '@/lib/use-cursor-page';
-import { useViewerZone } from '@/lib/use-viewer-zone';
 
 export function Inbox({ initial }: { initial: NotificationPage | null }) {
   const router = useRouter();
@@ -25,7 +24,6 @@ export function Inbox({ initial }: { initial: NotificationPage | null }) {
   // The server rendered the unfiltered first page, so the mount run of the
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initial !== null);
-  const zone = useViewerZone();
   const fail = useAsyncError();
 
   const load = useCallback(async () => {
@@ -145,7 +143,7 @@ export function Inbox({ initial }: { initial: NotificationPage | null }) {
                     </span>
                     <span className="text-sm text-ink-2">{detail}</span>
                     <span className="tabular text-label text-ink-3">
-                      {zone ? formatMoment(notification.createdAt, zone) : null}
+                      <Moment at={notification.createdAt} />
                     </span>
                   </div>
 

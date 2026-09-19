@@ -4,11 +4,19 @@ import { DateTimeRange } from '@/components/DateTimeRange';
 import { Field } from '@/components/Field';
 import { ScheduleTimeline, WINDOW_COLOUR } from '@/components/ScheduleTimeline';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { ProblemError } from '@/lib/api';
 import type { CreateEventBody, EventDetail, PatchEventBody } from '@majlis/contracts';
 import type { EventField } from '@/lib/event-fields';
+import { useViewerZone } from '@/lib/use-viewer-zone';
 import {
   validateSchedule,
   windowLength,
@@ -22,8 +30,7 @@ import {
  * throughout: an <input> holds text, and the caller converts on submit.
  *
  * The four timestamps hold absolute ISO instants, not the wall clock a
- * `datetime-local` meant, which was always the editor's own zone rather than
- * the venue's.
+ * `datetime-local` meant, which could never say which zone it was counting in.
  */
 export interface EventFormValues {
   title: string;
@@ -70,7 +77,6 @@ export const EMPTY_EVENT: EventFormValues = {
 /** The runtime's own tz database, so a zone the server cannot resolve cannot be chosen. */
 const ZONES = Intl.supportedValuesOf('timeZone');
 
-
 const OPTIONAL = (
   <span className="text-label font-semibold tracking-[0.06em] text-ink-3 uppercase">Optional</span>
 );
@@ -96,6 +102,10 @@ export function EventFields({
   disabled: (field: EventField) => boolean;
   error: ProblemError | null;
 }) {
+  // Undefined until mounted: the server cannot know it, and every time in the
+  // product now reads on the viewer own clock.
+  const viewerZone = useViewerZone();
+
   // Marked on the exception, not the rule: four fields on this form are
   // nullable and the rest are required, so an asterisk per required field would
   // be a mark on nearly everything, carrying what four words carry here.
@@ -105,7 +115,11 @@ export function EventFields({
     placeholder: string,
     required = false,
   ) => (
-    <Field label={label} error={error?.fieldError(key)} constraint={required ? undefined : OPTIONAL}>
+    <Field
+      label={label}
+      error={error?.fieldError(key)}
+      constraint={required ? undefined : OPTIONAL}
+    >
       <Input
         value={values[key] as string}
         onChange={(e) => set(key, e.target.value as EventFormValues[typeof key])}
@@ -128,7 +142,7 @@ export function EventFields({
   ) => (
     <DateTimeRange
       label={label}
-      timeZone={values.timezone}
+      timeZone={viewerZone}
       swatch={WINDOW_COLOUR[window]}
       from={values[from] as string}
       to={values[to] as string}
@@ -144,12 +158,11 @@ export function EventFields({
 
   const toggle = (key: keyof EventFormValues & EventField, label: string) => (
     <Field label={label} error={error?.fieldError(key)}>
-      <input
-        type="checkbox"
+      <Switch
         checked={values[key] as boolean}
-        onChange={(e) => set(key, e.target.checked as EventFormValues[typeof key])}
+        onCheckedChange={(on) => set(key, on as EventFormValues[typeof key])}
         disabled={disabled(key)}
-        className="size-5 self-start"
+        className="self-start"
       />
     </Field>
   );
@@ -208,9 +221,9 @@ export function EventFields({
       <Group legend="Schedule">
         {/* Two windows, not four timestamps. Check-in has none of its own: an
             event can be scanned for exactly as long as it is running. */}
-        {range('event', 'Event', ['startsAt', 'endsAt'])}
         {range('registration', 'Registration', ['registrationOpensAt', 'registrationClosesAt'])}
-        <ScheduleTimeline schedule={schedule} timeZone={values.timezone} errors={scheduleErrors} />
+        {range('event', 'Event', ['startsAt', 'endsAt'])}
+        <ScheduleTimeline schedule={schedule} timeZone={viewerZone} errors={scheduleErrors} />
       </Group>
 
       <Group legend="Capacity">
@@ -279,7 +292,8 @@ export function fromEvent(event: EventDetail): EventFormValues {
 /** One value converted from its form representation to its wire representation. */
 function wire(key: keyof EventFormValues, values: EventFormValues): unknown {
   // Already an absolute instant; an empty one means the API should default it.
-  if ((DATETIME_KEYS as readonly string[]).includes(key)) return (values[key] as string) || undefined;
+  if ((DATETIME_KEYS as readonly string[]).includes(key))
+    return (values[key] as string) || undefined;
   if (key === 'capacity') return Number(values.capacity);
   if ((NULLABLE_KEYS as readonly string[]).includes(key)) return (values[key] as string) || null;
   return values[key];

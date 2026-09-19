@@ -16,13 +16,15 @@ export const SCHEDULE_KEYS = [
 ] as const;
 
 export type ScheduleKey = (typeof SCHEDULE_KEYS)[number];
-export type ScheduleWindow = 'event' | 'registration';
+export type ScheduleWindow = 'registration' | 'event';
 
 export type Schedule = Record<ScheduleKey, string>;
 
+// Registration first, because it opens first and the strip is drawn in this
+// order.
 export const WINDOW_ENDS: Record<ScheduleWindow, [ScheduleKey, ScheduleKey]> = {
-  event: ['startsAt', 'endsAt'],
   registration: ['registrationOpensAt', 'registrationClosesAt'],
+  event: ['startsAt', 'endsAt'],
 };
 
 /** Milliseconds, or null when the value is absent or not a date. */
@@ -86,11 +88,13 @@ export interface Span {
 }
 
 /**
- * The three windows placed on one axis, for a strip that shows how they sit
+ * The two windows placed on one axis, for a strip that shows how they sit
  * against each other. Null when nothing is filled in yet, or when every
  * timestamp is the same instant and there is no axis to draw.
  */
-export function scheduleSpans(schedule: Schedule): { spans: Span[]; from: number; to: number } | null {
+export function scheduleSpans(
+  schedule: Schedule,
+): { spans: Span[]; from: number; to: number } | null {
   const windows = (Object.keys(WINDOW_ENDS) as ScheduleWindow[])
     .map((window) => {
       const [a, b] = WINDOW_ENDS[window];

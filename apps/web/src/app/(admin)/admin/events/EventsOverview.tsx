@@ -1,6 +1,12 @@
 'use client';
 
-import type { ClubSummary, EventPage, EventStatus, EventSummary, UserSearchItem } from '@majlis/contracts';
+import type {
+  ClubSummary,
+  EventPage,
+  EventStatus,
+  EventSummary,
+  UserSearchItem,
+} from '@majlis/contracts';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
@@ -17,13 +23,26 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { ProblemError } from '@/lib/api';
 import { listClubs } from '@/lib/clubs';
-import { formatMoment } from '@/lib/event-time';
+import { Moment } from '@/components/LocalTime';
 import { listEvents, register } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
@@ -232,7 +251,7 @@ export function EventsOverview({
                     <StatusBadge status={event.status} />
                   </TableCell>
                   <TableCell className="tabular text-ink-2">
-                    {formatMoment(event.startsAt, event.timezone)}
+                    <Moment at={event.startsAt} />
                   </TableCell>
                   <TableCell className="tabular">
                     {event.confirmedCount} / {event.capacity}

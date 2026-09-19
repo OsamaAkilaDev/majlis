@@ -1,12 +1,15 @@
 'use client';
 
+import { toCalendarDate } from '@internationalized/date';
 import { CalendarBlank, CaretLeft, CaretRight, WarningCircle } from '@phosphor-icons/react/ssr';
+import { useContext, useEffect } from 'react';
 import {
   Button,
   CalendarCell,
   CalendarGrid,
   DateInput,
   DateRangePicker,
+  DateRangePickerStateContext,
   DateSegment,
   Dialog,
   Group,
@@ -15,20 +18,22 @@ import {
   Label,
   Popover,
   RangeCalendar,
+  TimeField,
 } from 'react-aria-components';
 import { cn } from '@/lib/cn';
 import { ICON_WEIGHT } from '@/lib/icons';
 import { placeholderIn, readIn } from '@/lib/zoned';
 
 /**
- * One window, not two timestamps. An event carries six of these columns and
- * they are three windows; the rules between them were invisible until the API
+ * One window, not two timestamps. An event carries four of these columns and
+ * they are two windows; the rules between them were invisible until the API
  * answered 422, and a pair of `datetime-local` inputs cannot express "these
  * two belong together" at all.
  *
- * Edited in the venue's zone, which is what `Event.timezone` means and what
- * every screen renders the event in. `datetime-local` could only ever mean the
- * editor's own zone.
+ * Edited on the viewer's own clock and stored as an absolute instant (revised
+ * 2026-09-19; it used to be edited in the venue's zone). `timeZone` is
+ * therefore the reader's, and is undefined until mounted, because the server's
+ * zone is not it: see `lib/use-viewer-zone.ts`.
  */
 export function DateTimeRange({
   label,
@@ -42,7 +47,8 @@ export function DateTimeRange({
   hint,
 }: {
   label: string;
-  timeZone: string;
+  /** The viewer's zone, undefined until mounted. */
+  timeZone: string | undefined;
   /** ISO instants, or empty while unset. */
   from: string;
   to: string;
@@ -54,25 +60,31 @@ export function DateTimeRange({
   /** A fact about the window, such as how long it runs. Never an instruction. */
   hint?: string;
 }) {
-  const start = readIn(from, timeZone);
-  const end = readIn(to, timeZone);
+  // Before the zone is known this renders empty and inert rather than reading
+  // the stored instants in the server's zone: the editor is server-rendered
+  // with its event, so that would put a wrong time in an editable control and
+  // then correct it, and a fast typist would be editing the wrong number.
+  const ready = timeZone !== undefined;
+  const zone = timeZone ?? 'UTC';
+  const start = ready ? readIn(from, zone) : null;
+  const end = ready ? readIn(to, zone) : null;
 
   return (
     // Segment order comes from the locale, and the runtime's default put the
-    // month first while `formatMoment` and the timeline both render day first.
-    // On the one screen where a date is typed rather than read, 09/10 meaning
-    // two different days depending on which control you are looking at is a
-    // trap rather than a preference.
+    // month first while every rendered date in the product is day first. On the
+    // one control where a date is typed rather than read, 09/10 meaning two
+    // different days depending on where you look is a trap, not a preference.
+    // `en-GB` writes a lowercase day period, which `Segment` uppercases.
     <I18nProvider locale="en-GB">
       <DateRangePicker
         aria-label={label}
         value={start && end ? { start, end } : null}
         // Not decoration. React Aria takes the type of every value this picker
-        // emits from whichever of `value` or `placeholderValue` it was given, and
-        // an empty control has no value to take it from: without this it emits a
-        // zoneless CalendarDateTime and the first range picked throws on
-        // `toAbsoluteString`. See lib/zoned.ts.
-        placeholderValue={placeholderIn(timeZone)}
+        // emits from whichever of `value` or `placeholderValue` it was given,
+        // and an empty control has no value to take it from: without this it
+        // emits a zoneless CalendarDateTime and the first range picked throws
+        // on `toAbsoluteString`. See lib/zoned.ts.
+        placeholderValue={placeholderIn(zone)}
         // Null when a segment is blanked out. Clearing both ends is what the
         // officer just asked for; leaving the old instants in form state would
         // save a window they can no longer see.
@@ -80,8 +92,12 @@ export function DateTimeRange({
           onChange(next?.start.toAbsoluteString() ?? '', next?.end.toAbsoluteString() ?? '')
         }
         granularity="minute"
-        hourCycle={24}
-        isDisabled={disabled}
+        hourCycle={12}
+        // The default shuts the popover the instant the second date lands,
+        // which would close over the clocks below the grid. `SeedTimes` is what
+        // makes that safe.
+        shouldCloseOnSelect={false}
+        isDisabled={disabled || !ready}
         isInvalid={Boolean(error)}
         shouldForceLeadingZeros
         className="flex flex-col gap-1.5"
@@ -122,7 +138,7 @@ export function DateTimeRange({
         ) : null}
 
         <Popover className="rounded-card border border-border bg-surface p-3 shadow-[var(--shadow-md)]">
-          <Dialog className="outline-none">
+          <Dialog className="flex flex-col gap-3 outline-none">
             <RangeCalendar className="flex flex-col gap-2">
               <header className="flex items-center gap-2">
                 <Button
@@ -159,10 +175,83 @@ export function DateTimeRange({
                 )}
               </CalendarGrid>
             </RangeCalendar>
+
+            <SeedTimes timeZone={zone} />
+
+            <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
+              <Clock part="start" label="Starts" timeZone={zone} />
+              <Clock part="end" label="Ends" timeZone={zone} />
+            </div>
           </Dialog>
         </Popover>
       </DateRangePicker>
     </I18nProvider>
+  );
+}
+
+/**
+ * Commits a freshly picked date range at midnight, the moment both ends exist.
+ *
+ * `shouldCloseOnSelect={false}` is what keeps the popover open long enough to
+ * reach the clocks, and it also switches the picker to holding the range as a
+ * draft that commits only once BOTH times are set. An officer who picks two
+ * dates and closes the popover would otherwise lose them with no message. This
+ * commits on their behalf, so closing early keeps the dates and the clocks then
+ * edit a value that already exists.
+ *
+ * One `setValue`, not two `setTime`s: `setTime` closes over the time range it
+ * was rendered with, so a second call in the same tick overwrites the first.
+ */
+function SeedTimes({ timeZone }: { timeZone: string }) {
+  const state = useContext(DateRangePickerStateContext);
+
+  useEffect(() => {
+    const range = state?.dateRange;
+    if (!state || !range?.start || !range.end) return;
+    // Already carries a time, either from this seeding or from a stored value.
+    if (state.timeRange?.start && state.timeRange.end) return;
+
+    const midnight = placeholderIn(timeZone);
+    state.setValue({
+      start: midnight.set(toCalendarDate(range.start)),
+      end: midnight.set(toCalendarDate(range.end)),
+    });
+  });
+
+  return null;
+}
+
+/** One end's clock, inside the popover, beneath the grid that sets its date. */
+function Clock({
+  part,
+  label,
+  timeZone,
+}: {
+  part: 'start' | 'end';
+  label: string;
+  timeZone: string;
+}) {
+  const state = useContext(DateRangePickerStateContext);
+  const value = state?.timeRange?.[part] ?? null;
+
+  return (
+    <TimeField
+      value={value}
+      onChange={(next) => next && state?.setTime(part, next)}
+      // Nothing to hang a time on until the grid has a date for this end, and
+      // a time set now would be dropped rather than remembered.
+      isDisabled={!value}
+      placeholderValue={placeholderIn(timeZone)}
+      granularity="minute"
+      hourCycle={12}
+      shouldForceLeadingZeros
+      className="flex flex-col gap-1"
+    >
+      <Label className="text-label font-bold tracking-[0.07em] text-ink-3 uppercase">{label}</Label>
+      <DateInput className="flex min-h-9 items-center rounded-control border border-border-control bg-surface px-2 text-sm tabular-nums text-ink focus-within:border-primary focus-within:ring-3 focus-within:ring-primary-soft data-disabled:opacity-50">
+        {(segment) => <Segment segment={segment} />}
+      </DateInput>
+    </TimeField>
   );
 }
 
@@ -180,6 +269,8 @@ function Segment({
         'data-placeholder:text-ink-3',
         'data-focused:bg-primary data-focused:text-primary-fg',
         segment.type === 'literal' && 'px-0 text-ink-3',
+        // en-GB writes "pm"; the product writes "PM".
+        segment.type === 'dayPeriod' && 'uppercase',
       )}
     />
   );

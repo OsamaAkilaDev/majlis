@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { UserPickerDialog } from '@/components/UserPickerDialog';
-import { formatMoment } from '@/lib/event-time';
+import { Moment } from '@/components/LocalTime';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { useAsyncError } from '@/lib/use-async-error';
 import { useCursorPage } from '@/lib/use-cursor-page';
@@ -165,7 +165,7 @@ export function AuditTable({
               {items.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="tabular whitespace-nowrap text-ink-2">
-                    {formatMoment(entry.createdAt, 'UTC')}
+                    <Moment at={entry.createdAt} />
                   </TableCell>
                   <TableCell className="font-medium text-ink">{entry.action}</TableCell>
                   <TableCell className="text-ink-2">

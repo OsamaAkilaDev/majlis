@@ -12,10 +12,17 @@ import { ImageUpload } from '@/components/ImageUpload';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ProblemError } from '@/lib/api';
 import { getClub } from '@/lib/clubs';
-import { formatMoment } from '@/lib/event-time';
+import { Moment } from '@/components/LocalTime';
 import { needsOverrideReason } from '@/lib/override';
 import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
@@ -82,7 +89,10 @@ function CreatePanel({
   }
 
   return (
-    <form onSubmit={submit} className="flex max-w-3xl flex-col gap-8 rounded-card border border-border bg-surface p-5">
+    <form
+      onSubmit={submit}
+      className="flex max-w-3xl flex-col gap-8 rounded-card border border-border bg-surface p-5"
+    >
       <ImageUpload
         kind="event-poster"
         mint={async () => {
@@ -192,7 +202,7 @@ export function EventsManager({
                   <StatusBadge status={event.status} />
                 </TableCell>
                 <TableCell className="tabular text-ink-2">
-                  {formatMoment(event.startsAt, event.timezone)}
+                  <Moment at={event.startsAt} />
                 </TableCell>
                 <TableCell className="tabular">
                   {event.confirmedCount} / {event.capacity}

@@ -11,15 +11,22 @@ const WINDOW_LABEL: Record<ScheduleWindow, string> = {
   event: 'Event',
 };
 
+// Day first from en-GB, AM and PM from en-US, for the reason `lib/event-time.ts`
+// gives: no single English locale writes both.
 function edge(ms: number, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
+  const at = new Date(ms);
+  const day = new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
     timeZone,
-  }).format(new Date(ms));
+  }).format(at);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).format(at);
+  return `${day}, ${time}`;
 }
 
 /**
@@ -34,19 +41,20 @@ export function ScheduleTimeline({
   errors,
 }: {
   schedule: Schedule;
-  timeZone: string;
+  /** The viewer own zone, undefined until mounted. */
+  timeZone: string | undefined;
   errors: Partial<Record<ScheduleWindow, string>>;
 }) {
   const laid = scheduleSpans(schedule);
-  if (!laid) return null;
+  // The strip is labelled with wall clocks, so it waits for the zone those
+  // clocks are in rather than briefly reading in the server one.
+  if (!laid || !timeZone) return null;
 
   return (
     <div className="flex flex-col gap-2 rounded-card border border-border bg-surface p-4">
       <div className="flex justify-between text-label font-semibold tracking-[0.06em] text-ink-3 uppercase">
         <span className="tabular-nums">{edge(laid.from, timeZone)}</span>
-        <span className="tabular-nums">
-          {edge(laid.to, timeZone)} · {timeZone}
-        </span>
+        <span className="tabular-nums">{edge(laid.to, timeZone)}</span>
       </div>
 
       <ul className="flex flex-col gap-1.5">
@@ -54,7 +62,10 @@ export function ScheduleTimeline({
           const broken = Boolean(errors[window]);
           return (
             <li key={window} className="relative h-6">
-              <span aria-hidden className="absolute inset-y-2 inset-x-0 rounded-full bg-surface-2" />
+              <span
+                aria-hidden
+                className="absolute inset-y-2 inset-x-0 rounded-full bg-surface-2"
+              />
               <span
                 className={cn(
                   'absolute top-1 flex h-4 items-center overflow-hidden rounded-full px-2 text-[0.625rem] font-bold whitespace-nowrap text-white',

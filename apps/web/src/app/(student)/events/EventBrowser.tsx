@@ -7,11 +7,16 @@ import { EmptyState } from '@/components/EmptyState';
 import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listClubs } from '@/lib/clubs';
-import { eventTimes } from '@/lib/event-time';
-import { useViewerZone } from '@/lib/use-viewer-zone';
+import { TimeRange } from '@/components/LocalTime';
 import { listEvents } from '@/lib/events';
 import { PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
@@ -23,8 +28,7 @@ function seatsLeft(event: EventSummary): number {
   return Math.max(event.capacity - event.confirmedCount, 0);
 }
 
-function EventCard({ event, viewerZone }: { event: EventSummary; viewerZone: string | undefined }) {
-  const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
+function EventCard({ event }: { event: EventSummary }) {
   const left = seatsLeft(event);
 
   return (
@@ -33,17 +37,22 @@ function EventCard({ event, viewerZone }: { event: EventSummary; viewerZone: str
       className="flex h-full flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors duration-(--dur-fast) ease-(--ease-out) hover:bg-surface-2"
     >
       <span className="flex items-center gap-2">
-        <img src={event.clubLogoUrl} alt="" className="size-5 shrink-0 rounded-control object-cover" />
+        <img
+          src={event.clubLogoUrl}
+          alt=""
+          className="size-5 shrink-0 rounded-control object-cover"
+        />
         <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{event.clubName}</span>
         {event.status === 'PUBLISHED' ? null : <StatusBadge status={event.status} />}
       </span>
 
       <span className="block font-semibold text-ink">{event.title}</span>
 
-      <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm text-ink-2">
-        <span className="tabular">{times.venue}</span>
-        {times.viewer ? <span className="tabular text-ink-3">{times.viewer}</span> : null}
-      </span>
+      <TimeRange
+        startsAt={event.startsAt}
+        endsAt={event.endsAt}
+        className="tabular text-sm text-ink-2"
+      />
 
       {/* Pinned to the card foot so seat counts line up across a grid row. */}
       <span className="mt-auto flex items-center justify-between gap-3 text-sm">
@@ -71,7 +80,6 @@ export function EventBrowser({
   const [q, setQ] = useState('');
   const { items, cursor, show, append } = useCursorPage(initialEvents);
   const [loadingMore, setLoadingMore] = useState(false);
-  const viewerZone = useViewerZone();
   // The server rendered the unfiltered first page, so the mount run of the
   // filter effect would refetch exactly what is already on screen.
   const seeded = useRef(initialEvents !== null);
@@ -161,7 +169,7 @@ export function EventBrowser({
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((event) => (
             <li key={event.id}>
-              <EventCard event={event} viewerZone={viewerZone} />
+              <EventCard event={event} />
             </li>
           ))}
         </ul>
