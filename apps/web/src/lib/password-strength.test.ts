@@ -42,3 +42,21 @@ describe('passwordStrength', () => {
     expect(best.label).toBe('Strong');
   });
 });
+
+describe('the digit class', () => {
+  // `/d/` matches the LETTER d. It sat there unnoticed because no test above
+  // separates the digit class from the others: "Abcdefgh" scored the digit
+  // class for its `d`, and a password of capitals and digits scored none.
+  it('counts digits, not the letter d', () => {
+    // Lower + upper + digits, no `d` and no symbol. With the literal `/d/`
+    // this is two classes and no bump; with `\d` it is three and gets one.
+    expect(passwordStrength('Quiet7Morning9Sky').score).toBe(3);
+  });
+
+  it('does not credit a d as a digit', () => {
+    // Lower + upper only, three `d`s, and no space: a space would satisfy the
+    // symbol class and make this three either way. A score of 3 here means
+    // the `d` was counted as a digit.
+    expect(passwordStrength('AddendumHandle').score).toBe(2);
+  });
+});

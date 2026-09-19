@@ -12,7 +12,7 @@ export type PasswordStrength = {
   met: boolean;
 };
 
-const CLASSES = [/[a-z]/, /[A-Z]/, /d/, /[^A-Za-z0-9]/];
+const CLASSES = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/];
 
 const GRADES = ['', 'Weak', 'Fair', 'Good', 'Strong'] as const;
 
