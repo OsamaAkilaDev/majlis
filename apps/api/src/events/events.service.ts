@@ -53,8 +53,6 @@ const SUMMARY_SELECT = {
   endsAt: true,
   registrationOpensAt: true,
   registrationClosesAt: true,
-  checkInOpensAt: true,
-  checkInClosesAt: true,
   capacity: true,
   confirmedCount: true,
   waitlistEnabled: true,
@@ -92,20 +90,15 @@ function materialChanges(before: EventRow, data: Record<string, unknown>): strin
   });
 }
 
-const DEFAULT_CHECK_IN_OPENS_BEFORE_MS = 60 * 60 * 1000;
-const DEFAULT_CHECK_IN_CLOSES_AFTER_MS = 30 * 60 * 1000;
-
 interface Windows {
   startsAt: Date;
   endsAt: Date;
   registrationOpensAt: Date;
   registrationClosesAt: Date;
-  checkInOpensAt: Date;
-  checkInClosesAt: Date;
 }
 
 /**
- * The same four rules as the CHECK constraints in the events migration, applied
+ * The same three rules as the CHECK constraints in the events migration, applied
  * to the merged row so a patch carrying one half of a pair is checked against
  * the stored other half. The database stays the guarantee; this only turns a
  * violation into a message naming what was wrong.
@@ -117,9 +110,6 @@ function assertWindows(w: Windows): void {
   }
   if (w.registrationClosesAt > w.endsAt) {
     throw new UnprocessableError('Registration cannot close after the event ends.');
-  }
-  if (w.checkInOpensAt >= w.checkInClosesAt) {
-    throw new UnprocessableError('Check-in must close after it opens.');
   }
 }
 
@@ -222,21 +212,11 @@ export class EventsService {
 
       const reason = await clubOverrideReason(this.host, actor, clubId, body.overrideReason);
 
-      const startsAt = new Date(body.startsAt);
-      const endsAt = new Date(body.endsAt);
       const windows: Windows = {
-        startsAt,
-        endsAt,
+        startsAt: new Date(body.startsAt),
+        endsAt: new Date(body.endsAt),
         registrationOpensAt: new Date(body.registrationOpensAt),
         registrationClosesAt: new Date(body.registrationClosesAt),
-        // Spec 5.1: the check-in window is explicit but defaulted, which is what
-        // makes ONGOING a pure function of the timestamps on every event.
-        checkInOpensAt: body.checkInOpensAt
-          ? new Date(body.checkInOpensAt)
-          : new Date(startsAt.getTime() - DEFAULT_CHECK_IN_OPENS_BEFORE_MS),
-        checkInClosesAt: body.checkInClosesAt
-          ? new Date(body.checkInClosesAt)
-          : new Date(endsAt.getTime() + DEFAULT_CHECK_IN_CLOSES_AFTER_MS),
       };
       assertWindows(windows);
 
@@ -397,8 +377,6 @@ export class EventsService {
     return {
       ...toSummary(row),
       description: row.description,
-      checkInOpensAt: row.checkInOpensAt.toISOString(),
-      checkInClosesAt: row.checkInClosesAt.toISOString(),
       certificateEnabled: row.certificateEnabled,
       certificateTitle: row.certificateTitle,
       certificateSignatory: row.certificateSignatory,
@@ -450,8 +428,6 @@ export class EventsService {
         endsAt: at('endsAt'),
         registrationOpensAt: at('registrationOpensAt'),
         registrationClosesAt: at('registrationClosesAt'),
-        checkInOpensAt: at('checkInOpensAt'),
-        checkInClosesAt: at('checkInClosesAt'),
       });
 
       // The lifecycle walks forward only, so a close time moved into the future

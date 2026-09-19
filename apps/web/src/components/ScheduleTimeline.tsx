@@ -4,13 +4,11 @@ import { scheduleSpans, type Schedule, type ScheduleWindow } from '@/lib/event-s
 export const WINDOW_COLOUR: Record<ScheduleWindow, string> = {
   registration: 'var(--s2)',
   event: 'var(--primary)',
-  checkIn: 'var(--s3)',
 };
 
 const WINDOW_LABEL: Record<ScheduleWindow, string> = {
   registration: 'Registration',
   event: 'Event',
-  checkIn: 'Check-in',
 };
 
 function edge(ms: number, timeZone: string): string {
@@ -25,10 +23,10 @@ function edge(ms: number, timeZone: string): string {
 }
 
 /**
- * The three windows against each other on one axis. Every rule the API
- * enforces is about how two of them sit, and six separate inputs showed none
- * of it: the strip is where a registration window running past the event, or a
- * check-in opening halfway through it, becomes something you can see.
+ * The two windows against each other on one axis. Every rule the API enforces
+ * is about how they sit, and four separate inputs showed none of it: the strip
+ * is where a registration window that runs to the last minute of the event, or
+ * one that closed before it opened, becomes something you can see.
  */
 export function ScheduleTimeline({
   schedule,

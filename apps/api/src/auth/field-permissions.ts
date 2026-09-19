@@ -57,8 +57,6 @@ export const EVENT_FIELDS = {
   venue: ['OPERATIONS'],
   capacity: ['OPERATIONS'],
   waitlistEnabled: ['OPERATIONS'],
-  checkInOpensAt: ['OPERATIONS'],
-  checkInClosesAt: ['OPERATIONS'],
 
   slug: [],
   startsAt: [],

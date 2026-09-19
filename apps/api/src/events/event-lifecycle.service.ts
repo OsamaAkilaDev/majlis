@@ -11,16 +11,14 @@ const LIFECYCLE_SELECT = {
   id: true,
   clubId: true,
   status: true,
+  startsAt: true,
   endsAt: true,
   registrationClosesAt: true,
-  checkInOpensAt: true,
-  checkInClosesAt: true,
 } as const;
 
 export type LifecycleRow = DueStatusInput & {
   id: string;
   clubId: string;
-  endsAt: Date;
 };
 
 /** A sweep that found more than this has a bigger problem than a slow run. */
@@ -84,8 +82,8 @@ export class EventLifecycleService {
     const due = dueStatus(event, now);
     let current = event.status;
 
-    // Forward only. An event whose check-in window moved into the future must
-    // not be dragged back out of COMPLETED: attendance was taken against it.
+    // Forward only. An event rescheduled into the future must not be dragged
+    // back out of COMPLETED: attendance was taken against it.
     while (chainIndex(due) > chainIndex(current)) {
       const next = CHAIN[chainIndex(current) + 1]!;
       assertTransition(current, next);
@@ -136,13 +134,13 @@ export class EventLifecycleService {
     const rows = await this.host.tx.event.findMany({
       where: {
         status: { in: ['PUBLISHED', 'REGISTRATION_CLOSED', 'ONGOING'] },
-        // Any boundary already passed makes the row a candidate: the check-in
-        // window may open before registration closes, so the registration
-        // boundary alone is not enough.
+        // Any boundary already passed makes the row a candidate: registration
+        // may close part-way through the event, so the registration boundary
+        // alone is not enough.
         OR: [
           { registrationClosesAt: { lte: now } },
-          { checkInOpensAt: { lte: now } },
-          { checkInClosesAt: { lt: now } },
+          { startsAt: { lte: now } },
+          { endsAt: { lt: now } },
         ],
       },
       select: LIFECYCLE_SELECT,

@@ -62,7 +62,7 @@ async function passFor(student: LoggedInUser): Promise<string> {
   return res.body.token as string;
 }
 
-/** An event whose check-in window is open now, with a Lead, an Operations
+/** An event running now, with a Lead, an Operations
  * officer, and one confirmed student holding a pass. */
 async function anOngoingEvent(overrides: Record<string, unknown> = {}) {
   const now = Date.now();
@@ -75,8 +75,6 @@ async function anOngoingEvent(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(now + HOUR),
     registrationOpensAt: new Date(now - DAY),
     registrationClosesAt: new Date(now - HOUR),
-    checkInOpensAt: new Date(now - 2 * HOUR),
-    checkInClosesAt: new Date(now + 2 * HOUR),
     capacity: 30,
     confirmedCount: 1,
     ...overrides,
@@ -205,15 +203,13 @@ describe('POST /events/:eventId/check-in/scan', () => {
     });
   });
 
-  it('refuses to check anyone in before the check-in window opens', async () => {
+  it('refuses to check anyone in before the event has started', async () => {
     const now = Date.now();
     const { ops, event, student } = await anOngoingEvent({
       status: 'PUBLISHED',
       startsAt: new Date(now + 2 * DAY),
       endsAt: new Date(now + 2 * DAY + 2 * HOUR),
       registrationClosesAt: new Date(now + DAY),
-      checkInOpensAt: new Date(now + 2 * DAY - HOUR),
-      checkInClosesAt: new Date(now + 2 * DAY + 3 * HOUR),
     });
 
     const res = await scan(ops.sessionCookie, event.id, { token: await passFor(student) });
@@ -269,8 +265,6 @@ describe('POST /events/:eventId/check-in/manual', () => {
       startsAt: new Date(now + 2 * DAY),
       endsAt: new Date(now + 2 * DAY + HOUR),
       registrationClosesAt: new Date(now + DAY),
-      checkInOpensAt: new Date(now + 2 * DAY - HOUR),
-      checkInClosesAt: new Date(now + 2 * DAY + 2 * HOUR),
     });
     const registered = await prisma.user.findUniqueOrThrow({ where: { id: student.userId } });
 
@@ -376,8 +370,6 @@ describe('PATCH /events/:eventId/attendance/:registrationId', () => {
       endsAt: new Date(now - hoursAgo * HOUR),
       registrationOpensAt: new Date(now - 30 * DAY),
       registrationClosesAt: new Date(now - (hoursAgo + 3) * HOUR),
-      checkInOpensAt: new Date(now - (hoursAgo + 3) * HOUR),
-      checkInClosesAt: new Date(now - (hoursAgo - 1) * HOUR),
       capacity: 30,
       confirmedCount: 1,
     });
@@ -549,15 +541,13 @@ describe('the roster after an event completes', () => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const ops = await makeActiveOfficer(app, club.id, 'OPERATIONS');
-    // Stored ONGOING with a shut check-in window: the next read advances it.
+    // Stored ONGOING but already over: the next read advances it.
     const event = await mkEvent(club.id, lead.userId, {
       status: 'ONGOING',
       startsAt: new Date(now - 4 * HOUR),
       endsAt: new Date(now - 2 * HOUR),
       registrationOpensAt: new Date(now - 30 * DAY),
       registrationClosesAt: new Date(now - 5 * HOUR),
-      checkInOpensAt: new Date(now - 5 * HOUR),
-      checkInClosesAt: new Date(now - HOUR),
       capacity: 1,
       confirmedCount: 1,
     });
@@ -600,8 +590,6 @@ describe('the roster after an event completes', () => {
       endsAt: new Date(now - 2 * HOUR),
       registrationOpensAt: new Date(now - 30 * DAY),
       registrationClosesAt: new Date(now - 5 * HOUR),
-      checkInOpensAt: new Date(now - 5 * HOUR),
-      checkInClosesAt: new Date(now - HOUR),
       capacity: 1,
       confirmedCount: 1,
     });

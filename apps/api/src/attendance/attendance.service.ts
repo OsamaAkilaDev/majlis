@@ -67,8 +67,6 @@ const EVENT_FOR_CHECK_IN = {
   id: true,
   status: true,
   endsAt: true,
-  checkInOpensAt: true,
-  checkInClosesAt: true,
   club: { select: { status: true } },
 } as const;
 
@@ -176,8 +174,10 @@ export class AttendanceService {
   ): Promise<CheckInResult> {
     const eventId = event.id;
 
-    const now = new Date();
-    if (event.status !== 'ONGOING' || now < event.checkInOpensAt || now > event.checkInClosesAt) {
+    // The whole gate. `advanceAndRead` has just run `dueStatus` against this
+    // row, and ONGOING *means* now is inside startsAt…endsAt, so a second
+    // comparison against the same two columns could only ever disagree with it.
+    if (event.status !== 'ONGOING') {
       return { result: 'EVENT_NOT_OPEN', eventStatus: event.status };
     }
     // A suspended club freezes the event for everybody, so this answer does

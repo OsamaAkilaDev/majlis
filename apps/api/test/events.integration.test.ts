@@ -52,14 +52,10 @@ const CLOSED_WINDOW = {
   registrationClosesAt: new Date(Date.now() - HOUR),
   startsAt: new Date(Date.now() + DAY),
   endsAt: new Date(Date.now() + DAY + 2 * HOUR),
-  checkInOpensAt: new Date(Date.now() + DAY - HOUR),
-  checkInClosesAt: new Date(Date.now() + DAY + 3 * HOUR),
 };
 
 describe('POST /clubs/:clubId/events', () => {
-  it('defaults the check-in window around the event when the body omits it', async () => {
-    // ONGOING means "now within the check-in window", so an event created
-    // without one never becomes ONGOING and can never be scanned.
+  it('creates a draft, with a slug derived from the title and scoped to the club', async () => {
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
 
@@ -83,8 +79,6 @@ describe('POST /clubs/:clubId/events', () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('DRAFT');
     expect(res.body.slug).toBe('robot-night');
-    expect(Date.parse(res.body.checkInOpensAt)).toBe(Date.parse(res.body.startsAt) - HOUR);
-    expect(Date.parse(res.body.checkInClosesAt)).toBe(Date.parse(res.body.endsAt) + 30 * 60 * 1000);
   });
 });
 
@@ -606,20 +600,19 @@ describe('the sweep, on rows the existing case does not reach', () => {
       .post(`${API_PREFIX}/internal/lifecycle-sweep`)
       .set(SWEEP_SECRET_HEADER, EXAMPLE_LIFECYCLE_SWEEP_SECRET);
 
-  it('picks up an event whose check-in opened while registration is still open', async () => {
-    // Check-in can open before registration closes, since the only constraint is
-    // registration_closes_at <= ends_at. Catches a candidate query missing the
-    // checkInOpensAt clause, which leaves the event PUBLISHED and unscannable.
+  it('picks up an event that has started while its registration is still open', async () => {
+    // Registration may close any time up to ends_at, so an event can be running
+    // with its door still open. Both other boundaries are in the future here,
+    // so a candidate query missing the startsAt clause never sees this row at
+    // all and leaves it PUBLISHED and unscannable.
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const event = await mkEvent(club.id, lead.userId, {
       status: 'PUBLISHED',
       registrationOpensAt: new Date(Date.now() - DAY),
       registrationClosesAt: new Date(Date.now() + 2 * HOUR),
-      startsAt: new Date(Date.now() + HOUR),
+      startsAt: new Date(Date.now() - 10 * 60 * 1000),
       endsAt: new Date(Date.now() + 3 * HOUR),
-      checkInOpensAt: new Date(Date.now() - 10 * 60 * 1000),
-      checkInClosesAt: new Date(Date.now() + 4 * HOUR),
     });
 
     const res = await sweepAll();
@@ -639,8 +632,6 @@ describe('the sweep, on rows the existing case does not reach', () => {
       registrationClosesAt: new Date(Date.now() - HOUR),
       startsAt: new Date(Date.now() + DAY),
       endsAt: new Date(Date.now() + DAY + 2 * HOUR),
-      checkInOpensAt: new Date(Date.now() + DAY - HOUR),
-      checkInClosesAt: new Date(Date.now() + DAY + 3 * HOUR),
     });
 
     const res = await sweepAll();

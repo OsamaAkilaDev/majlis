@@ -771,8 +771,6 @@ export async function seedDemo(prisma: PrismaClient): Promise<void> {
           registrationOpensAt: new Date(startsAt.getTime() - int(14, 28) * DAY),
           // `<= endsAt` is a CHECK constraint, not a convention.
           registrationClosesAt: new Date(startsAt.getTime() - 2 * HOUR),
-          checkInOpensAt: new Date(startsAt.getTime() - HOUR),
-          checkInClosesAt: new Date(endsAt.getTime() + 30 * 60_000),
           capacity,
           confirmedCount: 0,
           waitlistEnabled: random() < 0.75,
@@ -809,8 +807,6 @@ export async function seedDemo(prisma: PrismaClient): Promise<void> {
           endsAt,
           registrationOpensAt: at(-21 * DAY),
           registrationClosesAt: at(-2 * HOUR),
-          checkInOpensAt: new Date(startsAt.getTime() - HOUR),
-          checkInClosesAt: new Date(endsAt.getTime() + 30 * 60_000),
           capacity: int(30, 80),
           confirmedCount: 0,
           waitlistEnabled: true,
@@ -843,8 +839,6 @@ export async function seedDemo(prisma: PrismaClient): Promise<void> {
       endsAt: at(13 * DAY + 3 * HOUR),
       registrationOpensAt: at(-6 * DAY),
       registrationClosesAt: at(13 * DAY - 2 * HOUR),
-      checkInOpensAt: at(13 * DAY - HOUR),
-      checkInClosesAt: at(13 * DAY + 3.5 * HOUR),
       capacity: 60,
       confirmedCount: 0,
       waitlistEnabled: false,
@@ -1005,7 +999,7 @@ export async function seedDemo(prisma: PrismaClient): Promise<void> {
           registrationId: r.id,
           eventId: r.eventId,
           userId: r.userId,
-          // Inside the check-in window, which is what a scan means.
+          // While the event was running, which is what a scan means.
           checkedInAt: new Date(event.endsAt.getTime() - int(30, 180) * 60_000),
           checkedInById: adminId,
           method: 'QR_SCAN' as const,

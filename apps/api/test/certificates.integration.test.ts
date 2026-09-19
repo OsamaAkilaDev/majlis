@@ -84,8 +84,6 @@ async function aCertifiableEvent(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(endedAt),
     registrationOpensAt: new Date(endedAt - 30 * DAY),
     registrationClosesAt: new Date(endedAt - 3 * HOUR),
-    checkInOpensAt: new Date(endedAt - 3 * HOUR),
-    checkInClosesAt: new Date(endedAt + HOUR),
     capacity: 30,
     confirmedCount: 2,
     ...overrides,
@@ -166,7 +164,6 @@ describe('POST /events/:eventId/certificates/issue', () => {
     const { event } = await aCertifiableEvent({
       startsAt: new Date(now - 4 * HOUR),
       endsAt: new Date(now - 2 * HOUR),
-      checkInClosesAt: new Date(now - HOUR),
     });
     const admin = await loginAsAdmin(app);
 

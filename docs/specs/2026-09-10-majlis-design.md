@@ -249,9 +249,9 @@ Every club has a logo, reused on club pages, its event pages, and its certificat
 
 **`ClubMembership`** — `id`, `club_id`, `user_id`, `status` (`PENDING` | `ACTIVE` | `REJECTED` | `LEFT` | `REMOVED`), `requested_at`, `decided_at?`, `decided_by?`, `decision_reason?`.
 
-**`Event`** — `id`, `club_id`, `title`, `slug` (unique **per club**, not globally), `summary`, `description`, `event_type`, `audience`, `venue?`, `online_url?`, `banner_url?`, `timezone` (IANA, default `Asia/Dubai`), `starts_at`, `ends_at`, `registration_opens_at`, `registration_closes_at`, `check_in_opens_at`, `check_in_closes_at`, `capacity`, `confirmed_count` (denormalised counter), `waitlist_enabled`, `requires_club_membership`, `eligibility_rules` (JSONB), `certificate_enabled`, `certificate_title?`, `certificate_signatory?`, `attendance_policy` (`CHECK_IN_ONLY`, extensible), `status`, `cancelled_reason?`, `created_by`, `created_at`.
+**`Event`** — `id`, `club_id`, `title`, `slug` (unique **per club**, not globally), `summary`, `description`, `event_type`, `audience`, `venue?`, `online_url?`, `banner_url?`, `timezone` (IANA, default `Asia/Dubai`), `starts_at`, `ends_at`, `registration_opens_at`, `registration_closes_at`, `capacity`, `confirmed_count` (denormalised counter), `waitlist_enabled`, `requires_club_membership`, `eligibility_rules` (JSONB), `certificate_enabled`, `certificate_title?`, `certificate_signatory?`, `attendance_policy` (`CHECK_IN_ONLY`, extensible), `status`, `cancelled_reason?`, `created_by`, `created_at`.
 
-The check-in window is explicit rather than magic: on creation it defaults to `starts_at − 60 min` … `ends_at + 30 min`, and the club team can adjust it. `ONGOING` is defined as *now within the check-in window*, which is what makes the lazy lifecycle (§7.3) a pure function of timestamps.
+There is no separate check-in window (revised 2026-09-19; it was two explicit columns defaulting to `starts_at − 60 min` … `ends_at + 30 min`). `ONGOING` is defined as *now within `starts_at` … `ends_at`*: a student can be scanned for exactly as long as the event is running, and no longer. The lazy lifecycle (§7.3) stays a pure function of timestamps, on two fewer of them. Because registration may close any time up to `ends_at`, `due_status` is ordered by lifecycle rather than by timestamp (see §13).
 
 **`EventAssignment`** — `id`, `event_id`, `user_id`, `responsibility` (`EVENT_LEAD` | `OPERATIONS` | `MARKETING`), `assigned_by`, `created_at`.
 This is the mechanism by which a Lead grants scan rights for a single event to any member without making them a standing officer.
@@ -288,7 +288,7 @@ Several of these cannot be expressed in the Prisma schema and require raw SQL in
 | Certificate identifiers unique | Unique on `serial_number` and on `verification_code` |
 | Audit log append-only | No UPDATE or DELETE anywhere in application code; DB-level grant revocation where Supabase permits |
 | Registration window sanity | `CHECK (registration_opens_at < registration_closes_at AND registration_closes_at <= ends_at)` |
-| Event window sanity | `CHECK (starts_at < ends_at AND check_in_opens_at < check_in_closes_at)` |
+| Event window sanity | `CHECK (starts_at < ends_at)` |
 | Event slug unique within its club | `UNIQUE (club_id, slug)` |
 
 ---
@@ -377,7 +377,7 @@ DRAFT ──→ PUBLISHED ──→ REGISTRATION_CLOSED ──→ ONGOING ──
 | `DRAFT` | Not visible outside the club team |
 | `PUBLISHED` | Visible; accepts confirmed and waitlisted registrations |
 | `REGISTRATION_CLOSED` | Visible; no new registrations |
-| `ONGOING` | Check-in window active; scanning enabled |
+| `ONGOING` | The event is running; scanning enabled |
 | `COMPLETED` | Attendance reviewable; no registration changes |
 | `CERTIFIED` | Attendance locked; eligible certificates issued |
 | `CANCELLED` | Registrants notified; scanning refused; certificates not issued |
@@ -425,7 +425,7 @@ Two simultaneous requests for one seat therefore produce exactly one `CONFIRMED`
 
 1. Verifies the signature and that `token_version` matches the current row.
 2. Verifies the scanner's permission **for that event** — Operations officer of the club, an `EventAssignment`, the Lead, or an Admin.
-3. Verifies the event is `ONGOING` and inside the check-in window.
+3. Verifies the event is `ONGOING`, which *means* now is inside `starts_at` … `ends_at`.
 4. Verifies the user is `ACTIVE` and the club is not suspended.
 5. Looks up that user's registration **for that event**; requires `CONFIRMED`.
 6. Inserts the attendance record and transitions the registration to `CHECKED_IN`, with the audit row, all in one transaction.
@@ -1594,3 +1594,83 @@ It is exercised only by `reporting.integration.test.ts`. The 2026-09-16 entry ab
 on purpose when `/admin/metrics` went, but that same entry argues that "dead endpoints behind
 a deleted screen are worse than no endpoints". It is one or the other and wants an owner's
 decision, not an agent's.
+
+### The check-in window is deleted, and the event form gets its examples (2026-09-19)
+
+An event carried six timestamps. Two of them, `check_in_opens_at` and
+`check_in_closes_at`, existed so that `ONGOING` could be defined without reference to
+the event's own hours. §5.1 called the window "explicit rather than magic", defaulted
+it to `starts_at − 60 min` … `ends_at + 30 min`, and let the club team move it.
+
+Nobody ever moved it. The owner's instruction is the simpler rule: **you can check in
+for as long as the event is live.** So `ONGOING` is now *now within `starts_at` …
+`ends_at`*, the two columns and the `event_check_in_window` CHECK are dropped
+(`20260919221500_event_drop_check_in_window`), and `assertWindows` is down to three
+rules from four. The officer's Schedule section is two windows instead of three, and
+`CreateEventBody` has two fewer optional fields.
+
+**The grace period goes with it, deliberately.** Scanning used to open an hour early
+and stay open half an hour late. It no longer does: a student at the door five minutes
+before the start cannot be scanned, and the desk cannot clear a queue after the closing
+remarks. That was put to the owner as its own question and chosen on purpose. If an
+event needs a grace period it now expresses one by saying so in `starts_at` and
+`ends_at`, which is also what every screen shows the student.
+
+**The one subtlety the deletion introduced.** `dueStatus` used to read its boundaries
+newest first, because check-in could open before registration closed and the later
+milestone had to win. Reversing that reasoning is now a live bug rather than a stylistic
+one: `registration_closes_at <= ends_at` is the only constraint on it, so an event may
+legitimately be running with its door still open, and a `dueStatus` ordered by timestamp
+answers `REGISTRATION_CLOSED` for an event in progress, which shuts the scanner
+mid-event. The branches are therefore ordered by lifecycle (COMPLETED, ONGOING,
+REGISTRATION_CLOSED, PUBLISHED), and `event-status.spec.ts` has a test that fails if they
+are not. The sweep's candidate clause needed the same correction, and the Stage 5 test
+that used to prove the `checkInOpensAt` clause discriminates now proves the `startsAt`
+one does, against an event whose other two boundaries are both still in the future.
+
+**The scan gate lost its second half.** `checkInTx` compared `now` against the window
+after checking `status === 'ONGOING'`. Since `advanceAndRead` has just derived that
+status from the same two columns, the comparison could only ever agree with it. The
+status check is the whole gate now.
+
+**Form UX, the other half of the instruction.** Every text input in the event form
+carries a placeholder that is a real example rather than an instruction: `Robotics
+Night`, `Building 5, Hall 2`, `Certificate of Participation`. Four fields are nullable,
+so those four are marked `Optional` on the label row (using the `constraint` slot `Field`
+already had) and the rest are marked with nothing: an asterisk per required field is a
+mark on nearly everything, carrying what four words carry.
+
+**The range picker had never worked on an empty form.** `DateTimeRange` has been a
+`react-aria-components` `DateRangePicker` at minute granularity since Stage 5, so the
+control the instruction asked for already existed, but picking a range in it threw
+`next.start.toAbsoluteString is not a function` every time the form was blank. React
+Aria takes the type of every value a picker emits from whichever of `value` or
+`placeholderValue` it was given and infers nothing from a null value, so with neither
+supplied `createPlaceholderDate` fell to its zoneless branch and built a
+`CalendarDateTime`, which has no `toAbsoluteString`. The create panel starts empty, so
+the control was dead on arrival there; the editor, which opens with the event's stored
+instants as `value`, worked. That is why it survived Stage 5's review.
+
+`lib/zoned.ts` now supplies `placeholderIn(timeZone)`, midnight today in the venue's
+zone, as the picker's `placeholderValue`. It is the declaration of the type, not
+decoration, and `zoned.test.ts` fails with the exact production error if it is replaced
+by a zoneless value. Two things found beside it: `onChange` discarded a null, so blanking
+a segment left instants in form state that the officer could no longer see, and the
+segments rendered month-first from the runtime default while `formatMoment` and the
+timeline both render day-first, which on the one control where a date is typed is a trap
+rather than a preference. An `I18nProvider` pins it to `en-GB`.
+
+**Not done: time entry inside the calendar popover.** The grid sets dates only, so a
+range picked there takes midnight from the placeholder and the time is typed into the
+field's own segments afterwards. Putting `TimeField`s under the grid needs
+`shouldCloseOnSelect={false}`, which switches `useDateRangePickerState` to holding the
+range as a draft that commits only once both times are set: an officer who picks dates
+and closes the popover loses them with no message. Reverted rather than engineered
+around. Worth revisiting only with that commit path handled.
+
+**One real bug found on the way.** `scheduleSpans` floors every bar at 1% of the axis so
+a short window stays findable. With check-in gone the event window is the last one on the
+axis, and on a schedule whose registration opens a fortnight out, the floor pushed the
+final bar 0.13% past the end of the strip. The offset is clamped to `1 - length` now. The
+assertion that caught it was already in `event-schedule.test.ts`, written in Stage 5
+against a layout where it could not yet fail.

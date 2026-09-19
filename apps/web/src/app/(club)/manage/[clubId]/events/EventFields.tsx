@@ -21,7 +21,7 @@ import {
  * so the two cannot drift into different forms of the same object. Strings
  * throughout: an <input> holds text, and the caller converts on submit.
  *
- * The six timestamps hold absolute ISO instants, not the wall clock a
+ * The four timestamps hold absolute ISO instants, not the wall clock a
  * `datetime-local` meant, which was always the editor's own zone rather than
  * the venue's.
  */
@@ -38,8 +38,6 @@ export interface EventFormValues {
   endsAt: string;
   registrationOpensAt: string;
   registrationClosesAt: string;
-  checkInOpensAt: string;
-  checkInClosesAt: string;
   capacity: string;
   waitlistEnabled: boolean;
   requiresClubMembership: boolean;
@@ -61,8 +59,6 @@ export const EMPTY_EVENT: EventFormValues = {
   endsAt: '',
   registrationOpensAt: '',
   registrationClosesAt: '',
-  checkInOpensAt: '',
-  checkInClosesAt: '',
   capacity: '30',
   waitlistEnabled: true,
   requiresClubMembership: false,
@@ -74,6 +70,10 @@ export const EMPTY_EVENT: EventFormValues = {
 /** The runtime's own tz database, so a zone the server cannot resolve cannot be chosen. */
 const ZONES = Intl.supportedValuesOf('timeZone');
 
+
+const OPTIONAL = (
+  <span className="text-label font-semibold tracking-[0.06em] text-ink-3 uppercase">Optional</span>
+);
 
 function Group({ legend, children }: { legend: string; children: React.ReactNode }) {
   return (
@@ -96,11 +96,20 @@ export function EventFields({
   disabled: (field: EventField) => boolean;
   error: ProblemError | null;
 }) {
-  const text = (key: keyof EventFormValues & EventField, label: string, required = false) => (
-    <Field label={label} error={error?.fieldError(key)}>
+  // Marked on the exception, not the rule: four fields on this form are
+  // nullable and the rest are required, so an asterisk per required field would
+  // be a mark on nearly everything, carrying what four words carry here.
+  const text = (
+    key: keyof EventFormValues & EventField,
+    label: string,
+    placeholder: string,
+    required = false,
+  ) => (
+    <Field label={label} error={error?.fieldError(key)} constraint={required ? undefined : OPTIONAL}>
       <Input
         value={values[key] as string}
         onChange={(e) => set(key, e.target.value as EventFormValues[typeof key])}
+        placeholder={placeholder}
         disabled={disabled(key)}
         required={required}
       />
@@ -148,27 +157,32 @@ export function EventFields({
   return (
     <div className="flex flex-col gap-8">
       <Group legend="Details">
-        {text('title', 'Title', true)}
-        {text('summary', 'Summary', true)}
+        {text('title', 'Title', 'Robotics Night', true)}
+        {text('summary', 'Summary', 'An evening of line-follower builds, ending in a race.', true)}
         <Field label="Description" error={error?.fieldError('description')}>
           <Textarea
             value={values.description}
             onChange={(e) => set('description', e.target.value)}
+            placeholder={
+              'Teams of three build a line-following robot from a supplied kit, then race ' +
+              'them over a timed course. Kits, tools and pizza are provided. No prior ' +
+              'electronics experience needed.'
+            }
             disabled={disabled('description')}
             rows={6}
             required
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          {text('eventType', 'Type', true)}
-          {text('audience', 'Audience', true)}
+          {text('eventType', 'Type', 'Workshop', true)}
+          {text('audience', 'Audience', 'All students', true)}
         </div>
       </Group>
 
       <Group legend="Place">
         <div className="grid gap-4 sm:grid-cols-2">
-          {text('venue', 'Venue')}
-          {text('onlineUrl', 'Online URL')}
+          {text('venue', 'Venue', 'Building 5, Hall 2')}
+          {text('onlineUrl', 'Online URL', 'https://meet.google.com/abc-defg-hij')}
         </div>
         <Field label="Time zone" error={error?.fieldError('timezone')}>
           <Select
@@ -192,11 +206,10 @@ export function EventFields({
       </Group>
 
       <Group legend="Schedule">
-        {/* Three windows, not six timestamps. Every rule the API enforces is
-            about how two of them sit against each other. */}
+        {/* Two windows, not four timestamps. Check-in has none of its own: an
+            event can be scanned for exactly as long as it is running. */}
         {range('event', 'Event', ['startsAt', 'endsAt'])}
         {range('registration', 'Registration', ['registrationOpensAt', 'registrationClosesAt'])}
-        {range('checkIn', 'Check-in', ['checkInOpensAt', 'checkInClosesAt'])}
         <ScheduleTimeline schedule={schedule} timeZone={values.timezone} errors={scheduleErrors} />
       </Group>
 
@@ -220,8 +233,8 @@ export function EventFields({
       <Group legend="Certificate">
         {toggle('certificateEnabled', 'Issue certificates')}
         <div className="grid gap-4 sm:grid-cols-2">
-          {text('certificateTitle', 'Certificate title')}
-          {text('certificateSignatory', 'Signatory')}
+          {text('certificateTitle', 'Certificate title', 'Certificate of Participation')}
+          {text('certificateSignatory', 'Signatory', 'Dr Layla Haddad, Dean of Student Affairs')}
         </div>
       </Group>
     </div>
@@ -233,8 +246,6 @@ const DATETIME_KEYS = [
   'endsAt',
   'registrationOpensAt',
   'registrationClosesAt',
-  'checkInOpensAt',
-  'checkInClosesAt',
 ] as const;
 
 /** Empty text means "no value" for the four nullable columns. */
@@ -256,8 +267,6 @@ export function fromEvent(event: EventDetail): EventFormValues {
     endsAt: event.endsAt,
     registrationOpensAt: event.registrationOpensAt,
     registrationClosesAt: event.registrationClosesAt,
-    checkInOpensAt: event.checkInOpensAt,
-    checkInClosesAt: event.checkInClosesAt,
     capacity: String(event.capacity),
     waitlistEnabled: event.waitlistEnabled,
     requiresClubMembership: event.requiresClubMembership,

@@ -291,8 +291,6 @@ describe('GET /clubs/:clubId', () => {
       endsAt: daysAgo(9, 2),
       registrationOpensAt: daysAgo(12),
       registrationClosesAt: daysAgo(10),
-      checkInOpensAt: daysAgo(9),
-      checkInClosesAt: daysAgo(9, 3),
     });
 
     const res = await request(app.getHttpServer())

@@ -143,8 +143,6 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     endsAt: hours(51),
     registrationOpensAt: hours(-24),
     registrationClosesAt: hours(46),
-    checkInOpensAt: hours(47),
-    checkInClosesAt: hours(51.5),
     capacity: 30,
     waitlistEnabled: true,
     certificateEnabled: true,
@@ -194,7 +192,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   await seedRegistration(prisma, showcase.id, users['lead@uni.ac.ae']!, 'CONFIRMED');
 
   // Two clocks nothing in the product can produce, since it cannot move an
-  // event's boundaries into the past: one check-in window open now, and one
+  // event's boundaries into the past: one event running now, and one
   // whose 48-hour correction window has closed. Without them the scanner can
   // only be shown refusing and no certificate exists to verify. Both seeded
   // PUBLISHED and left for the lazy lifecycle to advance, so the status on
@@ -210,8 +208,6 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     endsAt: hours(2),
     registrationOpensAt: hours(-48),
     registrationClosesAt: hours(-2),
-    checkInOpensAt: hours(-1.5),
-    checkInClosesAt: hours(2.5),
     confirmedCount: 1,
     certificateEnabled: false,
     certificateTitle: null,
@@ -243,8 +239,6 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     endsAt: hours(-72),
     registrationOpensAt: hours(-120),
     registrationClosesAt: hours(-76),
-    checkInOpensAt: hours(-75.5),
-    checkInClosesAt: hours(-71.5),
     confirmedCount: 1,
     certificateEnabled: true,
     certificateTitle: 'Certificate of Attendance: Line Follower Sprint',

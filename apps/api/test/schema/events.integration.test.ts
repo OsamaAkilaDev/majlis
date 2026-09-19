@@ -26,8 +26,6 @@ async function anEvent(over: Record<string, unknown> = {}) {
       endsAt: at(26),
       registrationOpensAt: at(1),
       registrationClosesAt: at(23),
-      checkInOpensAt: at(23),
-      checkInClosesAt: at(26.5),
       capacity: 2,
       createdById: creator.id,
       ...over,
@@ -87,11 +85,6 @@ describe('Event', () => {
 
   it('rejects registration closing after the event ends', async () => {
     await expect(anEvent({ registrationClosesAt: at(40) })).rejects.toThrow(/event_registration_window/);
-  });
-
-  it('rejects a check-in window that closes before it opens', async () => {
-    await expect(anEvent({ checkInOpensAt: at(26), checkInClosesAt: at(25) }))
-      .rejects.toThrow(/event_check_in_window/);
   });
 
   it('scopes slug uniqueness to the club, so two clubs may both run "orientation"', async () => {

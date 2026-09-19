@@ -30,8 +30,6 @@ export const EVENT_FIELD_ROLES = {
   venue: ['OPERATIONS'],
   capacity: ['OPERATIONS'],
   waitlistEnabled: ['OPERATIONS'],
-  checkInOpensAt: ['OPERATIONS'],
-  checkInClosesAt: ['OPERATIONS'],
 
   slug: [],
   startsAt: [],

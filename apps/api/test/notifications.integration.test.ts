@@ -128,8 +128,6 @@ describe('the dedupe key absorbs a repeated trigger', () => {
       endsAt: new Date(endedAt),
       registrationOpensAt: new Date(endedAt - 5 * DAY),
       registrationClosesAt: new Date(endedAt - HOUR),
-      checkInOpensAt: new Date(endedAt - 3 * HOUR),
-      checkInClosesAt: new Date(endedAt),
     });
     const student = await mkUser();
     await mkRegistration(event.id, student.id, 'CHECKED_IN');

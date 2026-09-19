@@ -8,8 +8,8 @@ function anEvent(status: Parameters<typeof dueStatus>[0]['status']) {
   return {
     status,
     registrationClosesAt: AT('2026-10-01T10:00:00Z'),
-    checkInOpensAt: AT('2026-10-01T11:00:00Z'),
-    checkInClosesAt: AT('2026-10-01T15:00:00Z'),
+    startsAt: AT('2026-10-01T11:00:00Z'),
+    endsAt: AT('2026-10-01T15:00:00Z'),
   };
 }
 
@@ -47,18 +47,29 @@ describe('assertTransition', () => {
 
 describe('dueStatus', () => {
   it('reads the newest boundary that has passed, not the first one', () => {
-    // At 11:30 both registrationClosesAt (10:00) and checkInOpensAt (11:00) have
+    // At 11:30 both registrationClosesAt (10:00) and startsAt (11:00) have
     // passed. Testing the earliest boundary first answers REGISTRATION_CLOSED
     // and the event never opens for scanning.
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T11:30:00Z'))).toBe('ONGOING');
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T16:00:00Z'))).toBe('COMPLETED');
   });
 
-  it('is inclusive at the opening instant of each window and exclusive at the close', () => {
+  it('keeps a live event ONGOING when registration closes part-way through it', () => {
+    // Registration may close any time up to endsAt, so here the later boundary
+    // is the registration close, at 14:00, an hour after the doors opened.
+    // Ordering the branches by timestamp rather than by lifecycle shuts the
+    // scanner in the middle of the event it was opened for.
+    const event = { ...anEvent('PUBLISHED'), registrationClosesAt: AT('2026-10-01T14:00:00Z') };
+    expect(dueStatus(event, AT('2026-10-01T14:30:00Z'))).toBe('ONGOING');
+  });
+
+  it('opens at the start instant and stays open until the event has ended', () => {
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T09:59:59Z'))).toBe('PUBLISHED');
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T10:00:00Z'))).toBe('REGISTRATION_CLOSED');
+    expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T10:59:59Z'))).toBe('REGISTRATION_CLOSED');
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T11:00:00Z'))).toBe('ONGOING');
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T15:00:00Z'))).toBe('ONGOING');
+    expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T15:00:01Z'))).toBe('COMPLETED');
   });
 
   it('never time-advances DRAFT, CANCELLED or CERTIFIED', () => {

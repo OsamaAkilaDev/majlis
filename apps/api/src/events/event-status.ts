@@ -33,22 +33,26 @@ export function assertTransition(from: EventStatus, to: EventStatus): void {
 export interface DueStatusInput {
   status: EventStatus;
   registrationClosesAt: Date;
-  checkInOpensAt: Date;
-  checkInClosesAt: Date;
+  startsAt: Date;
+  endsAt: Date;
 }
 
 /**
  * The status an event's timestamps say it should be in. Pure, so a list read can
- * render it without writing. Boundaries are evaluated newest first because the
- * check-in window may open before registration closes and the later milestone
- * must win. DRAFT (unpublished) and the two terminal states never advance.
+ * render it without writing. An event is ONGOING for exactly as long as it runs,
+ * which is what makes check-in "while the event is live" (spec 5.1).
+ *
+ * Branches are ordered by lifecycle, not by timestamp: registration may close
+ * any time up to `endsAt`, so testing `registrationClosesAt` first would drag a
+ * live event back to REGISTRATION_CLOSED and shut the scanner mid-event. DRAFT
+ * (unpublished) and the two terminal states never advance.
  */
 export function dueStatus(event: DueStatusInput, now: Date): EventStatus {
   if (event.status === 'DRAFT' || event.status === 'CANCELLED' || event.status === 'CERTIFIED') {
     return event.status;
   }
-  if (now > event.checkInClosesAt) return 'COMPLETED';
-  if (now >= event.checkInOpensAt) return 'ONGOING';
+  if (now > event.endsAt) return 'COMPLETED';
+  if (now >= event.startsAt) return 'ONGOING';
   if (now >= event.registrationClosesAt) return 'REGISTRATION_CLOSED';
   return 'PUBLISHED';
 }

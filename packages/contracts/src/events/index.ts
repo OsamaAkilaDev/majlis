@@ -42,9 +42,6 @@ const timezoneSchema = z
  * No `bannerUrl`: the server never stores a client-supplied image URL.
  * `eventId` is minted by the upload route, so the poster's object path exists
  * before the event does.
- *
- * The check-in window defaults to startsAt - 60min … endsAt + 30min (spec
- * 5.1), which keeps ONGOING a pure function of timestamps.
  */
 export const createEventBodySchema = z.object({
   eventId: z.uuid(),
@@ -60,8 +57,6 @@ export const createEventBodySchema = z.object({
   endsAt: dateTime,
   registrationOpensAt: dateTime,
   registrationClosesAt: dateTime,
-  checkInOpensAt: dateTime.optional(),
-  checkInClosesAt: dateTime.optional(),
   capacity: z.number().int().positive().max(100_000),
   waitlistEnabled: z.boolean().default(true),
   requiresClubMembership: z.boolean().default(false),
@@ -101,8 +96,6 @@ export const patchEventBodySchema = z
     endsAt: dateTime,
     registrationOpensAt: dateTime,
     registrationClosesAt: dateTime,
-    checkInOpensAt: dateTime,
-    checkInClosesAt: dateTime,
     capacity: z.number().int().positive().max(100_000),
     waitlistEnabled: z.boolean(),
     requiresClubMembership: z.boolean(),
@@ -175,8 +168,6 @@ export const eventSummarySchema = z.object({
 
 export const eventDetailSchema = eventSummarySchema.extend({
   description: z.string(),
-  checkInOpensAt: z.string(),
-  checkInClosesAt: z.string(),
   certificateEnabled: z.boolean(),
   certificateTitle: z.string().nullable(),
   certificateSignatory: z.string().nullable(),

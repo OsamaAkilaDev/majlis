@@ -1,5 +1,5 @@
 /**
- * The same four rules `assertWindows` applies in
+ * The same three rules `assertWindows` applies in
  * `apps/api/src/events/events.service.ts`, which are themselves the CHECK
  * constraints in the events migration.
  *
@@ -13,19 +13,16 @@ export const SCHEDULE_KEYS = [
   'endsAt',
   'registrationOpensAt',
   'registrationClosesAt',
-  'checkInOpensAt',
-  'checkInClosesAt',
 ] as const;
 
 export type ScheduleKey = (typeof SCHEDULE_KEYS)[number];
-export type ScheduleWindow = 'event' | 'registration' | 'checkIn';
+export type ScheduleWindow = 'event' | 'registration';
 
 export type Schedule = Record<ScheduleKey, string>;
 
 export const WINDOW_ENDS: Record<ScheduleWindow, [ScheduleKey, ScheduleKey]> = {
   event: ['startsAt', 'endsAt'],
   registration: ['registrationOpensAt', 'registrationClosesAt'],
-  checkIn: ['checkInOpensAt', 'checkInClosesAt'],
 };
 
 /** Milliseconds, or null when the value is absent or not a date. */
@@ -47,8 +44,6 @@ export function validateSchedule(schedule: Schedule): Partial<Record<ScheduleWin
   const ends = at(schedule.endsAt);
   const opens = at(schedule.registrationOpensAt);
   const closes = at(schedule.registrationClosesAt);
-  const checkOpens = at(schedule.checkInOpensAt);
-  const checkCloses = at(schedule.checkInClosesAt);
 
   if (starts !== null && ends !== null && starts >= ends) {
     errors.event = 'An event must end after it starts.';
@@ -58,10 +53,6 @@ export function validateSchedule(schedule: Schedule): Partial<Record<ScheduleWin
     errors.registration = 'Registration must close after it opens.';
   } else if (closes !== null && ends !== null && closes > ends) {
     errors.registration = 'Registration cannot close after the event ends.';
-  }
-
-  if (checkOpens !== null && checkCloses !== null && checkOpens >= checkCloses) {
-    errors.checkIn = 'Check-in must close after it opens.';
   }
 
   return errors;
@@ -119,11 +110,13 @@ export function scheduleSpans(schedule: Schedule): { spans: Span[]; from: number
   return {
     from,
     to,
-    spans: windows.map((w) => ({
-      window: w.window,
-      offset: (w.from - from) / total,
-      // A window shorter than a hair of the axis still has to be findable.
-      length: Math.max((w.to - w.from) / total, 0.01),
-    })),
+    spans: windows.map((w) => {
+      // A window shorter than a hair of the axis still has to be findable, and
+      // the one that ends the axis is the likeliest to need the floor. Pulling
+      // its offset back keeps the widened bar inside the strip rather than
+      // hanging a fraction of a percent off the end of it.
+      const length = Math.max((w.to - w.from) / total, 0.01);
+      return { window: w.window, offset: Math.min((w.from - from) / total, 1 - length), length };
+    }),
   };
 }

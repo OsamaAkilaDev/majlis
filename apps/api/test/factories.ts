@@ -199,8 +199,6 @@ export function anEvent(clubId: string, createdById: string, overrides: Partial<
     endsAt: new Date(now + 7 * DAY + 2 * HOUR),
     registrationOpensAt: new Date(now - DAY),
     registrationClosesAt: new Date(now + 6 * DAY),
-    checkInOpensAt: new Date(now + 7 * DAY - HOUR),
-    checkInClosesAt: new Date(now + 7 * DAY + 3 * HOUR),
     capacity: 30,
     status: 'PUBLISHED',
     ...overrides,

@@ -309,8 +309,6 @@ model Event {
   endsAt               DateTime         @map("ends_at") @db.Timestamptz(3)
   registrationOpensAt  DateTime         @map("registration_opens_at") @db.Timestamptz(3)
   registrationClosesAt DateTime         @map("registration_closes_at") @db.Timestamptz(3)
-  checkInOpensAt       DateTime         @map("check_in_opens_at") @db.Timestamptz(3)
-  checkInClosesAt      DateTime         @map("check_in_closes_at") @db.Timestamptz(3)
   capacity             Int
   confirmedCount       Int              @default(0) @map("confirmed_count")
   waitlistEnabled      Boolean          @default(true) @map("waitlist_enabled")

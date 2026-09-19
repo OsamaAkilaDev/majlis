@@ -9,8 +9,6 @@ const BASE: Schedule = {
   endsAt: '2026-09-24T17:00:00.000Z',
   registrationOpensAt: '2026-09-10T05:00:00.000Z',
   registrationClosesAt: '2026-09-23T19:59:00.000Z',
-  checkInOpensAt: '2026-09-24T13:00:00.000Z',
-  checkInClosesAt: '2026-09-24T17:30:00.000Z',
 };
 
 const of = (overrides: Partial<Schedule>): Schedule => ({ ...BASE, ...overrides });
@@ -42,18 +40,22 @@ describe('validateSchedule', () => {
     expect(validateSchedule(of({ registrationClosesAt: BASE.endsAt }))).toEqual({});
   });
 
-  it('refuses check-in that closes when or before it opens', () => {
-    expect(validateSchedule(of({ checkInClosesAt: BASE.checkInOpensAt })).checkIn).toBeTruthy();
-  });
-
-  it('allows a check-in window that opens after the event starts', () => {
-    // Odd, and the API takes it. A form refusing what the server accepts is a
-    // control nobody can get past.
-    expect(validateSchedule(of({ checkInOpensAt: '2026-09-24T15:00:00.000Z' }))).toEqual({});
+  it('allows registration that opens after the event has started', () => {
+    // Odd, and the API takes it: the only rules are that registration closes
+    // after it opens and no later than the event ends. A form refusing what the
+    // server accepts is a control nobody can get past.
+    expect(
+      validateSchedule(
+        of({
+          registrationOpensAt: '2026-09-24T15:00:00.000Z',
+          registrationClosesAt: '2026-09-24T16:00:00.000Z',
+        }),
+      ),
+    ).toEqual({});
   });
 
   it('says nothing about a window with an end still empty', () => {
-    expect(validateSchedule(of({ endsAt: '', checkInOpensAt: '', checkInClosesAt: '' }))).toEqual({});
+    expect(validateSchedule(of({ endsAt: '' }))).toEqual({});
   });
 
   it('carries every rule the API enforces', () => {
@@ -62,7 +64,7 @@ describe('validateSchedule', () => {
     const source = readFileSync(SOURCE, 'utf8');
     const body = /function assertWindows\(w: Windows\): void \{([\s\S]*?)\n\}/.exec(source)?.[1];
     if (!body) throw new Error(`assertWindows is not in ${SOURCE}`);
-    expect(body.match(/if \(/g)?.length).toBe(4);
+    expect(body.match(/if \(/g)?.length).toBe(3);
   });
 });
 
@@ -73,13 +75,13 @@ describe('scheduleSpans', () => {
     const spans = Object.fromEntries(laid!.spans.map((s) => [s.window, s]));
     // Registration opens first, so it starts the axis; the event ends last.
     expect(spans.registration!.offset).toBe(0);
-    expect(spans.event!.offset).toBeGreaterThan(spans.checkIn!.offset);
+    expect(spans.event!.offset).toBeGreaterThan(spans.registration!.offset);
     expect(spans.event!.offset + spans.event!.length).toBeLessThanOrEqual(1);
   });
 
   it('gives a zero-length window something to see', () => {
-    const laid = scheduleSpans(of({ checkInClosesAt: BASE.checkInOpensAt }));
-    expect(laid!.spans.find((s) => s.window === 'checkIn')!.length).toBeGreaterThan(0);
+    const laid = scheduleSpans(of({ endsAt: BASE.startsAt }));
+    expect(laid!.spans.find((s) => s.window === 'event')!.length).toBeGreaterThan(0);
   });
 
   it('draws nothing when no window is complete', () => {
@@ -89,8 +91,6 @@ describe('scheduleSpans', () => {
         endsAt: '',
         registrationOpensAt: '',
         registrationClosesAt: '',
-        checkInOpensAt: '',
-        checkInClosesAt: '',
       }),
     ).toBeNull();
   });

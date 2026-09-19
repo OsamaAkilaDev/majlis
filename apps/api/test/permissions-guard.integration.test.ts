@@ -57,8 +57,6 @@ async function anEvent(clubId: string, createdById: string) {
       endsAt: at(26),
       registrationOpensAt: at(1),
       registrationClosesAt: at(23),
-      checkInOpensAt: at(23),
-      checkInClosesAt: at(26.5),
       capacity: 2,
       createdById,
     },
