@@ -60,14 +60,28 @@ export function DateTimeRange({
   /** A fact about the window, such as how long it runs. Never an instruction. */
   hint?: string;
 }) {
-  // Before the zone is known this renders empty and inert rather than reading
-  // the stored instants in the server's zone: the editor is server-rendered
-  // with its event, so that would put a wrong time in an editable control and
-  // then correct it, and a fast typist would be editing the wrong number.
-  const ready = timeZone !== undefined;
-  const zone = timeZone ?? 'UTC';
-  const start = ready ? readIn(from, zone) : null;
-  const end = ready ? readIn(to, zone) : null;
+  // Nothing renders until the zone is known, and not only because the stored
+  // instants would otherwise be read in the server's. The segments themselves
+  // are built by Intl, and Node's ICU and the browser's disagree about the bidi
+  // isolates around a 12-hour clock: rendering them on the server is a
+  // hydration mismatch, which React answers by throwing the tree away. The
+  // editor is server-rendered with its event, so this is the path that hits it.
+  // A box of the control's own height holds the space so the form does not jump.
+  if (timeZone === undefined) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="flex items-center gap-2 text-label font-bold tracking-[0.07em] text-ink-3 uppercase">
+          <span aria-hidden className="size-2.5 rounded-[3px]" style={{ background: swatch }} />
+          {label}
+        </span>
+        <div className="min-h-10 rounded-control border border-border-control bg-surface" />
+      </div>
+    );
+  }
+
+  const zone = timeZone;
+  const start = readIn(from, zone);
+  const end = readIn(to, zone);
 
   return (
     // Segment order comes from the locale, and the runtime's default put the
@@ -93,11 +107,15 @@ export function DateTimeRange({
         }
         granularity="minute"
         hourCycle={12}
+        // A zoned value plus a time granularity makes React Aria append a
+        // timeZoneName segment of its own accord ("GST"). Nothing in the
+        // product names a zone: the reader is already in it.
+        hideTimeZone
         // The default shuts the popover the instant the second date lands,
         // which would close over the clocks below the grid. `SeedTimes` is what
         // makes that safe.
         shouldCloseOnSelect={false}
-        isDisabled={disabled || !ready}
+        isDisabled={disabled}
         isInvalid={Boolean(error)}
         shouldForceLeadingZeros
         className="flex flex-col gap-1.5"
@@ -244,6 +262,7 @@ function Clock({
       placeholderValue={placeholderIn(timeZone)}
       granularity="minute"
       hourCycle={12}
+      hideTimeZone
       shouldForceLeadingZeros
       className="flex flex-col gap-1"
     >

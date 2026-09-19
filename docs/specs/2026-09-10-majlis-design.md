@@ -1724,6 +1724,26 @@ early keeps them and the clocks edit a value that already exists. One `setValue`
 than two `setTime` calls, because `setTime` closes over the time range it was rendered
 with and a second call in the same tick overwrites the first.
 
+**The picker names no zone either, and renders nothing until it knows one.** React
+Aria appends a  segment of its own accord whenever a zoned value meets a
+time granularity, so the control read "GST" long after the text around it had stopped;
+ turns that off on both the field and the popover clocks. Rendering the
+control before the zone is known turned out to be a hydration mismatch as well, and not
+only because the stored instants would have been read in the server's zone: the segments
+are built by Intl, and Node's ICU and the browser's disagree about the bidi isolates
+around a 12-hour clock. The editor is server-rendered with its event, so it is the path
+that hit it. The control now renders a box of its own height until the zone arrives.
+
+**The picker names no zone either, and renders nothing until it knows one.** React Aria
+appends a `timeZoneName` segment of its own accord whenever a zoned value meets a time
+granularity, so the control still read "GST" long after the text around it had stopped.
+`hideTimeZone` turns that off, on the field and on the popover clocks. Rendering the
+control before the zone is known turned out to be a hydration mismatch as well, and not
+only because the stored instants would have been read in the server's zone: the segments
+are built by Intl, and Node's ICU and the browser's disagree about the bidi isolates
+around a 12-hour clock. The editor is server-rendered with its event, so it is the path
+that hit it. The control now holds a box of its own height until the zone arrives.
+
 **Left open, and worth a decision.** The form's Time zone field no longer affects what
 an officer types or what anyone sees. `Event.timezone` is still required by the API and
 still names the venue's zone, so the field is honest, but it now looks more load-bearing
