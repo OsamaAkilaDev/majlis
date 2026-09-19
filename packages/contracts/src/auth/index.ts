@@ -75,7 +75,6 @@ export const sessionUserSchema = z.object({
 
 export type SignupBody = z.infer<typeof signupBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
-export type SessionClubRole = z.infer<typeof sessionClubRoleSchema>;
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 
 /**

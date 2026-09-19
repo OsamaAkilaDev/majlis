@@ -71,14 +71,6 @@ export const EVENT_FIELDS = {
 export type FieldMap = Record<string, readonly ClubRole[]>;
 
 /**
- * Throws naming the first refused key. `facts` is re-derived per request from
- * the database by the caller, exactly like the route-level guard does; a
- * client-supplied role never reaches here.
- *
- * ADMIN passes: spec 6.1 reads "override" in the Admin column of both edit
- * rows. Every Admin override is audited by the calling service.
- */
-/**
  * Spec 6.1: "Every Admin override requires a recorded reason and writes an
  * audit row in the same transaction as the overridden action."
  *
@@ -95,6 +87,14 @@ export function overrideReasonFor(
   return reason;
 }
 
+/**
+ * Throws naming the first refused key. `facts` is re-derived per request from
+ * the database by the caller, exactly like the route-level guard does; a
+ * client-supplied role never reaches here.
+ *
+ * ADMIN passes: spec 6.1 reads "override" in the Admin column of both edit
+ * rows. Every Admin override is audited by the calling service.
+ */
 export function assertFieldsAllowed(
   body: object,
   map: FieldMap,

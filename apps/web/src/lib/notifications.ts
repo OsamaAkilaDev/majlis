@@ -4,9 +4,9 @@ import { apiFetch, qs } from './api';
 export const listNotifications = (query: NotificationListQuery): Promise<NotificationPage> =>
   apiFetch(
     `/me/notifications${qs({
-      unread: query.unread === undefined ? undefined : String(query.unread),
+      unread: query.unread,
       cursor: query.cursor,
-      limit: String(query.limit),
+      limit: query.limit,
     })}`,
   );
 

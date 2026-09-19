@@ -50,9 +50,6 @@ export const userProfileSchema = z.object({
   status: userStatusSchema,
 });
 
-/** Alias for the two routes that deal with the caller's own profile. */
-export const meSchema = userProfileSchema;
-
 /**
  * `PATCH /me`'s body. Deliberately narrow: `fullName` and `avatarUrl` are the
  * only two fields a user may change about themselves. The service picks

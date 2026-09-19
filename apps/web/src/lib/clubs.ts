@@ -60,7 +60,7 @@ export const listClubs = (query: ClubListQuery): Promise<ClubPage> =>
       status: query.status,
       q: query.q,
       cursor: query.cursor,
-      limit: String(query.limit),
+      limit: query.limit,
     })}`,
   );
 
@@ -76,7 +76,7 @@ export const appointLead = (clubId: string, body: AppointLeadBody): Promise<Appo
   apiFetch(`/clubs/${clubId}/lead`, json(body));
 
 export const listTeam = (clubId: string, query: CursorPageQuery): Promise<AppointmentPage> =>
-  apiFetch(`/clubs/${clubId}/team${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+  apiFetch(`/clubs/${clubId}/team${qs({ cursor: query.cursor, limit: query.limit })}`);
 
 export const inviteTeamMember = (clubId: string, body: InviteTeamMemberBody): Promise<Appointment> =>
   apiFetch(`/clubs/${clubId}/team`, json(body));
@@ -88,7 +88,7 @@ export const endAppointment = (
 ): Promise<void> => apiFetch(`/clubs/${clubId}/team/${appointmentId}`, { ...json(body), method: 'DELETE' });
 
 export const myInvitations = (query: CursorPageQuery): Promise<InvitationPage> =>
-  apiFetch(`/me/invitations${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+  apiFetch(`/me/invitations${qs({ cursor: query.cursor, limit: query.limit })}`);
 
 export const acceptInvitation = (appointmentId: string): Promise<Appointment> =>
   apiFetch(`/appointments/${appointmentId}/accept`, { method: 'POST' });
@@ -100,7 +100,7 @@ export const declineInvitation = (appointmentId: string): Promise<Appointment> =
 
 export const listMembers = (clubId: string, query: MemberListQuery): Promise<MemberPage> =>
   apiFetch(
-    `/clubs/${clubId}/members${qs({ status: query.status, cursor: query.cursor, limit: String(query.limit) })}`,
+    `/clubs/${clubId}/members${qs({ status: query.status, cursor: query.cursor, limit: query.limit })}`,
   );
 
 export const addMember = (clubId: string, body: AddMemberBody): Promise<Member> =>
@@ -126,12 +126,12 @@ export const removeMember = (
   apiFetch(`/clubs/${clubId}/members/${userId}`, { ...json(body), method: 'DELETE' });
 
 export const myClubs = (query: CursorPageQuery): Promise<MyClubPage> =>
-  apiFetch(`/me/clubs${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+  apiFetch(`/me/clubs${qs({ cursor: query.cursor, limit: query.limit })}`);
 
 // -- Departments ------------------------------------------------------------
 
 export const listDepartments = (query: CursorPageQuery): Promise<DepartmentPage> =>
-  apiFetch(`/departments${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+  apiFetch(`/departments${qs({ cursor: query.cursor, limit: query.limit })}`);
 
 export const createDepartment = (body: CreateDepartmentBody): Promise<Department> =>
   apiFetch('/departments', json(body));
@@ -146,7 +146,7 @@ export const removeDepartment = (id: string): Promise<void> =>
 
 export const listUsers = (query: UserListQuery): Promise<UserListPage> =>
   apiFetch(
-    `/users${qs({ cursor: query.cursor, limit: String(query.limit), status: query.status, q: query.q })}`,
+    `/users${qs({ cursor: query.cursor, limit: query.limit, status: query.status, q: query.q })}`,
   );
 
 /** Name, address, avatar and platform role. Admin only, reason audited. */

@@ -26,7 +26,7 @@ export const manualCheckIn = (eventId: string, body: ManualCheckInBody): Promise
 
 export const listAttendance = (eventId: string, query: CursorPageQuery): Promise<AttendancePage> =>
   apiFetch(
-    `/events/${eventId}/attendance${qs({ cursor: query.cursor, limit: String(query.limit) })}`,
+    `/events/${eventId}/attendance${qs({ cursor: query.cursor, limit: query.limit })}`,
   );
 
 export const correctAttendance = (

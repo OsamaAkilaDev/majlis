@@ -9,7 +9,7 @@ import type {
 } from '@majlis/contracts';
 import { apiFetch, json, qs } from './api';
 
-const page = (query: CursorPageQuery) => qs({ cursor: query.cursor, limit: String(query.limit) });
+const page = (query: CursorPageQuery) => qs({ cursor: query.cursor, limit: query.limit });
 
 /** Idempotent: a second press issues nothing and reports the same totals. */
 export const issueCertificates = (eventId: string): Promise<CertificateIssueResult> =>

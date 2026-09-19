@@ -9,7 +9,7 @@ const auditQs = (query: AuditListQuery) =>
     entityType: query.entityType,
     actorUserId: query.actorUserId,
     cursor: query.cursor,
-    limit: String(query.limit),
+    limit: query.limit,
   });
 
 export const listAudit = (query: AuditListQuery): Promise<AuditPage> =>

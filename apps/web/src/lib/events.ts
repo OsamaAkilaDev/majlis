@@ -44,10 +44,10 @@ export const listEvents = (query: EventListQuery): Promise<EventPage> =>
       clubId: query.clubId,
       status: query.status,
       q: query.q,
-      upcoming: query.upcoming === undefined ? undefined : String(query.upcoming),
+      upcoming: query.upcoming,
       direction: query.direction,
       cursor: query.cursor,
-      limit: String(query.limit),
+      limit: query.limit,
     })}`,
   );
 
@@ -66,7 +66,7 @@ export const cancelEvent = (eventId: string, body: CancelEventBody): Promise<Eve
 
 export const listAssignments = (eventId: string, query: CursorPageQuery): Promise<AssignmentList> =>
   apiFetch(
-    `/events/${eventId}/assignments${qs({ cursor: query.cursor, limit: String(query.limit) })}`,
+    `/events/${eventId}/assignments${qs({ cursor: query.cursor, limit: query.limit })}`,
   );
 
 export const assignResponsibility = (
@@ -96,9 +96,9 @@ export const listRoster = (eventId: string, query: RegistrationListQuery): Promi
     `/events/${eventId}/registrations${qs({
       status: query.status,
       cursor: query.cursor,
-      limit: String(query.limit),
+      limit: query.limit,
     })}`,
   );
 
 export const myRegistrations = (query: CursorPageQuery): Promise<MyRegistrationPage> =>
-  apiFetch(`/me/registrations${qs({ cursor: query.cursor, limit: String(query.limit) })}`);
+  apiFetch(`/me/registrations${qs({ cursor: query.cursor, limit: query.limit })}`);

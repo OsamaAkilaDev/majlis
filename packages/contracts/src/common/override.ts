@@ -22,4 +22,3 @@ export const overrideBodySchema = z
   .optional()
   .default({});
 
-export type OverrideBody = z.infer<typeof overrideBodySchema>;

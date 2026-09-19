@@ -11,9 +11,6 @@ importers:
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.10.0(jiti@2.7.0))
-      '@types/pg':
-        specifier: 8.15.6
-        version: 8.15.6
       eslint:
         specifier: 10.10.0
         version: 10.10.0(jiti@2.7.0)
@@ -210,9 +207,6 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
-      sonner:
-        specifier: 2.0.8
-        version: 2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tailwind-merge:
         specifier: 3.6.0
         version: 3.6.0
@@ -260,12 +254,15 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
     devDependencies:
+      '@types/node':
+        specifier: 22.14.0
+        version: 22.14.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
         specifier: 5.0.0
-        version: 5.0.0(@types/node@22.20.2)(vite@8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6))
+        version: 5.0.0(@types/node@22.14.0)(vite@8.2.2(@types/node@22.14.0)(jiti@2.7.0)(tsx@4.20.6))
 
 packages:
 
@@ -5310,16 +5307,6 @@ packages:
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
 
-  sonner@2.0.8:
-    resolution: {integrity: sha512-UM/ByIoFra8yzV75n1o0Puu0bw5U/9UNnDacrJNspekBewIfsQ3D6ez1nvlWpt7aTsO6rujQtifBpycwIivqlg==}
-    peerDependencies:
-      '@types/react': ^18.0.0 || ^19.0.0
-      react: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
-      react-dom: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -8380,15 +8367,6 @@ snapshots:
     optionalDependencies:
       vite: 8.2.2(@types/node@22.14.0)(jiti@2.7.0)(tsx@4.20.6)
 
-  '@vitest/mocker@5.0.0(vite@8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6))':
-    dependencies:
-      '@jridgewell/trace-mapping': 0.3.31
-      '@vitest/spy': 5.0.0
-      estree-walker: 3.0.3
-      magic-string: 1.2.3
-    optionalDependencies:
-      vite: 8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6)
-
   '@vitest/spy@5.0.0': {}
 
   abs-svg-path@0.1.1: {}
@@ -10910,13 +10888,6 @@ snapshots:
     dependencies:
       atomic-sleep: 1.0.0
 
-  sonner@2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
-    dependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-    optionalDependencies:
-      '@types/react': 19.3.0
-
   source-map-js@1.2.1: {}
 
   source-map-support@0.5.21:
@@ -11304,19 +11275,6 @@ snapshots:
       jiti: 2.7.0
       tsx: 4.20.6
 
-  vite@8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6):
-    dependencies:
-      lightningcss: 1.33.0
-      picomatch: 4.0.7
-      postcss: 8.5.28
-      rolldown: 1.2.8
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 22.20.2
-      fsevents: 2.3.3
-      jiti: 2.7.0
-      tsx: 4.20.6
-
   vitest@5.0.0(@types/node@22.14.0)(vite@8.2.2(@types/node@22.14.0)(jiti@2.7.0)(tsx@4.20.6)):
     dependencies:
       '@types/chai': 5.2.3
@@ -11335,27 +11293,6 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.14.0
-    transitivePeerDependencies:
-      - msw
-
-  vitest@5.0.0(@types/node@22.20.2)(vite@8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6)):
-    dependencies:
-      '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.0(vite@8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6))
-      chai: 6.2.2
-      es-module-lexer: 2.3.2
-      expect-type: 1.4.0
-      magic-string: 1.2.3
-      obug: 2.2.1
-      picomatch: 4.0.7
-      std-env: 4.2.0
-      tinybench: 6.1.4
-      tinyexec: 1.3.0
-      tinyglobby: 0.2.17
-      vite: 8.2.2(@types/node@22.20.2)(jiti@2.7.0)(tsx@4.20.6)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/node': 22.20.2
     transitivePeerDependencies:
       - msw
 

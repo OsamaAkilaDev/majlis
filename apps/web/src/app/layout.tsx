@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { Toaster } from 'sonner';
 import { RegisterSW } from '@/components/RegisterSW';
 import { RouterCacheInvalidator } from '@/components/RouterCacheInvalidator';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -35,7 +34,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {children}
           <RegisterSW />
           <RouterCacheInvalidator />
-          <Toaster position="top-center" />
         </ThemeProvider>
       </body>
     </html>

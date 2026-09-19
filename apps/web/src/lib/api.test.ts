@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch, onMutation, ProblemError } from './api';
+import { apiFetch, onMutation, ProblemError, qs } from './api';
 
 type Call = { url: string; init?: RequestInit };
 
@@ -180,5 +180,35 @@ describe('onMutation', () => {
     mockFetch([() => problem(401), () => json({}), () => json({ id: 'r1' })]);
     await apiFetch('/events/e1/registrations', { method: 'POST' });
     expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('qs', () => {
+  it('omits an undefined value rather than sending the string "undefined"', () => {
+    expect(qs({ status: undefined, q: 'robotics' })).toBe('?q=robotics');
+  });
+
+  it('is empty when every value is undefined', () => {
+    expect(qs({ cursor: undefined })).toBe('');
+  });
+
+  // The two cases a truthiness check gets wrong. Every list query used to
+  // stringify at the call site to dodge them, and `upcoming=false` silently
+  // becoming "no filter" is a list showing past events to a student who asked
+  // for neither.
+  it('keeps a false boolean', () => {
+    expect(qs({ upcoming: false })).toBe('?upcoming=false');
+  });
+
+  it('keeps a zero', () => {
+    expect(qs({ limit: 0 })).toBe('?limit=0');
+  });
+
+  it('stringifies numbers and booleans', () => {
+    expect(qs({ limit: 20, unread: true })).toBe('?limit=20&unread=true');
+  });
+
+  it('percent-encodes a value', () => {
+    expect(qs({ q: 'a b&c' })).toBe('?q=a+b%26c');
   });
 });

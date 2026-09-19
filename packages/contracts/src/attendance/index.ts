@@ -105,7 +105,6 @@ export type QrPass = z.infer<typeof qrPassSchema>;
 export type ScanBody = z.infer<typeof scanBodySchema>;
 export type ManualCheckInBody = z.infer<typeof manualCheckInBodySchema>;
 export type CheckInResult = z.infer<typeof checkInResultSchema>;
-export type AttendanceRow = z.infer<typeof attendanceRowSchema>;
 export type AttendancePage = z.infer<typeof attendancePageSchema>;
 export type AttendanceListQuery = z.infer<typeof attendanceListQuerySchema>;
 export type CorrectAttendanceBody = z.infer<typeof correctAttendanceBodySchema>;

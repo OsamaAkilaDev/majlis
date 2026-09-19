@@ -129,11 +129,6 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return (body ? JSON.parse(body) : undefined) as T;
 }
 
-/** The exports, which answer `text/csv` and are read back for the cap trailer. */
-export async function apiText(path: string): Promise<string> {
-  return (await request(path)).text();
-}
-
 /** A JSON body, for the POST/PATCH/DELETE bodies every client module sends. */
 export const json = (body: unknown): RequestInit => ({
   method: 'POST',
@@ -141,11 +136,19 @@ export const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-/** Query string from a sparse record; an undefined value is omitted entirely. */
-export function qs(params: Record<string, string | undefined>): string {
+/**
+ * Query string from a sparse record; an undefined value is omitted entirely.
+ *
+ * Numbers and booleans are stringified here rather than at each call site,
+ * which is what every list query was doing: `String(query.limit)` on one line
+ * and `query.unread === undefined ? undefined : String(query.unread)` on the
+ * next, where the ternary existed only to keep `undefined` from becoming the
+ * string "undefined" and filtering every list by it.
+ */
+export function qs(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) search.set(key, value);
+    if (value !== undefined) search.set(key, String(value));
   }
   const s = search.toString();
   return s ? `?${s}` : '';
