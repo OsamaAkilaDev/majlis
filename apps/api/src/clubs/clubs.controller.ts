@@ -33,14 +33,12 @@ export class ClubsController {
 
   @Post('uploads/club-logo')
   @RequirePermission('club:create')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   mintClubLogoUpload(): Promise<NewClubUpload> {
     return this.clubs.mintLogoUpload();
   }
 
   @Post('clubs')
   @RequirePermission('club:create')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'A club with that name already exists.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'The uploaded logo failed verification.', type: ProblemDetailsDto })
   create(@Actor() actor: User, @Body() body: CreateClubDto): Promise<ClubDetail> {
@@ -69,7 +67,6 @@ export class ClubsController {
 
   @Patch('clubs/:clubId')
   @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived, or the uploaded image failed verification.', type: ProblemDetailsDto })
   update(@Actor() actor: User, @Param('clubId') clubId: string, @Body() body: PatchClubDto): Promise<ClubDetail> {
@@ -78,7 +75,6 @@ export class ClubsController {
 
   @Patch('clubs/:clubId/status')
   @RequirePermission('club:status')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That transition is not allowed.', type: ProblemDetailsDto })
   updateStatus(
@@ -91,7 +87,6 @@ export class ClubsController {
 
   @Post('clubs/:clubId/logo-upload-url')
   @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived.', type: ProblemDetailsDto })
   logoUploadUrl(@Actor() actor: User, @Param('clubId') clubId: string): Promise<SignedUpload> {
@@ -100,7 +95,6 @@ export class ClubsController {
 
   @Post('clubs/:clubId/banner-upload-url')
   @RequirePermission('club:edit', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived.', type: ProblemDetailsDto })
   bannerUploadUrl(@Actor() actor: User, @Param('clubId') clubId: string): Promise<SignedUpload> {

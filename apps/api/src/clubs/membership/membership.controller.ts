@@ -38,7 +38,6 @@ export class MembershipController {
 
   @Post('clubs/:clubId/members')
   @RequirePermission('membership:decide', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'That user already has an open membership.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is not accepting new activity, or its policy is CLOSED.', type: ProblemDetailsDto })
@@ -49,7 +48,6 @@ export class MembershipController {
   @Delete('clubs/:clubId/members/:userId')
   @HttpCode(204)
   @RequirePermission('membership:decide', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club, or no such member.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived.', type: ProblemDetailsDto })
   remove(
@@ -83,7 +81,6 @@ export class MembershipController {
 
   @Patch('clubs/:clubId/membership-requests/:requestId')
   @RequirePermission('membership:decide', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club, or no such request.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived, you cannot decide your own request, or it is not pending.', type: ProblemDetailsDto })
   decide(

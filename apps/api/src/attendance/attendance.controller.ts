@@ -32,7 +32,6 @@ export class AttendanceController {
   @Post('events/:eventId/check-in/scan')
   @HttpCode(200)
   @RequirePermission('attendance:scan', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such event.', type: ProblemDetailsDto })
   scan(
     @Actor() actor: User,
@@ -45,7 +44,6 @@ export class AttendanceController {
   @Post('events/:eventId/check-in/manual')
   @HttpCode(200)
   @RequirePermission('attendance:scan', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such event.', type: ProblemDetailsDto })
   manual(
     @Actor() actor: User,
@@ -59,7 +57,6 @@ export class AttendanceController {
   // `attendance:scan`: spec 6.1 excludes Marketing and CTO from it.
   @Get('events/:eventId/attendance')
   @RequirePermission('registration:read', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   roster(
     @Param('eventId') eventId: string,
     @Query() query: AttendanceListQueryDto,
@@ -70,7 +67,6 @@ export class AttendanceController {
   @Patch('events/:eventId/attendance/:registrationId')
   @HttpCode(204)
   @RequirePermission('attendance:correct', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such registration for that event.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'The correction window has closed, or attendance is locked.', type: ProblemDetailsDto })
   correct(

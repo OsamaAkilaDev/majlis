@@ -30,7 +30,6 @@ export class DepartmentsController {
 
   @Post()
   @RequirePermission('department:manage')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'A department with that name or code already exists.', type: ProblemDetailsDto })
   create(@Actor() actor: User, @Body() body: CreateDepartmentDto): Promise<Department> {
     return this.departments.create(actor, body);
@@ -38,7 +37,6 @@ export class DepartmentsController {
 
   @Patch(':id')
   @RequirePermission('department:manage')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such department.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'A department with that name or code already exists.', type: ProblemDetailsDto })
   update(@Actor() actor: User, @Param('id') id: string, @Body() body: PatchDepartmentDto): Promise<Department> {
@@ -48,7 +46,6 @@ export class DepartmentsController {
   @Delete(':id')
   @HttpCode(204)
   @RequirePermission('department:manage')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such department.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'That department still has clubs.', type: ProblemDetailsDto })
   remove(@Actor() actor: User, @Param('id') id: string): Promise<void> {

@@ -27,7 +27,6 @@ export class TeamController {
 
   @Post('clubs/:clubId/lead')
   @RequirePermission('club:appoint-lead')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived, or you appointed yourself.', type: ProblemDetailsDto })
   appointLead(
@@ -49,7 +48,6 @@ export class TeamController {
 
   @Post('clubs/:clubId/team')
   @RequirePermission('club:team-manage', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'That user already holds that role.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is archived, or you invited yourself.', type: ProblemDetailsDto })
   invite(
@@ -63,7 +61,6 @@ export class TeamController {
   @Delete('clubs/:clubId/team/:appointmentId')
   @HttpCode(204)
   @RequirePermission('club:team-manage', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such appointment.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'You cannot end your own appointment, or it is not active.', type: ProblemDetailsDto })
   end(

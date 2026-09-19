@@ -18,14 +18,12 @@ export class AuditController {
 
   @Get('audit')
   @RequirePermission('audit:read')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   list(@Query() query: AuditListQueryDto): Promise<AuditPage> {
     return this.audit.list(query);
   }
 
   @Get('clubs/:clubId/audit')
   @RequirePermission('audit:read', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   forClub(@Param('clubId') clubId: string, @Query() query: AuditListQueryDto): Promise<AuditPage> {
     return this.audit.forClub(clubId, query);

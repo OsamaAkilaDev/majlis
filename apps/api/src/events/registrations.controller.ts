@@ -54,7 +54,6 @@ export class RegistrationsController {
   // excludes Marketing from it by design, not by oversight.
   @Get('events/:eventId/registrations')
   @RequirePermission('registration:read', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   roster(
     @Param('eventId') eventId: string,
     @Query() query: RegistrationListQueryDto,

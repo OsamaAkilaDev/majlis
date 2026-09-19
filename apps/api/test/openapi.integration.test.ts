@@ -94,3 +94,39 @@ describe('generated OpenAPI document', () => {
     expect(statusSchemaRef).toBe(loginSchemaRef);
   });
 });
+
+describe('403 responses follow @RequirePermission', () => {
+  /**
+   * The decorator emits its own `@ApiResponse(403)` rather than leaving it to
+   * be hand-written beside all 41 call sites, which is how the document and
+   * the guard drift apart. These two cases are what make that a fold rather
+   * than a blanket: one guarded route must carry the 403, one deliberately
+   * unguarded route must not.
+   */
+  it('documents 403 on a guarded route, with the Problem Details schema', async () => {
+    const doc = (await fetchDoc()).body as OpenApiDoc;
+
+    const auditPath = Object.keys(doc.paths).find((p) => p.endsWith('/audit'));
+    expect(auditPath).toBeDefined();
+
+    const response403 = doc.paths[auditPath!]!.get?.responses?.['403'];
+    expect(response403).toBeDefined();
+
+    // Not just the status key: a response carrying no schema would still
+    // satisfy "the 403 exists" while documenting nothing about its body.
+    const schema = resolveSchema(doc, response403!.content!['application/json']!.schema);
+    expect(schema.properties?.title).toBeDefined();
+    expect(schema.properties?.status).toBeDefined();
+  });
+
+  it('leaves a self-scoped route without one', async () => {
+    const doc = (await fetchDoc()).body as OpenApiDoc;
+
+    // GET /me/invitations carries no @RequirePermission: it is scoped by
+    // `actor.id` inside TeamService. A 403 here would mean the decorator's
+    // response had been applied globally instead of per call site.
+    const invitationsPath = Object.keys(doc.paths).find((p) => p.endsWith('/me/invitations'));
+    expect(invitationsPath).toBeDefined();
+    expect(doc.paths[invitationsPath!]!.get?.responses?.['403']).toBeUndefined();
+  });
+});

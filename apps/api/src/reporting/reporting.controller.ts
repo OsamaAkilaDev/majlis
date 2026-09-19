@@ -16,14 +16,12 @@ export class ReportingController {
    */
   @Get('reports/overview')
   @RequirePermission('report:read')
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   overview(): Promise<OverviewReport> {
     return this.reporting.overview();
   }
 
   @Get('clubs/:clubId/reports')
   @RequirePermission('report:read', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse({ status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   forClub(@Param('clubId') clubId: string): Promise<ClubReport> {
     return this.reporting.forClub(clubId);

@@ -33,7 +33,6 @@ class PublishEventDto extends createZodDto(publishEventBodySchema) {}
 class RemoveAssignmentDto extends createZodDto(removeAssignmentBodySchema) {}
 class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
 
-const FORBIDDEN = { status: 403, description: 'You do not have permission to do that.', type: ProblemDetailsDto };
 const NO_EVENT = { status: 404, description: 'No such event.', type: ProblemDetailsDto };
 
 /**
@@ -56,14 +55,12 @@ export class EventsController {
    */
   @Post('clubs/:clubId/uploads/event-poster')
   @RequirePermission('event:create', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse(FORBIDDEN)
   mintPosterUpload(): Promise<NewEventUpload> {
     return this.events.mintPosterUpload();
   }
 
   @Post('clubs/:clubId/events')
   @RequirePermission('event:create', { scope: 'club', from: 'params.clubId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'That club already has an event with that slug.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That club is not accepting new activity, or the windows are inconsistent.', type: ProblemDetailsDto })
@@ -89,7 +86,6 @@ export class EventsController {
 
   @Patch('events/:eventId')
   @RequirePermission('event:edit', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
   @ApiResponse({ status: 422, description: 'The event is final, the windows are inconsistent, or capacity is below the confirmed count.', type: ProblemDetailsDto })
   update(
@@ -102,14 +98,12 @@ export class EventsController {
 
   @Post('events/:eventId/poster-upload-url')
   @RequirePermission('event:edit', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   posterUploadUrl(@Actor() actor: User, @Param('eventId') eventId: string): Promise<SignedUpload> {
     return this.events.mintEditUpload(actor, eventId);
   }
 
   @Post('events/:eventId/publish')
   @RequirePermission('event:publish', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
   @ApiResponse({ status: 422, description: 'That club is not active, or the event cannot be published from its current state.', type: ProblemDetailsDto })
   publish(
@@ -122,7 +116,6 @@ export class EventsController {
 
   @Post('events/:eventId/cancel')
   @RequirePermission('event:cancel', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
   @ApiResponse({ status: 422, description: 'That event cannot be cancelled from its current state.', type: ProblemDetailsDto })
   cancel(
@@ -135,7 +128,6 @@ export class EventsController {
 
   @Get('events/:eventId/assignments')
   @RequirePermission('event:assign', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
   listAssignments(
     @Param('eventId') eventId: string,
@@ -146,7 +138,6 @@ export class EventsController {
 
   @Post('events/:eventId/assignments')
   @RequirePermission('event:assign', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse(NO_EVENT)
   @ApiResponse({ status: 409, description: 'That person already holds that responsibility.', type: ProblemDetailsDto })
   assign(
@@ -162,7 +153,6 @@ export class EventsController {
   @Delete('events/:eventId/assignments/:assignmentId')
   @HttpCode(204)
   @RequirePermission('event:assign', { scope: 'event', from: 'params.eventId' })
-  @ApiResponse(FORBIDDEN)
   @ApiResponse({ status: 404, description: 'No such assignment on that event.', type: ProblemDetailsDto })
   removeAssignment(
     @Actor() actor: User,
