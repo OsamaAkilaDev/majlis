@@ -2,26 +2,18 @@ import { z } from 'zod';
 import { emailSchema } from '../auth';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 
-/**
- * Mirrors Prisma's `UserStatus` enum (schema.prisma). Declared locally rather
- * than imported from the generated client, same reasoning as
- * `apps/api/src/auth/permissions.ts`'s local PlatformRole/ClubRole unions:
- * this package has no business depending on Prisma's runtime.
- */
+/** Mirrors Prisma's `UserStatus`, declared locally: this package has no
+ *  business depending on Prisma's runtime. */
 export const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
 
 /**
- * Zod 4's `.url()` validates shape only: it does not restrict scheme, so it
- * accepts `javascript:alert(1)`, `data:text/html,x`, and `file:///etc/passwd`
- * just as happily as `https://...`. Stored verbatim and echoed by `GET /me`,
- * every auth response, and `PATCH /users/{id}/status` (i.e. into an admin's
- * browser for the student they just suspended). `new URL(v).protocol` is the
- * platform's own scheme parser, safer here than a hand-rolled regex.
+ * Zod 4's `.url()` validates shape only and does NOT restrict scheme: it
+ * accepts `javascript:alert(1)` and `data:text/html,x`. This value is stored
+ * verbatim and echoed into an admin's browser, so the scheme is checked with
+ * the platform's own parser.
  *
- * `https:` only: a `http:` avatar loads over plain transport into an
- * authenticated page, which every browser reports as mixed content and most
- * simply block. The length bound is what stops the column from being used as
- * free storage by a `data:`-length URL that happens to start with https.
+ * `https:` only, or the avatar loads as mixed content. The length bound stops
+ * the column becoming free storage for a `data:`-length URL.
  */
 const httpsUrlSchema = z.string().trim().max(2048).refine(
   (v) => {
@@ -34,13 +26,8 @@ const httpsUrlSchema = z.string().trim().max(2048).refine(
   { message: 'must be an https:// URL' },
 );
 
-/**
- * The shape both `GET /me` and `PATCH /me` return, and what
- * `PATCH /users/{id}/status` returns for the user it just changed.
- * Deliberately excludes `clubRoles`: that's `sessionUserSchema`'s job (see
- * `../auth`), the one every auth response carries. Collapsing the two would
- * put authorization facts into a profile-edit response.
- */
+/** Deliberately excludes `clubRoles`, which is `sessionUserSchema`'s job:
+ *  collapsing the two puts authorization facts in a profile-edit response. */
 export const userProfileSchema = z.object({
   id: z.string(),
   email: z.string(),
@@ -51,11 +38,9 @@ export const userProfileSchema = z.object({
 });
 
 /**
- * `PATCH /me`'s body. Deliberately narrow: `fullName` and `avatarUrl` are the
- * only two fields a user may change about themselves. The service picks
- * these two fields explicitly when writing to Prisma. This schema
- * stripping every other key (platformRole, status, email) is a second,
- * structural layer of the same guarantee, never a substitute for it.
+ * `fullName` and `avatarUrl` are the only fields a user may change about
+ * themselves. The service also picks them explicitly; this schema stripping
+ * platformRole, status and email is a second layer, never a substitute.
  */
 export const patchMeBodySchema = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
@@ -74,24 +59,17 @@ export const userListItemSchema = z.object({
 
 export const userListPageSchema = cursorPageSchema(userListItemSchema);
 
-/**
- * `GET /users`' filters. `q` matches name or address, because an admin
- * looking a person up has whichever of the two they were given, and a
- * name-only search silently answers "no such user" for the other half.
- */
+/** `q` matches name OR address: an admin has whichever they were given, and a
+ *  name-only search answers "no such user" for every address. */
 export const userListQuerySchema = cursorPageQuerySchema.extend({
   status: userStatusSchema.optional(),
   q: z.string().trim().min(1).max(120).optional(),
 });
 
 /**
- * One row of `GET /clubs/{clubId}/user-search`, the club-scoped directory
- * lookup an officer uses to pick a person to invite, add or assign.
- *
  * Deliberately narrower than `userListItemSchema`: a club Lead has no
  * business reading every account's platform role, status and creation date,
- * which is why `GET /users` stays Admin-only rather than being opened up.
- * Name and address are what it takes to tell two people apart.
+ * which is why `GET /users` stays Admin-only rather than being widened.
  */
 export const userSearchItemSchema = z.object({
   id: z.string(),
@@ -99,43 +77,31 @@ export const userSearchItemSchema = z.object({
   email: z.string(),
 });
 
-/**
- * Not a cursor page. The result is capped server-side and the officer
- * narrows it by typing, so paging it would only be a way to walk the whole
- * directory two characters at a time.
- */
+/** Not a cursor page: paging a capped directory lookup would only be a way to
+ *  walk the whole directory two characters at a time. */
 export const userSearchResultSchema = z.object({ items: z.array(userSearchItemSchema) });
 
-/**
- * `q` is required and at least two characters, which is what stops the
- * route from being a blank-query dump of every account.
- */
+/** `q` is required, minimum two characters: that is what stops the route being
+ *  a blank-query dump of every account. */
 export const userSearchQuerySchema = z.object({
   q: z.string().trim().min(2).max(120),
 });
 
-/**
- * `PATCH /users/{id}/status`'s body. `reason` is required: every admin
- * override in spec §11's audited-action list carries one, and this is the
- * first of them Stage 2 implements.
- */
+/** `reason` is required: every admin override in spec 11's audited-action
+ *  list carries one. */
 export const patchUserStatusBodySchema = z.object({
   status: userStatusSchema,
   reason: z.string().trim().min(1).max(500),
 });
 
 /**
- * `PATCH /users/{id}`'s body, the admin's edit of somebody else's account.
+ * Every field optional and `reason` required, the reverse of `PATCH /me`:
+ * this is one person acting on another's record. An empty patch is refused by
+ * the service, not here, so the message can say what was missing.
  *
- * Every field is optional and `reason` is required, the reverse of `PATCH
- * /me`: this is one person acting on another's record, which spec 11 audits
- * with a reason every time. An empty patch is refused by the service rather
- * than here, so the message can say what was missing.
- *
- * `email` reuses `emailSchema`, so an address written here is lowercased and
- * trimmed exactly as signup's is. `user.email` carries a
- * `CHECK (email = lower(email))`, and a second spelling of the rule here
- * would be a 500 waiting for the first capital letter.
+ * `email` reuses `emailSchema`. `user.email` has a
+ * `CHECK (email = lower(email))`, so a second spelling of the rule here is a
+ * 500 waiting for the first capital letter.
  */
 export const patchUserBodySchema = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),

@@ -4,26 +4,14 @@ import { PASSWORD_MIN } from '../constants';
 export { PASSWORD_MIN };
 
 /**
- * Lowercased and trimmed at the boundary, and used for BOTH directions:
- * signup's INSERT and login's LOOKUP share this one schema.
+ * One schema for signup's INSERT and login's LOOKUP both. `user.email` has a
+ * `CHECK (email = lower(email))`, so an un-normalised INSERT dies loudly; an
+ * un-normalised LOOKUP has no backstop and reports "invalid credentials",
+ * which reads as a password bug for weeks.
  *
- * `user.email` carries a `CHECK (email = lower(email))` database constraint.
- * An un-normalised INSERT dies loudly on that constraint: annoying, but
- * self-announcing. An un-normalised LOOKUP has no such backstop: it just
- * fails to find the row and reports "invalid credentials," which reads like
- * a password bug for weeks. One schema for both closes that gap structurally
- * rather than by convention.
- *
- * Order is deliberate: `z.string().trim().email()` trims BEFORE validating
- * the email format, so " Foo@Bar.com " (leading/trailing space, as a pasted
- * address often carries) is accepted and normalised. `z.email().trim()`
- * (the form suggested when this was planned) was tried first and rejected:
- * verified directly against the installed zod@4.5.4, `.email()`'s format
- * check runs on the string as received, before `.trim()` gets a chance to
- * run, so a padded address fails validation before normalisation ever
- * happens. `z.string().trim().email()` was verified to behave correctly
- * (trims, then validates, then the transform below lowercases) and to
- * survive `createZodDto` + the OpenAPI generator without incident.
+ * Order matters: `.string().trim().email()` trims before validating, so a
+ * pasted " Foo@Bar.com " is accepted. `.email().trim()` validates the string
+ * as received and rejects it. Verified against zod@4.5.4.
  */
 export const emailSchema = z
   .string()
@@ -43,15 +31,10 @@ export const loginBodySchema = z.object({
 });
 
 /**
- * A club role held by the acting user, scoped to one club. `clubName` rides
- * along so the shell can name the console it is offering: an officer of two
- * clubs otherwise sees two rows both reading "Officer", with the club ID the
- * only thing telling them apart. `role` is a plain
- * string rather than a strict enum: this schema is a response shape, not an
- * authorization decision (that's permissions.ts's job, which already pays
- * the cost of keeping a local role union in sync with Prisma's generated
- * enum). A second, differently-drifting copy of the same five-value union
- * here would buy nothing but another place for a renamed role to go unnoticed.
+ * `role` is a plain string, not an enum, on purpose: this is a response
+ * shape, not an authorization decision. permissions.ts already pays to keep
+ * one role union in step with Prisma's; a second copy here would only add
+ * another place for a renamed role to go unnoticed.
  */
 export const sessionClubRoleSchema = z.object({
   clubId: z.string(),
@@ -59,11 +42,7 @@ export const sessionClubRoleSchema = z.object({
   role: z.string(),
 });
 
-/**
- * What every authenticated response (signup, login, and Task 11's
- * `/auth/me`) sends back about the acting user. Never includes
- * `passwordHash`; this is the one shape every auth endpoint returns.
- */
+/** The one shape every auth endpoint returns. Never includes `passwordHash`. */
 export const sessionUserSchema = z.object({
   id: z.string(),
   email: z.string(),
@@ -78,36 +57,26 @@ export type LoginBody = z.infer<typeof loginBodySchema>;
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 
 /**
- * POST /auth/forgot-password. Always answers 202, whether or not the address
- * resolves: an endpoint that answers differently is an account-existence
- * oracle. The timing is not equalised, which is a known and accepted limit;
- * the protection here is that the answer carries nothing.
+ * Always answers 202, resolved or not: anything else is an account-existence
+ * oracle. Timing is not equalised, a known and accepted limit.
  */
 export const forgotPasswordBodySchema = z.object({ email: emailSchema });
 
-/**
- * POST /auth/reset-password. The raw token comes back from the email link and
- * is never stored anywhere: only its sha256 lives in password_reset_token,
- * exactly as refresh_token already does.
- */
+/** The raw token is never stored: only its sha256 lives in
+ *  password_reset_token, as refresh_token already does. */
 export const resetPasswordBodySchema = z.object({
   token: z.string().min(1, 'A reset token is required.'),
   password: z.string().min(PASSWORD_MIN, `Password must be at least ${PASSWORD_MIN} characters.`),
 });
 
 /**
- * GET /auth/reset-password. Resolves a link to the address it was sent to, so
- * the screen can name the account it is about to change without ever putting
- * the token in front of the user.
+ * Deliberately does NOT consume the token: the screen resolves the link on
+ * first paint, and a preview that spent it would fail every reset at the
+ * moment the button was pressed.
  *
- * Deliberately does not consume the token: the screen resolves the link on
- * first paint, and a preview that spent it would make every reset fail at the
- * moment the user pressed the button.
- *
- * Disclosing the address costs nothing. Whoever holds this token can take the
- * account outright, so the email tells them nothing they could not already
- * take. Unknown, expired, used and suspended all answer 401 with the one
- * RESET_LINK_INVALID string, exactly as the POST does.
+ * Disclosing the address costs nothing: whoever holds the token can take the
+ * account outright. Unknown, expired, used and suspended all answer 401 with
+ * the one RESET_LINK_INVALID string, as the POST does.
  */
 export const resetPasswordPreviewQuerySchema = z.object({
   token: z.string().min(1, 'A reset token is required.'),
@@ -121,24 +90,17 @@ export type ResetPasswordPreviewQuery = z.infer<typeof resetPasswordPreviewQuery
 export type ResetPasswordPreview = z.infer<typeof resetPasswordPreviewSchema>;
 
 /**
- * GET /auth/bootstrap. One bit, and deliberately only one: the setup screen
- * needs to know whether a platform admin exists, and an unauthenticated
- * caller has no business learning anything else about the account table.
- *
- * `true` means the deployment has never had an admin and the create-admin
- * screen is open. It flips to `false` for good the moment one exists, and
- * no route anywhere flips it back.
+ * One bit, and deliberately only one: an unauthenticated caller has no
+ * business learning anything else about the account table. Flips to `false`
+ * for good the moment an admin exists; no route flips it back.
  */
 export const bootstrapStatusSchema = z.object({ needsAdmin: z.boolean() });
 export type BootstrapStatus = z.infer<typeof bootstrapStatusSchema>;
 
 /**
- * The 409 detail POST /auth/bootstrap answers with once the platform has an
- * admin. Shared rather than duplicated because the setup screen matches on
- * it: that 409 means the screen the visitor is looking at no longer exists,
- * which is a redirect, while the OTHER 409 that route can answer (the email
- * is taken) is a message on the email field. A second copy of this string
- * in the web app would turn a one-word server-side edit into a silent
- * mis-routing of both.
+ * Shared, never duplicated: the setup screen MATCHES on this string to tell
+ * "the screen no longer exists" (a redirect) from the other 409 that route
+ * answers, "the email is taken" (a field message). A second copy in the web
+ * app turns a one-word server edit into a silent mis-routing of both.
  */
 export const ADMIN_ALREADY_EXISTS = 'This platform already has an administrator.';

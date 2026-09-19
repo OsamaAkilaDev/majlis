@@ -31,11 +31,8 @@ export const attendancePolicySchema = z.enum(['CHECK_IN_ONLY']);
 /** Accepts the `Z` form a browser's toISOString() produces and an explicit offset. */
 const dateTime = z.iso.datetime({ offset: true });
 
-/**
- * An IANA zone name, validated against the runtime's own tz database rather
- * than a hardcoded list: a zone the server cannot resolve would render every
- * time on the event page as an exception.
- */
+/** Validated against the runtime's own tz database: a zone it cannot resolve
+ *  renders every time on the event page as an exception. */
 const timezoneSchema = z
   .string()
   .trim()
@@ -50,13 +47,12 @@ const timezoneSchema = z
   }, 'must be an IANA time zone name');
 
 /**
- * No `bannerUrl`: like a club logo, the server never stores a client-supplied
- * image URL. `eventId` is minted by POST /clubs/:clubId/uploads/event-poster,
- * so the poster's object path exists before the event does.
+ * No `bannerUrl`: the server never stores a client-supplied image URL.
+ * `eventId` is minted by the upload route, so the poster's object path exists
+ * before the event does.
  *
- * The check-in window is optional here and defaults to startsAt - 60 min …
- * endsAt + 30 min (spec 5.1), which is what makes ONGOING a pure function of
- * timestamps for an event nobody bothered to configure.
+ * The check-in window defaults to startsAt - 60min … endsAt + 30min (spec
+ * 5.1), which keeps ONGOING a pure function of timestamps.
  */
 export const createEventBodySchema = z.object({
   eventId: z.uuid(),
@@ -92,11 +88,8 @@ export const createEventBodySchema = z.object({
  */
 export const publishEventBodySchema = overrideBodySchema;
 
-/**
- * Every key is optional, and which of them a given officer may actually send
- * is decided server-side by EVENT_FIELDS (apps/api/src/auth/field-permissions
- * .ts), not here: a schema cannot know who is asking.
- */
+/** Which keys a given officer may actually send is decided by EVENT_FIELDS in
+ *  auth/field-permissions.ts: a schema cannot know who is asking. */
 export const patchEventBodySchema = z
   .object({
     title: z.string().trim().min(2).max(160),
@@ -148,11 +141,8 @@ export const assignResponsibilityBodySchema = z.object({
  */
 export const removeAssignmentBodySchema = overrideBodySchema;
 
-/**
- * An ordinary student sends `{}`. `userId` is the Admin override from spec
- * 7.4, and the reason is required with it: an override with no recorded
- * reason is indistinguishable from a bug in the audit log.
- */
+/** An ordinary student sends `{}`. `userId` is spec 7.4's Admin override, and
+ *  the reason is required with it: without one the audit row reads as a bug. */
 export const registerBodySchema = z
   .object({
     userId: z.uuid().optional(),
@@ -215,11 +205,7 @@ export const eventListQuerySchema = cursorPageQuerySchema.extend({
   q: z.string().trim().min(1).max(160).optional(),
   /** Only events that have not ended yet. */
   upcoming: z.stringbool().optional(),
-  /**
-   * Which end of creation order the page starts from. `desc` is for a picker
-   * that has to reach the event somebody just made; the default reads
-   * forwards like every other list.
-   */
+  /** `desc` is for a picker that has to reach the event somebody just made. */
   direction: z.enum(['asc', 'desc']).optional(),
 });
 
@@ -233,19 +219,13 @@ export const assignmentSchema = z.object({
   createdAt: z.string(),
 });
 
-/**
- * Cursor-paginated like every other list (spec 8, "no unbounded list,
- * anywhere"). An event's assignments are a handful of rows in practice, but
- * nothing in the schema bounds them and a silently truncated roster of who may
- * scan is not a thing an officer can notice.
- */
+/** Cursor-paginated (spec 8, "no unbounded list, anywhere"). Nothing in the
+ *  schema bounds assignments, and a silently truncated roster of who may scan
+ *  is not something an officer can notice. */
 export const assignmentListSchema = cursorPageSchema(assignmentSchema);
 
-/**
- * The attendee roster. Carries full names and email addresses, so every read
- * of it is behind `registration:read` (spec 6.1, "View attendee personal
- * data"), and Marketing is excluded outright.
- */
+/** Carries full names and addresses, so every read is behind
+ *  `registration:read` (spec 6.1) and Marketing is excluded outright. */
 export const registrationSchema = z.object({
   id: z.uuid(),
   eventId: z.uuid(),
@@ -280,10 +260,9 @@ export const sweepResultSchema = z.object({
   scanned: z.number().int(),
   advanced: z.number().int(),
   /**
-   * Certificates issued on the same call. The sweep is the only reliable
-   * issuance path: an event completes when its check-in window shuts but
-   * cannot issue until the attendance correction window closes 48 hours
-   * later, so nothing that advanced a status can also issue for it.
+   * The sweep is the only reliable issuance path: an event completes when
+   * check-in shuts but cannot issue until the correction window closes 48
+   * hours later, so nothing that advanced a status can also issue for it.
    */
   certificatesIssued: z.number().int(),
 });
