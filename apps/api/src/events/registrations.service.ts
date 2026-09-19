@@ -29,7 +29,7 @@ import { promoteFromWaitlist } from './waitlist';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
 
-/** Statuses that still hold a place: everything except a cancellation. */
+// Statuses that still hold a place.
 const OPEN = { status: { not: 'CANCELLED' } } as const;
 
 interface Actor {
@@ -39,17 +39,14 @@ interface Actor {
   email: string;
 }
 
-/** The two person fields a Registration carries beyond the row itself. */
 interface Person {
   fullName: string;
   email: string;
 }
 
-/**
- * The columns the row lock reads, aliased out of their snake_case names.
- * The club's status rides along on the same statement: it is needed under
- * the lock, and a second round trip there holds the event row longer.
- */
+// The columns the row lock reads. The club's status rides along on the same
+// statement: it is needed under the lock, and a second round trip there holds
+// the event row longer.
 interface LockedEvent {
   id: string;
   clubId: string;
@@ -89,14 +86,10 @@ export class RegistrationsService {
   ) {}
 
   /**
-   * POST /events/:eventId/registrations. Spec 7.4's last seat, in one
-   * transaction: lock the event row, re-check status, window and eligibility,
-   * then confirm or waitlist, maintain the counter, audit, commit.
-   *
-   * The row lock is what makes two simultaneous requests for one seat produce
-   * exactly one CONFIRMED. Without it both read the same confirmed_count,
-   * both find room, and the event oversells until the CHECK constraint
-   * happens to catch one of them.
+   * Spec 7.4's last seat, in one transaction. The event row lock is what makes
+   * two simultaneous requests for one seat produce exactly one CONFIRMED:
+   * without it both read the same confirmed_count, both find room, and the event
+   * oversells until the CHECK constraint happens to catch one.
    */
   async register(actor: Actor, eventId: string, body: RegisterBody): Promise<Registration> {
     const override = body.userId !== undefined;
@@ -109,16 +102,15 @@ export class RegistrationsService {
     // transaction it is thrown in, and the advance must survive that.
     await this.lifecycle.advance(eventId);
 
-    // Nothing that only shapes the RESPONSE happens under the event row
-    // lock: the transaction returns the row, and the attendee's name and
-    // email are resolved after it has committed.
+    // Nothing that only shapes the response happens under the event row lock:
+    // the attendee's name and email are resolved after the commit.
     try {
       const row = await this.host.run(async () => {
         const event = await this.lockEvent(eventId);
 
-        // Registering twice is idempotent (spec 8), so this precedes the
-        // window checks: someone who already holds a place gets it back
-        // rather than a refusal for a window that has since closed.
+        // Registering twice is idempotent (spec 8), so this precedes the window
+        // checks: someone who already holds a place gets it back rather than a
+        // refusal for a window that has since closed.
         const existing = await this.findOpen(eventId, userId);
         if (existing) return existing;
 
@@ -169,9 +161,8 @@ export class RegistrationsService {
           after: { eventId, userId, status: row.status, waitlistPosition: row.waitlistPosition },
         });
 
-        // Spec 7.7, registration confirmed or waitlisted. Same transaction
-        // as the seat itself: a rolled-back registration must not leave
-        // somebody holding a notification for a place they do not have.
+        // Spec 7.7. Same transaction as the seat: a rolled-back registration
+        // must not leave a notification for a place nobody holds.
         await this.notifications.record({
           userId,
           type: seatFree ? 'registration.confirmed' : 'registration.waitlisted',
@@ -190,10 +181,9 @@ export class RegistrationsService {
 
       return toRegistration(row, await this.person(actor, userId));
     } catch (e) {
-      // event_registration_one_open_per_user. The check above already
-      // short-circuits under the row lock, so reaching here means the index
-      // caught something that lock did not: answer it the same way, with the
-      // row that won.
+      // event_registration_one_open_per_user. The check under the row lock
+      // short-circuits the normal case, so reaching here means the index caught
+      // what the lock did not: answer the same way, with the row that won.
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002' &&
@@ -206,11 +196,8 @@ export class RegistrationsService {
     }
   }
 
-  /**
-   * The attendee's name and email for the response. Self-registration is the
-   * common case and SessionGuard already loaded that row for this request,
-   * so only an Admin override costs a query.
-   */
+  // SessionGuard already loaded the actor's row, so only an Admin override
+  // costs a query here.
   private async person(actor: Actor, userId: string): Promise<Person> {
     if (userId === actor.id) return { fullName: actor.fullName, email: actor.email };
     return this.host.tx.user.findUniqueOrThrow({
@@ -219,11 +206,8 @@ export class RegistrationsService {
     });
   }
 
-  /**
-   * DELETE /events/:eventId/registrations/me. Sets CANCELLED, never deletes,
-   * decrements the counter and promotes the head of the waitlist in the same
-   * transaction (spec 7.4).
-   */
+  // Sets CANCELLED, never deletes. Decrement and waitlist promotion happen in
+  // the same transaction (spec 7.4).
   async cancel(actor: Actor, eventId: string): Promise<void> {
     await this.lifecycle.advance(eventId);
 
@@ -253,9 +237,8 @@ export class RegistrationsService {
         after: { status: 'CANCELLED' },
       });
 
-      // Only a confirmed seat frees a seat. Cancelling from the waitlist
-      // frees nothing, and promoting on it would push the event over
-      // capacity.
+      // Only a confirmed seat frees a seat. Cancelling from the waitlist frees
+      // nothing, and promoting on it would push the event over capacity.
       if (existing.status === 'CONFIRMED') {
         await this.host.tx.event.update({
           where: { id: eventId },
@@ -270,7 +253,6 @@ export class RegistrationsService {
     });
   }
 
-  /** GET /events/:eventId/registrations. Attendee personal data, behind `registration:read`. */
   async roster(eventId: string, query: RegistrationListQuery): Promise<RegistrationPage> {
     const rows = await this.host.tx.eventRegistration.findMany({
       where: { eventId, ...(query.status ? { status: query.status } : {}) },
@@ -286,11 +268,8 @@ export class RegistrationsService {
     };
   }
 
-  /**
-   * GET /me/registrations. Self-scoped by `userId: actor.id`; no
-   * @RequirePermission, and cancelled rows are excluded so a student's list
-   * shows the places they hold, not everything they ever clicked.
-   */
+  // Self-scoped by `userId: actor.id`, which is why the route carries no
+  // @RequirePermission. Cancelled rows are excluded: this lists places held.
   async mine(actor: Actor, query: CursorPageQuery): Promise<MyRegistrationPage> {
     const rows = await this.host.tx.eventRegistration.findMany({
       where: { userId: actor.id, ...OPEN },
@@ -313,9 +292,9 @@ export class RegistrationsService {
   }
 
   /**
-   * `SELECT … FOR UPDATE` on the event row. Every registration write on an
-   * event serialises here, which is what makes the seat count, the waitlist
-   * position and the counter consistent under concurrency.
+   * `SELECT … FOR UPDATE` on the event row. Every registration write serialises
+   * here, which is what keeps the seat count, the waitlist position and the
+   * counter consistent under concurrency.
    */
   private async lockEvent(eventId: string): Promise<LockedEvent> {
     const rows = await this.host.tx.$queryRaw<LockedEvent[]>`
@@ -340,8 +319,8 @@ export class RegistrationsService {
   }
 
   private assertOpenForRegistration(event: LockedEvent): void {
-    // A draft is not visible outside the club team, so it must not be
-    // distinguishable from an event that does not exist.
+    // A draft is not visible outside the club team, so it must be
+    // indistinguishable from an event that does not exist.
     if (event.status === 'DRAFT') throw new NotFoundError('No such event.');
     if (event.status === 'CANCELLED') throw new UnprocessableError('That event was cancelled.');
     if (event.status !== 'PUBLISHED') {
@@ -357,16 +336,13 @@ export class RegistrationsService {
     }
   }
 
-  /**
-   * No `include` here: Prisma issues the relation query even when the parent
-   * query matches nothing, so an `include` would cost a second round trip on
-   * the common path (a first-time registration) to fetch nobody.
-   */
+  // No `include`: Prisma issues the relation query even when the parent matches
+  // nothing, costing a second round trip on the common path to fetch nobody.
   private async findOpen(eventId: string, userId: string): Promise<RegistrationRow | null> {
     return this.host.tx.eventRegistration.findFirst({ where: { eventId, userId, ...OPEN } });
   }
 
-  /** Assigned under the event row lock, which is what keeps the queue order stable. */
+  // Assigned under the event row lock, which is what keeps the queue order stable.
   private async nextWaitlistPosition(eventId: string): Promise<number> {
     const { _max } = await this.host.tx.eventRegistration.aggregate({
       _max: { waitlistPosition: true },

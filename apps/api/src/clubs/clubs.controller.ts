@@ -22,11 +22,6 @@ class PatchClubDto extends createZodDto(patchClubBodySchema) {}
 class PatchClubStatusDto extends createZodDto(patchClubStatusBodySchema) {}
 class ClubListQueryDto extends createZodDto(clubListQuerySchema) {}
 
-/**
- * The upload route is a static segment declared ahead of the parameterised
- * `clubs/:clubId` route, so the two can never be confused by declaration
- * order even though they sit on different HTTP methods today.
- */
 @Controller()
 export class ClubsController {
   constructor(private readonly clubs: ClubsService) {}

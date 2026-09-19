@@ -17,15 +17,14 @@ import {
 } from './notification-channel';
 import { PASSWORD_RESET_TYPE, dedupeKeyFor, type NotificationEntry } from './notification-types';
 
-/** A sweep that found more than this has a bigger problem than a slow run. */
 const DELIVERY_SWEEP_LIMIT = 500;
 
 function toNotification(row: NotificationRow): Notification {
   return {
     id: row.id,
-    // The column is a plain string; the enum is the contract's. A row
-    // written before a type was renamed would fail the response schema
-    // rather than be silently reshaped here.
+    // The column is a plain string, the enum is the contract's: a row written
+    // before a type was renamed fails the response schema rather than being
+    // silently reshaped here.
     type: row.type as Notification['type'],
     payload: (row.payload ?? {}) as Record<string, unknown>,
     readAt: row.readAt?.toISOString() ?? null,
@@ -34,16 +33,11 @@ function toNotification(row: NotificationRow): Notification {
 }
 
 /**
- * The same shape as AuditService, and for the same reason: it writes through
- * `host.tx`, so a notification row enlists in whatever transaction the
- * caller opened. Spec 7.7 requires the row to be written in the same
- * transaction as the triggering action, and this is what makes that
- * structural rather than a rule every call site has to remember.
- *
- * Nothing here sends anything. `email_status` starts PENDING and delivery is
- * a separate, post-commit sweep, because a failed email must never roll back
- * the action that caused it, and anything sent inside the transaction can
- * do exactly that.
+ * Writes through `host.tx`, so the row enlists in the caller's transaction,
+ * which is what makes spec 7.7's "same transaction as the triggering action"
+ * structural. Nothing here sends: `email_status` starts PENDING and delivery
+ * is a separate post-commit sweep, so a failed email cannot roll back the
+ * action that caused it.
  */
 @Injectable()
 export class NotificationService {
@@ -57,15 +51,10 @@ export class NotificationService {
   }
 
   /**
-   * `createMany({ skipDuplicates: true })` is `ON CONFLICT DO NOTHING` at the
-   * database, which absorbs a repeat INSIDE the transaction. A bare P2002
-   * could not be absorbed at all here: Postgres aborts the whole transaction
-   * on a constraint violation, so catching it would only reach a connection
-   * refusing every further statement. Same mechanism, and the same reason,
-   * as certificate issuance.
-   *
-   * Returns how many rows were actually inserted, which is what the dedupe
-   * tests assert on.
+   * `skipDuplicates` is `ON CONFLICT DO NOTHING`, which absorbs a repeat inside
+   * the transaction. Catching P2002 instead would not work: Postgres aborts the
+   * whole transaction on a constraint violation, leaving a connection that
+   * refuses every further statement. Returns rows actually inserted.
    */
   async recordMany(entries: NotificationEntry[]): Promise<number> {
     if (entries.length === 0) return 0;
@@ -86,14 +75,9 @@ export class NotificationService {
   }
 
   /**
-   * GET /me/notifications. Self-scoped by `userId`; there is no route that
-   * lists another user's.
-   *
-   * `auth.password_reset` is excluded because it is not inbox material, not
-   * because it is dangerous: its payload is `{ expiresInMinutes }` and the
-   * raw token never reaches any row, existing only on `forgotPassword`'s
-   * call stack. The row records that a reset was asked for, which is an
-   * email and an audit entry, not something to read and mark read.
+   * Self-scoped by `userId`; no route lists another user's. `auth.password_reset`
+   * is excluded as non-inbox material, not as a leak: its payload is only
+   * `{ expiresInMinutes }` and the raw token never reaches any row.
    */
   async list(actor: { id: string }, query: NotificationListQuery): Promise<NotificationPage> {
     const rows = await this.host.tx.notification.findMany({
@@ -109,11 +93,8 @@ export class NotificationService {
     return { items: items.map(toNotification), nextCursor };
   }
 
-  /**
-   * POST /me/notifications/:id/read. Idempotent, and scoped to the actor, so
-   * somebody else's notification is not found rather than forbidden, because the id
-   * is a uuid the caller was never shown, and a 403 would confirm it exists.
-   */
+  // Scoped to the actor, and somebody else's notification is not found rather
+  // than forbidden: a 403 would confirm an id the caller was never shown exists.
   async markRead(actor: { id: string }, id: string): Promise<Notification> {
     const row = await this.host.tx.notification.findFirst({
       where: { id, userId: actor.id, type: { not: PASSWORD_RESET_TYPE } },
@@ -129,18 +110,11 @@ export class NotificationService {
   }
 
   /**
-   * POST /internal/notification-sweep. Delivery is a sweep rather than a
-   * fire-and-forget after each commit: the same three lines would otherwise
-   * be scattered across ten call sites, and every notification whose process
-   * died between commit and send would be lost. This is the pattern the
-   * event lifecycle and certificate issuance already use, and it is
-   * recoverable by construction. The cost is latency, accepted.
-   *
-   * PENDING is the only state picked up, so a FAILED row is attempted once
-   * and never retried forever. No transaction wraps the batch: a send cannot
-   * be rolled back, so holding one open across an HTTP call to Resend would
-   * pin a pooled connection for the length of the whole batch and buy
-   * nothing.
+   * A sweep rather than fire-and-forget after each commit, so a notification
+   * whose process died between commit and send is not lost. PENDING only, so a
+   * FAILED row is attempted once and not retried forever. No transaction wraps
+   * the batch: a send cannot be rolled back, and one held open across the HTTP
+   * call to Resend would pin a pooled connection for the whole batch.
    */
   async deliverPending(limit = DELIVERY_SWEEP_LIMIT): Promise<NotificationSweepResult> {
     const rows = await this.host.tx.notification.findMany({
@@ -176,31 +150,23 @@ export class NotificationService {
   }
 
   /**
-   * Delivers one notification immediately, from a payload the caller holds
-   * rather than one any row holds, and persists nothing.
-   *
-   * The only caller is the password reset. Its link is a live credential, so
-   * it cannot sit in a JSONB column waiting for the next sweep: the whole
-   * point of storing only the token's sha256 is that reading the database
-   * yields nothing usable, and a URL in `notification.payload` would hand
-   * that straight back, for every pending request at once and for longer
-   * than the token's own expiry.
+   * Delivers from a payload the caller holds and persists nothing. The only
+   * caller is the password reset: its link is a live credential, and a URL
+   * sitting in `notification.payload` would undo the point of storing only the
+   * token's sha256.
    */
   async deliverNow(notification: DeliverableNotification): Promise<DeliveryOutcome> {
     return this.attempt(notification);
   }
 
-  /**
-   * One delivery attempt, which never throws. A refused address, a rate
-   * limit and an outage are ordinary outcomes of sending mail, and one of
-   * them must not stop the rest of the batch.
-   */
+  // Never throws: a refused address or an outage is an ordinary outcome of
+  // sending mail and must not stop the rest of the batch.
   private async attempt(notification: DeliverableNotification): Promise<DeliveryOutcome> {
     try {
       return await this.channel.deliver(notification);
     } catch (e) {
-      // The message only. An Error's stack can carry a request object, and
-      // this string is stored on the row and shown to an Admin.
+      // The message only: a stack can carry a request object, and this string
+      // is stored on the row and shown to an Admin.
       return { status: 'FAILED', error: e instanceof Error ? e.message : String(e) };
     }
   }

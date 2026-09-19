@@ -9,11 +9,8 @@ import { ReportingService } from './reporting.service';
 export class ReportingController {
   constructor(private readonly reporting: ReportingService) {}
 
-  /**
-   * Unscoped, so only the platform half of `report:read` can satisfy it: a
-   * club Lead holds the permission over their own club and has no scope to
-   * present here.
-   */
+  // Unscoped, so only the platform half of `report:read` satisfies it: a club
+  // Lead holds the permission over their own club and has no scope to present.
   @Get('reports/overview')
   @RequirePermission('report:read')
   overview(): Promise<OverviewReport> {

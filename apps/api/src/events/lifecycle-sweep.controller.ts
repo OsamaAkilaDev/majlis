@@ -14,10 +14,8 @@ import { EventLifecycleService } from './event-lifecycle.service';
 export { SWEEP_SECRET_HEADER } from '../config/sweep-header';
 
 /**
- * Compares digests rather than the secrets themselves, so the comparison is
- * both constant-time and constant-LENGTH: timingSafeEqual throws on unequal
- * lengths, and a length pre-check is itself a side channel that leaks how
- * long the real secret is.
+ * Compares digests, not the secrets: timingSafeEqual throws on unequal lengths,
+ * and a length pre-check is itself a side channel leaking the secret's length.
  */
 export function assertSweepSecret(presented: string | undefined, expected: string): void {
   const digest = (v: string) => createHash('sha256').update(v).digest();
@@ -26,11 +24,8 @@ export function assertSweepSecret(presented: string | undefined, expected: strin
   }
 }
 
-/**
- * The scheduled backstop of spec 7.3's lazy lifecycle. Authenticated by a
- * shared secret rather than a session, because the caller is an external
- * scheduler with no user behind it.
- */
+// The scheduled backstop of spec 7.3's lazy lifecycle. A shared secret rather
+// than a session, because the caller is a scheduler with no user behind it.
 @Controller('internal')
 export class LifecycleSweepController {
   constructor(
@@ -46,10 +41,8 @@ export class LifecycleSweepController {
   async sweep(@Headers(SWEEP_SECRET_HEADER) presented: string | undefined): Promise<SweepResult> {
     assertSweepSecret(presented, this.config.get('LIFECYCLE_SWEEP_SECRET', { infer: true }));
     const swept = await this.lifecycle.sweep();
-    // After the advances, not before. An event that reached COMPLETED on
-    // this very call has its 48-hour correction window still ahead of it and
-    // issues nothing today; one that completed two days ago is due now, and
-    // this is the only path that will ever notice.
+    // After the advances, not before: an event that completed two days ago is
+    // due for issuance now, and this is the only path that will notice.
     return { ...swept, certificatesIssued: await this.certificates.issueDue() };
   }
 }

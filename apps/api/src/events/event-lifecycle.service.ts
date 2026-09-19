@@ -5,12 +5,8 @@ import { NotFoundError } from '../common/problem/domain-error';
 import { TransactionHost } from '../prisma/transaction.host';
 import { CHAIN, assertTransition, dueStatus, type DueStatusInput } from './event-status';
 
-/**
- * Everything `dueStatus` reads, plus the id to write back to, plus the three
- * columns `advanceAndRead`'s caller would otherwise read again a moment
- * later. All four extras are scalars on the same row, so they cost nothing
- * beyond the bytes: a relation here would be a second statement.
- */
+// Everything `dueStatus` reads, plus the columns `advanceAndRead`'s caller would
+// otherwise read again. Scalars only: a relation here would be a second statement.
 const LIFECYCLE_SELECT = {
   id: true,
   clubId: true,
@@ -34,11 +30,9 @@ function chainIndex(status: EventStatus): number {
   return (CHAIN as readonly EventStatus[]).indexOf(status);
 }
 
-/**
- * The lazy lifecycle of spec 7.3. Only publication and cancellation are
- * operator-driven; every other transition is a function of the clock, and
- * this is the only thing that performs one.
- */
+// The lazy lifecycle of spec 7.3. Only publication and cancellation are
+// operator-driven; every other transition is a function of the clock, and this
+// is the only thing that performs one.
 @Injectable()
 export class EventLifecycleService {
   constructor(
@@ -47,28 +41,19 @@ export class EventLifecycleService {
   ) {}
 
   /**
-   * Drives one event to its due status, one chain step at a time, writing an
-   * audit row per hop. Idempotent: an event already at its due status does no
-   * work and writes nothing.
-   *
-   * Callers that may go on to REFUSE the action they were asked for (a
-   * registration outside its window, say) must call this BEFORE opening their
-   * own transaction. Inside one, host.run joins the caller's transaction and
-   * the refusal would roll the advance back along with itself.
+   * Drives one event to its due status, one chain step at a time, an audit row
+   * per hop. Idempotent. Callers that may go on to REFUSE the action they were
+   * asked for must call this BEFORE opening their own transaction: inside one,
+   * host.run joins it and the refusal rolls the advance back with itself.
    */
   async advance(eventId: string): Promise<EventStatus> {
     return (await this.advanceAndRead(eventId)).status;
   }
 
   /**
-   * `advance()`, and the row it had to read to decide, with `status` already
-   * set to the one the walk left behind. Every caller of `advance()` reads
-   * the same event again straight afterwards; the scan path (spec 7.5) is
-   * the one where that second read costs something worth removing, because
-   * its round trips are what the operator waits on.
-   *
-   * The same warning applies as to `advance()`: call this BEFORE opening
-   * your own transaction, never inside one.
+   * `advance()`, plus the row it read to decide, saving the caller a second read
+   * (the scan path, spec 7.5, is where that matters). Same warning as
+   * `advance()`: call this BEFORE opening your own transaction, never inside one.
    */
   async advanceAndRead(eventId: string): Promise<LifecycleRow> {
     const now = new Date();
@@ -78,16 +63,14 @@ export class EventLifecycleService {
     });
     if (!event) throw new NotFoundError('No such event.');
 
-    // Every read of an event calls this and almost none of them have a hop
-    // due, so the check happens before the transaction opens rather than
-    // inside it: a BEGIN and a COMMIT per event read bought nothing.
+    // Checked before the transaction opens: every event read calls this and
+    // almost none have a hop due, so a BEGIN and COMMIT each time bought nothing.
     if (dueStatus(event, now) === event.status) return event;
 
     return this.host.run(async () => {
-      // Re-read inside the transaction, which skips the walk entirely when a
-      // concurrent advance COMMITTED between the check above and this BEGIN.
-      // One that is still open is invisible here under READ COMMITTED; each
-      // hop's conditional update is what catches that case.
+      // Re-read inside the transaction, skipping the walk when a concurrent
+      // advance committed between the check above and this BEGIN. One still open
+      // is invisible under READ COMMITTED; each hop's conditional update catches it.
       const fresh = await this.host.tx.event.findUnique({
         where: { id: eventId },
         select: LIFECYCLE_SELECT,
@@ -101,35 +84,25 @@ export class EventLifecycleService {
     const due = dueStatus(event, now);
     let current = event.status;
 
-    // Walks forward only. An event whose check-in window was moved back into
-    // the future must not be dragged back out of COMPLETED: attendance has
-    // already been taken against it.
+    // Forward only. An event whose check-in window moved into the future must
+    // not be dragged back out of COMPLETED: attendance was taken against it.
     while (chainIndex(due) > chainIndex(current)) {
       const next = CHAIN[chainIndex(current) + 1]!;
       assertTransition(current, next);
 
       // Conditional on the status this walk believes the row is in. A plain
-      // update would let a transaction holding a stale read replay the whole
-      // walk after a concurrent advance committed, writing the status
-      // backwards and then forwards and an audit row per replayed hop.
+      // update lets a stale reader replay the whole walk after a concurrent
+      // advance committed: the status goes backwards, with an audit row per hop.
       const { count } = await this.host.tx.event.updateMany({
         where: { id: event.id, status: current },
         data: { status: next },
       });
       if (count === 0) break;
 
-      // Nobody who still held a place when the check-in window shut turned
-      // up. Writing that down in the same transaction as the hop is what
-      // makes the roster truthful after an event, and it is what gives "a
-      // NO_SHOW never receives a certificate" (spec 7.6) something to
-      // assert against rather than the mere absence of an attendance row.
-      //
-      // CONFIRMED only. CHECKED_IN and ATTENDED are untouched; so is
-      // CANCELLED, which records someone who withdrew rather than someone
-      // who failed to come. WAITLISTED stays WAITLISTED: that student never
-      // held a seat, so they were never expected in the room, and turning
-      // them into a NO_SHOW would inflate the roster's `expected`
-      // denominator the moment the event completed.
+      // Same transaction as the hop, so spec 7.6's "a NO_SHOW never receives a
+      // certificate" has a status to assert against. CONFIRMED only: CANCELLED
+      // withdrew, and WAITLISTED never held a seat, so marking them NO_SHOW
+      // would inflate the roster's `expected` denominator.
       const noShow =
         next === 'COMPLETED'
           ? (
@@ -155,20 +128,17 @@ export class EventLifecycleService {
   }
 
   /**
-   * POST /internal/lifecycle-sweep. The backstop, not the mechanism: every
-   * read and action advances the event it touches, so this only catches
-   * events nobody looked at.
-   *
-   * Each event advances in its own transaction rather than one transaction
-   * for the whole sweep, so one unexpected row cannot roll back the rest.
+   * The backstop, not the mechanism: every read and action advances the event it
+   * touches, so this only catches events nobody looked at. Each advances in its
+   * own transaction, so one bad row cannot roll back the rest.
    */
   async sweep(now = new Date()): Promise<Omit<SweepResult, 'certificatesIssued'>> {
     const rows = await this.host.tx.event.findMany({
       where: {
         status: { in: ['PUBLISHED', 'REGISTRATION_CLOSED', 'ONGOING'] },
-        // Any boundary already passed makes the row a candidate. The check-in
-        // window may open before registration closes, so this cannot be
-        // narrowed to the registration boundary alone.
+        // Any boundary already passed makes the row a candidate: the check-in
+        // window may open before registration closes, so the registration
+        // boundary alone is not enough.
         OR: [
           { registrationClosesAt: { lte: now } },
           { checkInOpensAt: { lte: now } },
@@ -181,13 +151,11 @@ export class EventLifecycleService {
 
     let advanced = 0;
     for (const row of rows) {
-      // A row whose due status is BEHIND its current one (a boundary moved
-      // into the future) is not a candidate at all: advanceRow walks forward
-      // only, so calling it opens a transaction that does nothing, forever.
+      // A row whose due status is behind its current one (a boundary moved into
+      // the future) is no candidate: advanceRow walks forward only, so calling
+      // it opens a transaction that does nothing, every sweep.
       if (chainIndex(dueStatus(row, now)) <= chainIndex(row.status)) continue;
-      // Count what actually moved. Reporting the call rather than its result
-      // makes the sweep's own number useless as a signal that anything
-      // happened.
+      // Count what actually moved, not what was called.
       if ((await this.advance(row.id)) !== row.status) advanced += 1;
     }
 

@@ -28,12 +28,8 @@ function club(input: TemplateInput): string {
   return str(input.payload.clubName, 'a club');
 }
 
-/**
- * One template per notification type. They are deliberately separate rather
- * than one component switching on `type`: the subject line and the body of
- * each of these is product copy somebody will want to edit alone, and a
- * single parameterised template makes every edit a change to all eleven.
- */
+// One template per type on purpose, not one component switching on `type`:
+// each subject and body is product copy somebody will want to edit alone.
 export const TEMPLATES: Record<NotificationType, Template> = {
   'team.invited': {
     subject: (i) => `You have been invited to the ${club(i)} team`,
@@ -221,7 +217,6 @@ export const TEMPLATES: Record<NotificationType, Template> = {
   },
 };
 
-/** The subject and HTML one notification is delivered as. */
 export async function renderNotificationEmail(
   type: NotificationType,
   input: TemplateInput,

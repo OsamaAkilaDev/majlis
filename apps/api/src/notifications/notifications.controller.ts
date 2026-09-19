@@ -9,11 +9,8 @@ import { NotificationService } from './notification.service';
 
 class NotificationListQueryDto extends createZodDto(notificationListQuerySchema) {}
 
-/**
- * The in-app inbox. Both routes are self-scoped by `actor.id` rather than by
- * a permission key: there is no notification anybody but its owner may read,
- * so there is nothing for the matrix to say.
- */
+// Self-scoped by `actor.id` rather than by a permission key: no notification is
+// readable by anybody but its owner, so the matrix has nothing to say.
 @Controller('me/notifications')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationService) {}

@@ -35,12 +35,8 @@ import { promoteFromWaitlist } from './waitlist';
 const WITH_CLUB = { club: { select: { name: true, logoUrl: true, status: true } } } as const;
 type EventWithClub = EventRow & { club: { name: string; logoUrl: string; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' } };
 
-/**
- * Exactly the columns `toSummary` reads. A list page is the hottest read in
- * the product and the full row carries `description` (the longest column on
- * the table) plus the certificate and check-in fields, none of which a
- * summary renders.
- */
+// Exactly the columns `toSummary` reads. A list page is the hottest read here
+// and the full row carries `description`, the longest column on the table.
 const SUMMARY_SELECT = {
   id: true,
   clubId: true,
@@ -69,36 +65,23 @@ const SUMMARY_SELECT = {
 
 type EventSummaryRow = Prisma.EventGetPayload<{ select: typeof SUMMARY_SELECT }>;
 
-/** Only what a service reads off the signed-in user. */
 interface Actor {
   id: string;
   platformRole: PlatformRole;
 }
 
-/**
- * The body keys a patch may write, derived from EVENT_FIELDS rather than
- * listed again: the two must describe the same set, and a second hand-kept
- * list would drift into a field that passes the permission gate and then
- * silently writes nothing.
- *
- * `posterUploaded` is excluded because it is not a column: it means "go
- * verify the object I uploaded", and the URL it produces is derived
- * server-side.
- */
+// Derived from EVENT_FIELDS, not listed again: a second hand-kept list drifts
+// into a field that passes the permission gate and then writes nothing.
+// `posterUploaded` is excluded because it is not a column.
 const PATCHABLE = Object.keys(EVENT_FIELDS).filter((k) => k !== 'posterUploaded');
 
-/**
- * Spec 7.7 names "material event change" without defining it. These five are
- * the fields that change whether or where a registered student can
- * physically turn up. A retitled or re-summarised event notifies nobody.
- */
+// Spec 7.7 names "material event change" without defining it: these are the
+// fields deciding whether or where a student can turn up. A retitle notifies
+// nobody.
 const MATERIAL_FIELDS = ['startsAt', 'endsAt', 'venue', 'onlineUrl', 'timezone'] as const;
 
-/**
- * Which of MATERIAL_FIELDS this patch actually changes. A key present in the
- * body but equal to what is already stored is not a change: re-saving a form
- * without touching the date must not tell every attendee the event moved.
- */
+// A key present in the body but equal to what is stored is not a change:
+// re-saving a form must not tell every attendee the event moved.
 function materialChanges(before: EventRow, data: Record<string, unknown>): string[] {
   return MATERIAL_FIELDS.filter((key) => {
     const next = data[key];
@@ -122,10 +105,10 @@ interface Windows {
 }
 
 /**
- * The same four rules as the CHECK constraints in the events migration,
- * applied to the MERGED row so a patch carrying one half of a pair is checked
- * against the stored other half. The database stays the guarantee; this is
- * what turns a constraint violation into a message naming what was wrong.
+ * The same four rules as the CHECK constraints in the events migration, applied
+ * to the merged row so a patch carrying one half of a pair is checked against
+ * the stored other half. The database stays the guarantee; this only turns a
+ * violation into a message naming what was wrong.
  */
 function assertWindows(w: Windows): void {
   if (w.startsAt >= w.endsAt) throw new UnprocessableError('An event must end after it starts.');
@@ -140,12 +123,9 @@ function assertWindows(w: Windows): void {
   }
 }
 
-/**
- * `status` is rendered as `dueStatus`, not as stored: a list read must not
- * write, and a row nobody has opened since its registration window closed is
- * still stored PUBLISHED. Without this the badge and the register button on a
- * list disagree with the detail page and with what the API will accept.
- */
+// `status` is rendered as `dueStatus`, not as stored: a list read must not
+// write, and a row nobody has opened since its window closed is still stored
+// PUBLISHED, so the badge would disagree with what the API accepts.
 function toSummary(row: EventSummaryRow, now = new Date()): EventSummary {
   return {
     id: row.id,
@@ -180,12 +160,8 @@ export {
   type EventWithClub,
 };
 
-/**
- * `event_club_id_slug_key` is the only unique index on `event`, and the slug
- * reaching it is either derived from the title on create or supplied by a
- * Lead on patch. Either way the caller needs to be told which it was, not the
- * filter's generic conflict text.
- */
+// `event_club_id_slug_key` is the only unique index on `event`, so the generic
+// conflict text would never name what collided.
 const mapWriteError = conflictOn({ slug: 'That club already has an event with that slug.' });
 
 @Injectable()
@@ -199,34 +175,20 @@ export class EventsService {
     private readonly notifications: NotificationService,
   ) {}
 
-  /**
-   * POST /clubs/:clubId/uploads/event-poster. Mints the id the event will be
-   * created with, so the poster's object path exists before the event does.
-   *
-   * Club-scoped, unlike the club-logo equivalent, because `event:create` is
-   * held by club Leads as well as Admin and PermissionsGuard can only resolve
-   * a club role from a club id on the path.
-   */
+  // Mints the id the event will be created with, so the poster's object path
+  // exists before the event does.
   async mintPosterUpload(): Promise<NewEventUpload> {
     const eventId = uuidv7();
     return { eventId, ...(await this.clubs.mintEditUpload(eventId, 'event-poster')) };
   }
 
   /**
-   * POST /events/:eventId/poster-upload-url, for replacing an existing event's
-   * poster.
-   *
-   * Gated on the same field permission as `posterUploaded`, not on the route's
-   * `event:edit` alone. `event:edit` admits all five club roles, so without
-   * this a CTO or Operations officer could mint a signed URL and overwrite the
-   * live poster object they are not allowed to set.
-   *
-   * It takes `update`'s status gate too: the URL overwrites the live public
-   * object, so it is an edit, and without the gate it was the one edit path a
-   * cancelled or completed event accepted. The audit row is the only record
-   * the object was replaced at all, since the bytes never pass through the
-   * API, and is written in the same transaction so a failed mint leaves no
-   * trace of a URL nobody received.
+   * Gated on the same field permission as `posterUploaded`, not the route's
+   * `event:edit` alone, which admits all five club roles: otherwise an officer
+   * who may not set the poster could mint a URL and overwrite it. It takes
+   * `update`'s status gate too, since overwriting the live object is an edit.
+   * The audit row is the only record of the replacement, the bytes never passing
+   * through the API, and is written in the same transaction.
    */
   async mintEditUpload(actor: Actor, eventId: string): Promise<SignedUpload> {
     return this.host.run(async () => {
@@ -267,9 +229,8 @@ export class EventsService {
         endsAt,
         registrationOpensAt: new Date(body.registrationOpensAt),
         registrationClosesAt: new Date(body.registrationClosesAt),
-        // Spec 5.1: the check-in window is explicit rather than magic, but it
-        // has a default, which is what makes ONGOING a pure function of the
-        // timestamps for an event nobody configured it on.
+        // Spec 5.1: the check-in window is explicit but defaulted, which is what
+        // makes ONGOING a pure function of the timestamps on every event.
         checkInOpensAt: body.checkInOpensAt
           ? new Date(body.checkInOpensAt)
           : new Date(startsAt.getTime() - DEFAULT_CHECK_IN_OPENS_BEFORE_MS),
@@ -283,8 +244,8 @@ export class EventsService {
         ? await this.clubs.verifyUpload('event-poster', body.eventId)
         : null;
 
-      // Unique per club, not globally (spec 5.1), so the count is scoped to
-      // this club or two clubs could never both run an "Orientation".
+      // Unique per club, not globally (spec 5.1): the count must be scoped, or
+      // two clubs could never both run an "Orientation".
       const slug = await uniqueSlug(deriveSlug(body.title), (s) =>
         this.host.tx.event.count({ where: { clubId, slug: s } }).then((n) => n > 0),
       );
@@ -333,13 +294,9 @@ export class EventsService {
   }
 
   /**
-   * GET /events. Renders each row's DUE status as a pure function rather than
-   * advancing it: advancing a whole page would be one transaction per row on a
-   * read. The sweep and every single-event read persist it.
-   *
-   * `?status=` still filters on the stored value, so a row whose due status has
-   * moved on but which nobody has read is matched by its old status. Recorded
-   * as a deviation in spec 13.
+   * Renders each row's due status rather than advancing it: a page would cost
+   * one transaction per row on a read. `?status=` therefore filters on the
+   * stored value, so an unread row matches its old status (deviation, spec 13).
    */
   async list(actor: Actor, query: EventListQuery): Promise<EventPage> {
     const filters: Prisma.EventWhereInput = {
@@ -381,13 +338,11 @@ export class EventsService {
     };
   }
 
-  /** GET /events/:eventId. Advances first, so nobody reads a stale status. */
+  // Advances first, so nobody reads a stale status.
   async detail(actor: Actor, eventId: string): Promise<EventDetail> {
     const status = await this.lifecycle.advance(eventId);
-    // Spec 7.6's opportunistic issuance, gated on the status the advance
-    // actually left behind so an ordinary read costs nothing extra. It
-    // rarely fires: an event completes 48 hours before its certificates are
-    // due, so the sweep is what usually issues them.
+    // Spec 7.6's opportunistic issuance, gated on the status the advance left
+    // behind so an ordinary read costs nothing extra.
     if (status === 'COMPLETED') await this.certificates.issueForEvent(eventId);
     return this.readDetail(actor, eventId);
   }
@@ -395,14 +350,12 @@ export class EventsService {
   private async readDetail(actor: Actor, eventId: string): Promise<EventDetail> {
     const row = await this.loadEvent(eventId);
 
-    // toDetail resolves the viewer's roles in this club and assignments on
-    // this event anyway, and those are exactly what visibilityFilter asks
-    // the database for a second time, so the draft gate reads them off the
-    // built detail instead of issuing its own two queries.
+    // toDetail already resolves the roles and assignments visibilityFilter would
+    // query again, so the draft gate below reads them off the built detail.
     const detail = await this.toDetail(actor, row);
 
-    // A draft the viewer is not on the team of is a 404, not a 403: telling
-    // them it exists is itself the leak.
+    // A draft the viewer is not on the team of is a 404, not a 403: telling them
+    // it exists is itself the leak.
     if (
       row.status === 'DRAFT' &&
       actor.platformRole !== 'ADMIN' &&
@@ -414,18 +367,14 @@ export class EventsService {
     return detail;
   }
 
-  /** The event with the club fields every read and gate needs, or a 404. */
   private async loadEvent(eventId: string): Promise<EventWithClub> {
     const row = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
     if (!row) throw new NotFoundError('No such event.');
     return row;
   }
 
-  /**
-   * Restricts a read to what `actor` may see, or null for no restriction at
-   * all (Admin). DRAFT events are visible to their club's standing officers
-   * and to anyone assigned to that specific event, and to nobody else.
-   */
+  // Restricts a read to what `actor` may see, or null for Admin. A DRAFT is
+  // visible to the club's standing officers and this event's assignees only.
   private async visibilityFilter(actor: Actor): Promise<Prisma.EventWhereInput | null> {
     if (actor.platformRole === 'ADMIN') return null;
 
@@ -462,33 +411,27 @@ export class EventsService {
     };
   }
 
-  /**
-   * PATCH /events/:eventId. Two gates: `event:edit` decided whether the actor
-   * may touch this event at all, and EVENT_FIELDS decides which keys of the
-   * body they may set.
-   */
+  // Two gates: `event:edit` decided whether the actor may touch this event at
+  // all, EVENT_FIELDS decides which keys of the body they may set.
   async update(actor: Actor, eventId: string, body: PatchEventBody): Promise<EventDetail> {
     await this.lifecycle.advance(eventId);
 
     return this.host.run(async () => {
-      // The same row lock RegistrationsService.lockEvent takes, and taken
-      // FIRST: capacity and confirmedCount are read below and both the
-      // reduction guard and the waitlist headroom decide on them, so a read
-      // outside the lock decides on a count a concurrent registration is
-      // about to change.
+      // The same row lock RegistrationsService.lockEvent takes, and taken first:
+      // the reduction guard and the waitlist headroom both decide on
+      // confirmedCount, which a concurrent registration is about to change.
       await this.host.tx.$queryRaw`SELECT 1 FROM "event" WHERE "id" = ${eventId}::uuid FOR UPDATE`;
 
       const event = await this.loadEvent(eventId);
       assertEventAcceptsEdits(event);
 
-      // Re-derived here rather than carried over from the guard: the field
-      // gate is a second authorization decision and trusts nothing the first
-      // one left on the request.
+      // Re-derived from the database, not carried over from the guard: the field
+      // gate is a second authorization decision.
       const { clubRoles } = await resolveClubFacts(this.host, actor.id, event.clubId);
       const facts = { platformRole: actor.platformRole, clubRoles };
 
       // overrideReason is a meta field, not a column, so it is held out of the
-      // field gate (EVENT_FIELDS has no entry for it, which fails closed).
+      // field gate: EVENT_FIELDS has no entry for it and would fail closed.
       const { overrideReason, ...fields } = body;
       assertFieldsAllowed(fields, EVENT_FIELDS, facts);
       const reason = overrideReasonFor(facts, overrideReason);
@@ -511,9 +454,9 @@ export class EventsService {
         checkInClosesAt: at('checkInClosesAt'),
       });
 
-      // The lifecycle walks forward only, so a close time moved back into the
-      // future never returns the event to PUBLISHED. Accepting it silently
-      // showed the officer a saved date and a shut door.
+      // The lifecycle walks forward only, so a close time moved into the future
+      // never returns the event to PUBLISHED. Accepting it silently would show
+      // the officer a saved date and a shut door.
       if (
         body.registrationClosesAt !== undefined &&
         new Date(body.registrationClosesAt) > new Date() &&
@@ -522,9 +465,8 @@ export class EventsService {
         throw new UnprocessableError('Registration cannot be reopened once it has closed.');
       }
 
-      // Spec 7.4: capacity may not be reduced below the confirmed count.
-      // Refused here with its own message rather than left to the
-      // event_capacity_bounds CHECK, which would surface as a bare 409.
+      // Spec 7.4: capacity may not be reduced below the confirmed count. Refused
+      // here for the message; event_capacity_bounds is still the guarantee.
       if (body.capacity !== undefined && body.capacity < event.confirmedCount) {
         throw new UnprocessableError(
           `Capacity cannot be lower than the ${event.confirmedCount} students already confirmed.`,
@@ -535,10 +477,9 @@ export class EventsService {
         .update({ where: { id: eventId }, data })
         .catch(mapWriteError);
 
-      // Raising capacity frees seats, which is the same event as a
-      // cancellation freeing one, and takes the same path. The headroom is
-      // the NEW capacity minus what is already confirmed, read under the lock
-      // taken at the top of this transaction.
+      // Raising capacity frees seats, the same as a cancellation freeing one.
+      // Headroom is the new capacity minus the confirmed count, read under the
+      // lock taken at the top of this transaction.
       if (body.capacity !== undefined && body.capacity > event.capacity) {
         await promoteFromWaitlist(
           this.host,
@@ -559,9 +500,8 @@ export class EventsService {
         after: data,
       });
 
-      // Spec 7.7, material event change. The dedupe subject carries the
-      // change's own timestamp, so a second, different move of the date
-      // notifies again rather than being absorbed as a repeat of the first.
+      // Spec 7.7. The dedupe subject carries the change's own timestamp, so a
+      // second move of the date notifies again rather than being absorbed.
       const changed = materialChanges(event, data);
       if (changed.length > 0) {
         await this.notifyRegistered(eventId, 'event.changed', `${eventId}:${updated.updatedAt.toISOString()}`, {
@@ -581,7 +521,6 @@ export class EventsService {
     });
   }
 
-  /** POST /events/:eventId/publish. One of the two operator-driven transitions. */
   async publish(actor: Actor, eventId: string, body: PublishEventBody): Promise<EventDetail> {
     await this.host.run(async () => {
       const event = await this.loadEvent(eventId);
@@ -603,10 +542,9 @@ export class EventsService {
         after: { status: 'PUBLISHED' },
       });
 
-      // Spec 7.7, event published: the club's active members. Not every
-      // student in the university, and not the club's officers by virtue of
-      // their appointment: acceptance grants membership too (spec 7.2), so
-      // an officer is already in this set.
+      // Spec 7.7: the club's active members, not every student. Officers are
+      // already in this set, since accepting an appointment grants membership
+      // too (spec 7.2).
       const members = await this.host.tx.clubMembership.findMany({
         where: { clubId: event.clubId, status: 'ACTIVE' },
         select: { userId: true },
@@ -632,12 +570,8 @@ export class EventsService {
     return this.detail(actor, eventId);
   }
 
-  /**
-   * POST /events/:eventId/cancel. Registration rows are left untouched: the
-   * event's status is the source of truth and every gate reads it, so
-   * rewriting thousands of registration rows would buy nothing and lose the
-   * record of who had been coming.
-   */
+  // Registration rows are left untouched: the event's status is what every gate
+  // reads, and rewriting them would lose the record of who had been coming.
   async cancel(actor: Actor, eventId: string, body: CancelEventBody): Promise<EventDetail> {
     await this.host.run(async () => {
       const event = await this.host.tx.event.findUnique({ where: { id: eventId } });
@@ -673,11 +607,9 @@ export class EventsService {
   }
 
   /**
-   * Everyone still holding a place on the event, notified inside the
-   * caller's transaction. CANCELLED registrations are excluded: somebody who
-   * withdrew is not owed news about a venue change. REMOVED rows are kept:
-   * the person was told they are coming and then taken off by an officer,
-   * and a cancellation still concerns them.
+   * Everyone still holding a place, notified inside the caller's transaction.
+   * CANCELLED rows are excluded, having withdrawn; REMOVED rows are kept, since
+   * an officer took that place away and a cancellation still concerns them.
    */
   private async notifyRegistered(
     eventId: string,

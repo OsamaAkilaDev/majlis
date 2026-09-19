@@ -6,17 +6,12 @@ import { ConflictError, NotFoundError } from '../common/problem/domain-error';
 import { Prisma, type Department as DepartmentRow } from '../generated/prisma/client';
 import { TransactionHost } from '../prisma/transaction.host';
 
-/** Maps a row plus its club count onto the wire shape. */
 function toDepartment(row: DepartmentRow, clubCount: number): Department {
   return { id: row.id, name: row.name, code: row.code, description: row.description, clubCount };
 }
 
-/**
- * Turns a raw Prisma write error into the DomainError it means, rather than
- * letting it escape as a 500. P2002 is the unique violation on name or code;
- * P2003 is the foreign key violation `onDelete: Restrict` raises when a club
- * still points at this department.
- */
+// P2002 is the unique violation on name or code; P2003 is the foreign key
+// violation `onDelete: Restrict` raises while a club still points here.
 function mapWriteError(e: unknown): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
     if (e.code === 'P2002') throw new ConflictError('A department with that name or code already exists.');
@@ -33,7 +28,6 @@ export class DepartmentsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** GET /departments. Same cursor pattern as UsersService.list. */
   async list(query: CursorPageQuery): Promise<DepartmentPage> {
     const rows = await this.host.tx.department.findMany({
       ...cursorArgs(query),

@@ -18,7 +18,6 @@ import { TransactionHost } from '../prisma/transaction.host';
 
 const WITH_USER = { user: { select: { fullName: true, email: true } } } as const;
 
-/** Only what this service reads off the signed-in user. */
 interface Actor {
   id: string;
   platformRole: PlatformRole;
@@ -37,10 +36,8 @@ function toAssignment(row: AssignmentWithUser): Assignment {
   };
 }
 
-/**
- * Per-event responsibilities: how a Lead grants scan rights for one event
- * without making someone a standing officer (spec 5.1).
- */
+// Per-event responsibilities: how a Lead grants scan rights for one event
+// without making someone a standing officer (spec 5.1).
 @Injectable()
 export class AssignmentsService {
   constructor(
@@ -48,7 +45,6 @@ export class AssignmentsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Cursor-paginated like every other list: spec 8, "no unbounded list, anywhere". */
   async list(eventId: string, query: CursorPageQuery): Promise<AssignmentList> {
     await this.loadEvent(eventId);
     const rows = await this.host.tx.eventAssignment.findMany({
@@ -105,12 +101,8 @@ export class AssignmentsService {
     });
   }
 
-  /**
-   * DELETE /events/:eventId/assignments/:assignmentId. The row is loaded by
-   * `{ id, eventId }`, not by id alone: the permission was granted over the
-   * event on the path, so an id from another event must be a 404 rather than
-   * a deletion the guard never authorised.
-   */
+  // Loaded by `{ id, eventId }`, not by id alone: the permission was granted
+  // over the event on the path, so an id from another event must be a 404.
   async remove(
     actor: Actor,
     eventId: string,

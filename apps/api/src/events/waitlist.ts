@@ -3,21 +3,10 @@ import type { NotificationService } from '../notifications/notification.service'
 import type { TransactionHost } from '../prisma/transaction.host';
 
 /**
- * Promotes up to `seats` students off the head of an event's waitlist,
- * inside the caller's transaction.
- *
- * A free function rather than a service so both callers (a cancellation
- * freeing a seat, and a capacity rise creating several) reach the same code
- * without one service having to inject the other.
- *
- * `FOR UPDATE SKIP LOCKED` over `ORDER BY waitlist_position` is spec 5.2's
- * mechanism: the lock makes a row this transaction picked invisible to a
- * concurrent promoter rather than making that promoter wait and then promote
- * the same student twice.
- *
- * Callers hold the event row lock, so the counter increment here cannot race
- * a registration. Returns the number actually promoted, which is what the
- * caller adds to `confirmed_count`.
+ * Promotes up to `seats` students off the head of the waitlist, in the caller's
+ * transaction. Spec 5.2: `FOR UPDATE SKIP LOCKED` hides a picked row from a
+ * concurrent promoter rather than making it wait and promote the same student
+ * twice. Callers hold the event row lock, so the increment cannot race.
  */
 export async function promoteFromWaitlist(
   host: TransactionHost,
@@ -38,9 +27,8 @@ export async function promoteFromWaitlist(
   if (queued.length === 0) return 0;
 
   const promotedAt = new Date();
-  // The position is cleared, not kept: it travels into eventDetail's
-  // viewerWaitlistPosition and the roster, where a non-null value reads as
-  // "this person is waitlisted" beside a Confirmed badge.
+  // The position must be cleared: a non-null value reads as "waitlisted" in
+  // eventDetail's viewerWaitlistPosition and on the roster.
   await host.tx.eventRegistration.updateMany({
     where: { id: { in: queued.map((r) => r.id) } },
     data: { status: 'CONFIRMED', promotedAt, waitlistPosition: null },
@@ -57,8 +45,8 @@ export async function promoteFromWaitlist(
     });
   }
 
-  // Spec 7.7, waitlist promotion. Same transaction as the promotion itself,
-  // so a rolled-back promotion cannot leave somebody told they have a seat.
+  // Spec 7.7. Same transaction as the promotion, so a rolled-back promotion
+  // cannot leave somebody told they have a seat.
   const { title } = await host.tx.event.findUniqueOrThrow({
     where: { id: eventId },
     select: { title: true },

@@ -30,13 +30,11 @@ import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
 
-/** Only what the service reads off the signed-in user. */
 interface Actor {
   id: string;
   platformRole: PlatformRole;
 }
 
-/** Maps a club row plus its computed fields onto the wire summary shape. */
 function toClubSummary(row: ClubRow, departmentName: string, memberCount: number): ClubSummary {
   return {
     id: row.id,
@@ -51,7 +49,6 @@ function toClubSummary(row: ClubRow, departmentName: string, memberCount: number
   };
 }
 
-/** Extends the summary with the fields only the detail read carries. */
 function toClubDetail(
   row: ClubRow,
   departmentName: string,
@@ -71,15 +68,10 @@ function toClubDetail(
 }
 
 /**
- * P2002 here is the unique violation on either name or slug. `uniqueSlug`'s
- * pre-check is not a guarantee under READ COMMITTED: two concurrent creates
- * with different names that derive the same base slug can both see it free,
- * so the loser must still be told which constraint actually fired rather
- * than being blamed for a name collision that never happened.
- *
- * `conflictOn` matches each branch positively, never by default. See
- * `test/clubs-create.integration.test.ts`'s name-collision test, which needs
- * that to discriminate a broken `violatedConstraintName`.
+ * `uniqueSlug`'s pre-check is not a guarantee under READ COMMITTED: two
+ * concurrent creates deriving the same base slug can both see it free, so the
+ * loser must be told which constraint fired rather than blamed for a name
+ * collision that never happened. `conflictOn` matches each branch positively.
  */
 const mapWriteError = conflictOn({
   slug: 'A club with that slug already exists.',
@@ -94,11 +86,8 @@ export class ClubsService {
     private readonly storage: StorageService,
   ) {}
 
-  /**
-   * POST /uploads/club-logo. Mints the id the club will be created with, so
-   * the object path (derived from that id) exists before the upload does,
-   * plus a one-use signed URL to upload to that path.
-   */
+  // Mints the id the club will be created with, so the object path derived from
+  // it exists before the club does.
   async mintLogoUpload(): Promise<NewClubUpload> {
     const clubId = uuidv7();
     const path = objectPath('club-logo', clubId);
@@ -107,10 +96,9 @@ export class ClubsService {
   }
 
   /**
-   * A signed URL for `resourceId`'s object path, with no gate of its own.
-   * Callers that mint against an entity which does not exist yet (a club or
-   * an event being created) use this directly; the two that mint against a
-   * live object gate it first, below and in EventsService.
+   * A signed URL for `resourceId`'s object path, with no gate of its own. Only
+   * callers minting against an entity that does not exist yet use it directly;
+   * minting against a live object is gated first, below and in EventsService.
    */
   async mintEditUpload(resourceId: string, kind: ImageKind): Promise<SignedUpload> {
     const path = objectPath(kind, resourceId);
@@ -119,16 +107,11 @@ export class ClubsService {
   }
 
   /**
-   * POST /clubs/:clubId/logo-upload-url and .../banner-upload-url. The club
-   * already exists, so the object path is derived from its real id rather
-   * than a freshly minted one, and the URL overwrites the live public object.
-   *
-   * That makes this an edit, and it takes `update`'s status gate: without it
-   * an officer of an ARCHIVED club could replace its public logo through the
-   * one path that refused nothing. The audit row is the only record the
-   * object was replaced at all, since the bytes never pass through the API,
-   * and is written in the same transaction so a failed mint leaves no trace
-   * of a URL nobody received.
+   * The URL overwrites the live public object, which makes this an edit, so it
+   * takes `update`'s status gate: otherwise an officer of an ARCHIVED club could
+   * replace its logo through the one path that refused nothing. The audit row is
+   * the only record of the replacement, the bytes never passing through the API,
+   * and is written in the same transaction.
    */
   async mintClubImageUpload(actor: { id: string }, clubId: string, kind: ImageKind): Promise<SignedUpload> {
     return this.host.run(async () => {
@@ -148,10 +131,8 @@ export class ClubsService {
     });
   }
 
-  /**
-   * The API never sees the image bytes, so no handler stores a URL it has
-   * not confirmed. Returns the versioned public URL to store.
-   */
+  // The API never sees the image bytes, so no handler stores a URL it has not
+  // confirmed. Returns the versioned public URL to store.
   async verifyUpload(kind: ImageKind, resourceId: string): Promise<string> {
     const path = objectPath(kind, resourceId);
     const stat = await this.storage.statObject(path);
@@ -201,7 +182,6 @@ export class ClubsService {
     });
   }
 
-  /** GET /clubs. Same cursor pattern as UsersService.list and DepartmentsService.list. */
   async list(query: ClubListQuery): Promise<ClubPage> {
     const where: Prisma.ClubWhereInput = {
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
@@ -226,17 +206,13 @@ export class ClubsService {
     };
   }
 
-  /**
-   * GET /clubs/:clubId. The membership and appointment reads are scoped to
-   * `actor.id`: a query missing that filter would answer with whichever row
-   * happens to come first, telling a student they belong to a club they
-   * never joined.
-   */
+  // The membership and appointment reads in detailWhere are scoped to
+  // `actor.id`: without that filter they answer with whichever row comes first,
+  // telling a student they belong to a club they never joined.
   async detail(actor: { id: string }, clubId: string): Promise<ClubDetail> {
     return this.detailWhere(actor, { id: clubId });
   }
 
-  /** GET /clubs/by-slug/:slug. The slug is the club's public identifier. */
   async detailBySlug(actor: { id: string }, slug: string): Promise<ClubDetail> {
     return this.detailWhere(actor, { slug });
   }
@@ -272,24 +248,20 @@ export class ClubsService {
     );
   }
 
-  /**
-   * PATCH /clubs/:clubId. `data` is built by picking each optional key from
-   * `body` explicitly, never spread, so a body carrying `status` or `slug`
-   * (patchClubBodySchema has no such keys, but a service must not rely on
-   * that alone) cannot smuggle either into the update.
-   */
+  // `data` is built key by key, never spread, so a body carrying `status` or
+  // `slug` cannot smuggle either into the update. The schema has no such keys,
+  // but a service must not rely on that alone.
   async update(actor: Actor, clubId: string, body: PatchClubBody): Promise<ClubDetail> {
     return this.host.run(async () => {
       await loadClub(this.host, clubId, assertAcceptsEdits);
 
-      // Re-derived from the database here rather than carried over from the
-      // guard: the field gate is a second authorization decision and must
-      // not trust anything the first one left on the request.
+      // Re-derived from the database, not carried over from the guard: the field
+      // gate is a second authorization decision.
       const { clubRoles } = await resolveClubFacts(this.host, actor.id, clubId);
       const facts = { platformRole: actor.platformRole, clubRoles };
 
       // overrideReason is a meta field, not a column, so it is held out of the
-      // field gate (CLUB_FIELDS has no entry for it, which fails closed).
+      // field gate: CLUB_FIELDS has no entry for it and would fail closed.
       const { overrideReason, ...fields } = body;
       assertFieldsAllowed(fields, CLUB_FIELDS, facts);
       const reason = overrideReasonFor(facts, overrideReason);
@@ -319,10 +291,8 @@ export class ClubsService {
     });
   }
 
-  /**
-   * PATCH /clubs/:clubId/status. `assertTransition` is the only gate on the
-   * write; nothing here assigns `status` directly outside it.
-   */
+  // `assertTransition` is the only gate on the write; nothing assigns `status`
+  // outside it.
   async updateStatus(actor: { id: string }, clubId: string, body: PatchClubStatusBody): Promise<ClubDetail> {
     return this.host.run(async () => {
       const before = await loadClub(this.host, clubId);

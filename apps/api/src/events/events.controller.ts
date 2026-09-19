@@ -35,12 +35,9 @@ class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
 
 const NO_EVENT = { status: 404, description: 'No such event.', type: ProblemDetailsDto };
 
-/**
- * Every event-scoped route names its parameter `:eventId` and every
- * club-scoped one `:clubId`, because PermissionsGuard reads the scope id from
- * the literal dotted path in the decorator: a mismatch resolves no scope and
- * denies a real Lead with no type error and no failing test.
- */
+// Event-scoped routes must name their parameter `:eventId` and club-scoped ones
+// `:clubId`: PermissionsGuard reads the scope id from the literal dotted path in
+// the decorator, so a mismatch resolves no scope and denies a real Lead silently.
 @Controller()
 export class EventsController {
   constructor(
@@ -48,11 +45,9 @@ export class EventsController {
     private readonly assignments: AssignmentsService,
   ) {}
 
-  /**
-   * Club-scoped rather than a bare `/uploads/event-poster`: `event:create` is
-   * held by club Leads, and an unscoped route resolves no club role, so a
-   * Lead would be denied their own club's poster upload.
-   */
+  // Club-scoped, not a bare `/uploads/event-poster`: `event:create` is held by
+  // club Leads, and an unscoped route resolves no club role, so a Lead would be
+  // denied their own club's poster upload.
   @Post('clubs/:clubId/uploads/event-poster')
   @RequirePermission('event:create', { scope: 'club', from: 'params.clubId' })
   mintPosterUpload(): Promise<NewEventUpload> {

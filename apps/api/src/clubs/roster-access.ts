@@ -3,20 +3,16 @@ import { resolveClubFacts } from '../auth/permissions.guard';
 import { ForbiddenError, NotFoundError } from '../common/problem/domain-error';
 import type { TransactionHost } from '../prisma/transaction.host';
 
-/** Only what the roster gates read off the signed-in user. */
 export interface RosterReader {
   id: string;
   platformRole: PlatformRole;
 }
 
 /**
- * Who may read a club's member and team lists at all. An ACTIVE club's lists
- * are open to any signed-in user, per the stage design. A SUSPENDED or
- * ARCHIVED club's are not: they stay visible to its own officers and to
- * Admin only. Without this, enumerating suspended clubs and reading their
- * rosters hands any student every member's name.
- *
- * The email addresses are a separate, narrower gate: see `canReadRosterEmail`.
+ * Who may read a club's member and team lists. An ACTIVE club's are open to any
+ * signed-in user; a SUSPENDED or ARCHIVED club's stay with its own officers and
+ * Admin, or enumerating suspended clubs hands any student every member's name.
+ * Email addresses are a separate, narrower gate: see `canReadRosterEmail`.
  */
 export async function assertCanReadRoster(
   host: TransactionHost,
@@ -36,19 +32,11 @@ export async function assertCanReadRoster(
 }
 
 /**
- * Whether this reader may see the email addresses on a club's roster.
- *
- * The lists themselves are open (above), but an address is directory data
- * that `user:search` already withholds from everyone who does not lead a
- * club. Its own rule exists because "this route returns a name and an
- * address, and only to somebody who already leads a club". A roster that
- * hands every member's address to any signed-in user makes that rule
- * decorative, so the same club-officer bar applies here: `membership:decide`
- * for the member list, `club:team-manage` for the team list. Admin clears
- * both through the platform half of each rule.
- *
- * Re-derived from the database rather than carried over from the route
- * guard, which required no permission on these two routes at all.
+ * Whether this reader may see the email addresses on a club's roster. The lists
+ * are open, but an address is directory data that `user:search` withholds from
+ * anyone who does not lead a club, so the same officer bar applies here:
+ * `membership:decide` for members, `club:team-manage` for the team. Re-derived
+ * from the database, since the route guard requires no permission on these two.
  */
 export async function canReadRosterEmail(
   host: TransactionHost,

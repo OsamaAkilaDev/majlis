@@ -4,7 +4,6 @@ import { CHAIN, assertTransition, dueStatus } from './event-status';
 
 const AT = (iso: string) => new Date(iso);
 
-/** The boundaries a lifecycle test needs, with everything else irrelevant. */
 function anEvent(status: Parameters<typeof dueStatus>[0]['status']) {
   return {
     status,
@@ -22,9 +21,8 @@ describe('assertTransition', () => {
   });
 
   it('refuses a skipped step, a step backwards, and a repeat of the current state', () => {
-    // Catches an implementation that only checks membership in the chain
-    // rather than adjacency: publishing straight to COMPLETED would then
-    // skip the whole registration window.
+    // Catches a check of chain membership rather than adjacency: publishing
+    // straight to COMPLETED would skip the whole registration window.
     expect(() => assertTransition('DRAFT', 'ONGOING')).toThrow(UnprocessableError);
     expect(() => assertTransition('ONGOING', 'PUBLISHED')).toThrow(UnprocessableError);
     expect(() => assertTransition('PUBLISHED', 'PUBLISHED')).toThrow(UnprocessableError);
@@ -49,10 +47,9 @@ describe('assertTransition', () => {
 
 describe('dueStatus', () => {
   it('reads the newest boundary that has passed, not the first one', () => {
-    // The discriminating case: at 11:30 both registrationClosesAt (10:00)
-    // and checkInOpensAt (11:00) are in the past. An implementation testing
-    // the earliest boundary first answers REGISTRATION_CLOSED and the event
-    // never opens for scanning.
+    // At 11:30 both registrationClosesAt (10:00) and checkInOpensAt (11:00) have
+    // passed. Testing the earliest boundary first answers REGISTRATION_CLOSED
+    // and the event never opens for scanning.
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T11:30:00Z'))).toBe('ONGOING');
     expect(dueStatus(anEvent('PUBLISHED'), AT('2026-10-01T16:00:00Z'))).toBe('COMPLETED');
   });
@@ -65,9 +62,8 @@ describe('dueStatus', () => {
   });
 
   it('never time-advances DRAFT, CANCELLED or CERTIFIED', () => {
-    // Without this branch the sweep would publish every draft the moment its
-    // registration window opened, and would drag a cancelled event through
-    // the chain behind the organiser's back.
+    // Without this branch the sweep publishes every draft once its registration
+    // window opens, and drags a cancelled event through the chain.
     for (const status of ['DRAFT', 'CANCELLED', 'CERTIFIED'] as const) {
       expect(dueStatus(anEvent(status), AT('2026-10-01T16:00:00Z'))).toBe(status);
     }

@@ -24,16 +24,9 @@ class PatchUserStatusDto extends createZodDto(patchUserStatusBodySchema) {}
 class UsersQueryDto extends createZodDto(userListQuerySchema) {}
 class UserSearchQueryDto extends createZodDto(userSearchQuerySchema) {}
 
-/**
- * No single `@Controller(prefix)` fits all four routes: `/me` sits outside
- * `/users` entirely (spec: a profile-edit response must never carry the
- * authorization facts `/auth/me` does, so it isn't nested under the admin
- * listing either). Left blank; each handler spells out its own full path.
- *
- * Both global guards apply here (see auth.module.ts), so no local
- * @UseGuards is needed: SessionGuard authenticates and PermissionsGuard
- * authorizes, and any route without @Public() is protected by default.
- */
+// Prefix left blank because `/me` sits outside `/users`; each handler spells
+// out its full path. The global SessionGuard and PermissionsGuard (see
+// auth.module.ts) cover every route here without a local @UseGuards.
 @Controller()
 export class UsersController {
   constructor(private readonly users: UsersService) {}
@@ -56,24 +49,15 @@ export class UsersController {
     return this.users.list(query);
   }
 
-  /**
-   * Nested under the club on purpose. `user:search` is a club-scoped rule,
-   * and a club rule cannot authorize a route with no club in it: on a bare
-   * `/users/search` the guard would have no clubId to resolve roles
-   * against, and only the platform half of the rule could ever match.
-   */
+  // Nested under the club on purpose: `user:search` is club-scoped, and on a
+  // bare `/users/search` the guard would have no clubId to resolve roles
+  // against, leaving only the platform half of the rule able to match.
   @Get('clubs/:clubId/user-search')
   @RequirePermission('user:search', { scope: 'club', from: 'params.clubId' })
   search(@Query() query: UserSearchQueryDto): Promise<UserSearchResult> {
     return this.users.search(query);
   }
 
-  /**
-   * Deliberately declared before `users/:id/status`. Nest matches in
-   * declaration order, and the two never collide because the paths differ by
-   * a segment, but keeping the broader edit above the narrower status route
-   * mirrors how the two read in the permission matrix.
-   */
   @Patch('users/:id')
   @RequirePermission('user:edit')
   @ApiResponse({ status: 404, description: 'No such user.', type: ProblemDetailsDto })

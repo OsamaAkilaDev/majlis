@@ -30,11 +30,10 @@ type AppointmentWithUser = AppointmentRow & { user: { fullName: string; email: s
 type InvitationRow = AppointmentRow & { club: { name: string; logoUrl: string } };
 
 /**
- * The transaction body's own return type, discriminating "flipped to EXPIRED"
- * from "accepted" so `accept` can throw outside `host.run` once the caller
- * sees this. Throwing inside the transaction that just wrote EXPIRED would
- * roll that write back, and the invitation would expire again on every
- * subsequent attempt, forever. Shared by accept and decline.
+ * Discriminates "flipped to EXPIRED" from "accepted" so accept and decline can
+ * throw outside `host.run`. Throwing inside the transaction that just wrote
+ * EXPIRED would roll that write back, and the invitation would expire again on
+ * every subsequent attempt.
  */
 type InvitationOutcome = { kind: 'expired' } | { kind: 'ok'; appointment: Appointment };
 
@@ -42,7 +41,6 @@ function invitationExpiresAt(): Date {
   return new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
 }
 
-/** Maps an INVITED row plus its club onto the wire shape for /me/invitations. */
 function toInvitation(row: InvitationRow): Invitation {
   return {
     id: row.id,
@@ -50,19 +48,15 @@ function toInvitation(row: InvitationRow): Invitation {
     clubName: row.club.name,
     clubLogoUrl: row.club.logoUrl,
     role: row.role,
-    // invite/appointLead always set this; myInvitations' own WHERE clause
-    // already excludes any row where it has passed.
+    // invite/appointLead always set this, and myInvitations' WHERE clause
+    // already excludes rows where it has passed.
     invitationExpiresAt: row.invitationExpiresAt!.toISOString(),
   };
 }
 
-/**
- * Maps a row plus the caller-supplied membership fact onto the wire shape.
- *
- * `withEmail` defaults to true because every caller but the team list is
- * either an officer-only write path that has already cleared
- * `club:team-manage`, or the invitee acting on their own appointment.
- */
+// `withEmail` defaults to true because every caller but the team list is either
+// an officer-only write path that has cleared `club:team-manage`, or the invitee
+// acting on their own appointment.
 function toAppointment(row: AppointmentWithUser, hasLeftClub: boolean, withEmail = true): Appointment {
   return {
     id: row.id,
@@ -80,15 +74,11 @@ function toAppointment(row: AppointmentWithUser, hasLeftClub: boolean, withEmail
 }
 
 /**
- * The one-active-Lead partial index (club_team_appointment_one_active_lead)
- * is hand-written SQL, not a Prisma `@@unique`. Its name comes back through
- * `violatedConstraintName`, not `meta.target`: Prisma 7's pg driver adapter
- * never populates `meta.target` at all for a P2002, hand-written index or
- * not, and reports the constraint name at `meta.driverAdapterError.cause
- * .constraint.index` instead. Unreachable from Task 6 (appointLead/invite
- * only ever create INVITED rows, and the index only constrains ACTIVE
- * ones); this exists for Task 7's accept, which is the first path that can
- * produce the collision.
+ * club_team_appointment_one_active_lead is a hand-written partial index. Its
+ * name comes back through `violatedConstraintName`, not `meta.target`: Prisma
+ * 7's pg driver adapter never populates `meta.target` for a P2002 and reports
+ * the name at `meta.driverAdapterError.cause.constraint.index`. Only `accept`
+ * can collide, the index constraining ACTIVE rows and the rest creating INVITED.
  */
 const mapWriteError = conflictOn({ one_active_lead: 'That club already has an active Lead.' });
 
@@ -100,7 +90,6 @@ export class TeamService {
     private readonly notifications: NotificationService,
   ) {}
 
-  /** Whether `userId` currently holds no ACTIVE ClubMembership in `clubId`. */
   private async hasLeftClub(clubId: string, userId: string): Promise<boolean> {
     const membership = await this.host.tx.clubMembership.findFirst({
       where: { clubId, userId, status: 'ACTIVE' },
@@ -108,7 +97,7 @@ export class TeamService {
     return !membership;
   }
 
-  /** POST /clubs/:clubId/lead. Admin only; the nominee holds no authority until they accept. */
+  // The nominee holds no authority until they accept.
   async appointLead(actor: { id: string }, clubId: string, body: AppointLeadBody): Promise<Appointment> {
     return this.host.run(async () => {
       const club = await loadClub(this.host, clubId, assertAcceptsEdits);
@@ -137,9 +126,8 @@ export class TeamService {
         after: { clubId, userId: row.userId, role: row.role },
       });
 
-      // Spec 7.7, team invitation. Written in this transaction, like the
-      // audit row above it: an invitation that rolls back must not leave a
-      // notification telling somebody they were invited.
+      // Spec 7.7. In this transaction, like the audit row: an invitation that
+      // rolls back must not leave somebody told they were invited.
       await this.notifications.record({
         userId: row.userId,
         type: 'team.invited',
@@ -151,7 +139,6 @@ export class TeamService {
     });
   }
 
-  /** POST /clubs/:clubId/team. Lead only; role is any of the four non-Lead values. */
   async invite(
     actor: { id: string; platformRole: PlatformRole },
     clubId: string,
@@ -191,9 +178,8 @@ export class TeamService {
         after: { clubId, userId: row.userId, role: row.role },
       });
 
-      // Spec 7.7, team invitation. Written in this transaction, like the
-      // audit row above it: an invitation that rolls back must not leave a
-      // notification telling somebody they were invited.
+      // Spec 7.7. In this transaction, like the audit row: an invitation that
+      // rolls back must not leave somebody told they were invited.
       await this.notifications.record({
         userId: row.userId,
         type: 'team.invited',
@@ -205,11 +191,8 @@ export class TeamService {
     });
   }
 
-  /**
-   * DELETE /clubs/:clubId/team/:appointmentId. Scoping the read to
-   * `{ id: appointmentId, clubId }` is what makes an appointment from
-   * another club a plain 404 rather than a cross-club write.
-   */
+  // Scoping the read to `{ id: appointmentId, clubId }` is what makes an
+  // appointment from another club a 404 rather than a cross-club write.
   async end(actor: { id: string }, clubId: string, appointmentId: string, body: EndAppointmentBody): Promise<void> {
     return this.host.run(async () => {
       const appointment = await this.host.tx.clubTeamAppointment.findFirst({
@@ -237,11 +220,10 @@ export class TeamService {
     });
   }
 
-  /** GET /clubs/:clubId/team. Same cursor pattern as ClubsService.list. */
   async list(actor: RosterReader, clubId: string, query: CursorPageQuery): Promise<AppointmentPage> {
     await assertCanReadRoster(this.host, actor, clubId);
-    // The route carries no @RequirePermission (the list is open to any
-    // signed-in user); this is the whole gate on the addresses in it.
+    // The route carries no @RequirePermission, the list being open to any
+    // signed-in user, so this is the whole gate on the addresses in it.
     const withEmail = await canReadRosterEmail(this.host, actor, clubId, 'club:team-manage');
 
     const rows = await this.host.tx.clubTeamAppointment.findMany({
@@ -252,8 +234,7 @@ export class TeamService {
 
     const { items, nextCursor } = cursorPage(rows, query.limit);
 
-    // One batched membership lookup for the whole page rather than one query
-    // per row, which is what an N+1 read would otherwise cost here.
+    // One batched membership lookup for the page, not one query per row.
     const activeMemberships = await this.host.tx.clubMembership.findMany({
       where: { clubId, userId: { in: items.map((r) => r.userId) }, status: 'ACTIVE' },
       select: { userId: true },
@@ -267,16 +248,10 @@ export class TeamService {
   }
 
   /**
-   * GET /me/invitations. No @RequirePermission: the `userId: actor.id` filter
-   * below is the entire authorization, and expiry is filtered in the WHERE
-   * clause (not after the fetch) so a lapsed invitation never surfaces here,
-   * matching the main spec's "no queue, the lifecycle is lazy" decision.
-   *
-   * Both write paths (invite, appointLead) always set invitationExpiresAt, so
-   * an invitation always has an expiry; this only matches non-expired ones.
-   * A null-expiry row (unreachable today, but the column is nullable)
-   * therefore never surfaces here rather than reaching toInvitation's
-   * non-null assertion.
+   * The `userId: actor.id` filter below is the entire authorization, which is
+   * why the route carries no @RequirePermission. Expiry is filtered in the WHERE
+   * clause, not after the fetch, so a lapsed or null-expiry row never surfaces
+   * here and never reaches toInvitation's non-null assertion.
    */
   async myInvitations(actor: { id: string }, query: CursorPageQuery): Promise<InvitationPage> {
     const rows = await this.host.tx.clubTeamAppointment.findMany({
@@ -298,16 +273,10 @@ export class TeamService {
   }
 
   /**
-   * POST /appointments/:appointmentId/accept. Scoped to the actor, so an
-   * appointment belonging to someone else is not found rather than
-   * forbidden. This route carries no @RequirePermission at all.
-   *
-   * Expiry is evaluated here, on read, rather than by a job (spec: "no
-   * queue, the lifecycle is lazy"). An invitation past its date is flipped
-   * to EXPIRED opportunistically. That write must survive even though the
-   * request still fails, so the transaction returns a discriminated result
-   * instead of throwing for the expired case, and the throw happens after
-   * `host.run` returns.
+   * Scoped to the actor, so someone else's appointment is not found rather than
+   * forbidden; the route carries no @RequirePermission. Expiry is evaluated on
+   * read, not by a job, and the EXPIRED write must survive the failed request,
+   * so the transaction returns a result and the throw happens after `host.run`.
    */
   async accept(actor: { id: string }, appointmentId: string): Promise<Appointment> {
     const outcome = await this.host.run(async (): Promise<InvitationOutcome> => {
@@ -336,9 +305,9 @@ export class TeamService {
         })
         .catch(mapWriteError);
 
-      // Main spec 7.2: acceptance also grants ordinary club membership.
-      // Conditional, because the partial unique index forbids a second open
-      // membership and an officer may already be one.
+      // Spec 7.2: acceptance also grants ordinary club membership. Conditional,
+      // because the partial unique index forbids a second open membership and
+      // an officer may already be a member.
       const open = await this.host.tx.clubMembership.findFirst({
         where: { clubId: appt.clubId, userId: actor.id, status: { in: ['PENDING', 'ACTIVE'] } },
       });
@@ -370,10 +339,8 @@ export class TeamService {
     return outcome.appointment;
   }
 
-  /**
-   * POST /appointments/:appointmentId/decline. Same expiry handling as
-   * accept, minus the membership branch: declining grants nothing.
-   */
+  // Same expiry handling as accept, minus the membership branch: declining
+  // grants nothing.
   async decline(actor: { id: string }, appointmentId: string): Promise<Appointment> {
     const outcome = await this.host.run(async (): Promise<InvitationOutcome> => {
       const appt = await this.host.tx.clubTeamAppointment.findFirst({

@@ -3,16 +3,9 @@ import { AuditController } from './audit.controller';
 import { AuditReadService } from './audit-read.service';
 import { AuditService } from './audit.service';
 
-/**
- * Global, mirroring PrismaModule and RequestContextModule: AuditService is
- * injected across module boundaries (the permissions guard, auth, users) so
- * it needs to be resolvable everywhere without every feature module
- * re-importing AuditModule.
- *
- * AuditReadService is deliberately NOT exported: nothing but this module's
- * own controller reads the log, and the writer is the only half anybody else
- * should be able to reach.
- */
+// Global because AuditService is injected across module boundaries.
+// AuditReadService is deliberately not exported: the writer is the only half
+// anybody outside this module should reach.
 @Global()
 @Module({
   controllers: [AuditController],

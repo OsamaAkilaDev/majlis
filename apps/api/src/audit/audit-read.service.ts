@@ -25,16 +25,12 @@ function toEntry(row: AuditLog): AuditEntry {
   };
 }
 
-/**
- * The read half of the audit log, deliberately separate from AuditService,
- * which only ever writes. There is no update and no delete here or anywhere:
- * the table is append-only by statement-level trigger.
- */
+// The read half, separate from the write-only AuditService. No update and no
+// delete here or anywhere: the table is append-only by statement-level trigger.
 @Injectable()
 export class AuditReadService {
   constructor(private readonly host: TransactionHost) {}
 
-  /** GET /audit. Admin only, whole platform. */
   async list(query: AuditListQuery): Promise<AuditPage> {
     return this.page({
       ...(query.entityType ? { entityType: query.entityType } : {}),
@@ -42,12 +38,8 @@ export class AuditReadService {
     }, query);
   }
 
-  /**
-   * GET /clubs/:clubId/audit. The club row and its own events, and no
-   * further: AuditLog has no foreign keys by design (spec 3), so there is no
-   * join to walk, and resolving registrations or attendance rows would mean
-   * a second id list. Recorded as a limit and shown in the screen.
-   */
+  // The club row and its own events, no further: AuditLog has no foreign keys
+  // by design (spec 3), so there is no join to walk.
   async forClub(clubId: string, query: AuditListQuery): Promise<AuditPage> {
     const club = await this.host.tx.club.findUnique({ where: { id: clubId }, select: { id: true } });
     if (!club) throw new NotFoundError('No such club.');

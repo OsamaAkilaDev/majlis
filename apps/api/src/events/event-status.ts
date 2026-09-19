@@ -2,11 +2,9 @@ import type { ClubStatus, EventStatus } from '@majlis/contracts';
 import { assertAcceptsEdits as assertClubAcceptsEdits } from '../clubs/club-status';
 import { UnprocessableError } from '../common/problem/domain-error';
 
-/**
- * The linear part of the lifecycle (spec 7.3). CANCELLED is deliberately not
- * in it: it is reachable from any chain state but is not a step along the
- * chain, and `advance` walks this array by index.
- */
+// The linear part of the lifecycle (spec 7.3). CANCELLED is deliberately absent:
+// it is reachable from any chain state but is not a step, and `advance` walks
+// this array by index.
 export const CHAIN = [
   'DRAFT',
   'PUBLISHED',
@@ -17,12 +15,9 @@ export const CHAIN = [
 ] as const satisfies readonly EventStatus[];
 
 /**
- * The only gate on an event status write. One step forward along CHAIN, or
- * anything that is still in the chain to CANCELLED.
- *
- * CERTIFIED and CANCELLED are both terminal. Cancelling a CERTIFIED event is
- * refused because certificates have already been issued against it, and the
- * spec 7.3 diagram draws no arrow from CERTIFIED for exactly that reason.
+ * The only gate on an event status write: one step forward along CHAIN, or any
+ * chain state to CANCELLED. CERTIFIED and CANCELLED are terminal; spec 7.3 draws
+ * no arrow off CERTIFIED because certificates are already issued against it.
  */
 export function assertTransition(from: EventStatus, to: EventStatus): void {
   if (from === to) throw new UnprocessableError('That event is already in that state.');
@@ -43,15 +38,10 @@ export interface DueStatusInput {
 }
 
 /**
- * The status an event's own timestamps say it should be in, a pure function,
- * which is what lets a list read render it without writing anything.
- *
- * Boundaries are evaluated newest first, because the check-in window may open
- * before registration closes: the later milestone must win, or an event whose
- * check-in has already started would be reported as merely closed.
- *
- * DRAFT, CANCELLED and CERTIFIED are never time-advanced. The first is not
- * published yet and the other two are terminal.
+ * The status an event's timestamps say it should be in. Pure, so a list read can
+ * render it without writing. Boundaries are evaluated newest first because the
+ * check-in window may open before registration closes and the later milestone
+ * must win. DRAFT (unpublished) and the two terminal states never advance.
  */
 export function dueStatus(event: DueStatusInput, now: Date): EventStatus {
   if (event.status === 'DRAFT' || event.status === 'CANCELLED' || event.status === 'CERTIFIED') {
@@ -64,12 +54,9 @@ export function dueStatus(event: DueStatusInput, now: Date): EventStatus {
 }
 
 /**
- * Whether this event still accepts edits: its club's own edit gate, plus the
- * three terminal event states.
- *
- * Shared by `EventsService.update` and by the poster upload-url mint, which
- * overwrites the live poster object and so is an edit as much as a PATCH is.
- * A guard in only one of the two leaves the other as the way round it.
+ * The club's edit gate plus the three terminal event states. Shared by
+ * `EventsService.update` and the poster upload-url mint, which overwrites the
+ * live poster object: guarding only one leaves the other as the way round it.
  */
 export function assertEventAcceptsEdits(event: {
   status: EventStatus;

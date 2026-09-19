@@ -7,16 +7,9 @@ import { NotificationSweepController } from './notification-sweep.controller';
 import { NotificationsController } from './notifications.controller';
 import { ResendChannel } from './resend.channel';
 
-/**
- * Global, mirroring AuditModule: NotificationService is injected from clubs,
- * events, certificates and auth, so it has to be resolvable everywhere
- * without each of those modules importing this one.
- *
- * The channel is chosen once, at boot, from whether RESEND_API_KEY is set.
- * That is the whole of "Resend ships unwired": no key means every row lands
- * on SKIPPED and the in-app inbox works completely, and pasting a key in
- * turns email on with no code change.
- */
+// Global because NotificationService is injected from clubs, events,
+// certificates and auth. The channel is chosen once at boot from whether
+// RESEND_API_KEY is set: no key means every row lands on SKIPPED.
 @Global()
 @Module({
   controllers: [NotificationsController, NotificationSweepController],

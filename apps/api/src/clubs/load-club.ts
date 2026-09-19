@@ -5,11 +5,9 @@ import type { TransactionHost } from '../prisma/transaction.host';
 
 /**
  * The club behind a `:clubId` path segment, or a 404. Every club-scoped write
- * starts here so the not-found answer precedes the status answer uniformly: a
- * club that does not exist must never be reported as one that is archived.
- *
- * `assertStatus` is the caller's, because the rule differs per route: edits
- * are allowed in a SUSPENDED club, new activity is not.
+ * starts here so not-found always precedes the status answer: a club that does
+ * not exist must never be reported as archived. `assertStatus` stays the
+ * caller's, because the rule differs per route.
  */
 export async function loadClub(
   host: TransactionHost,

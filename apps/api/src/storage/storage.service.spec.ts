@@ -40,12 +40,9 @@ describe('createSignedUploadUrl', () => {
   });
 
   it('throws rather than returning a broken URL when Supabase refuses', async () => {
-    // The mocked body carries a plausible `url` alongside the error. Without
-    // that, this test could not fail: `body.url` would already be undefined,
-    // so removing the `res.ok` check entirely would still hit the unrelated
-    // "no signed URL" throw and pass anyway. With a url present, only the
-    // status check stops a 401 from producing a bogus signed URL, and the
-    // assertion below matches only that throw site's message, not both.
+    // The mocked body carries a plausible `url` alongside the error on purpose:
+    // without it, dropping the `res.ok` check would still hit the unrelated
+    // "no signed URL" throw and pass anyway.
     const { svc } = serviceWith((async () =>
       new Response(
         JSON.stringify({
@@ -76,10 +73,9 @@ describe('createSignedDownloadUrl', () => {
 
     const out = await svc.createSignedDownloadUrl('certificates/c1/certificate.pdf', 300);
 
-    // Verified live 2026-09-13: the response key is `signedURL` (not `url`,
-    // which is what the upload endpoint returns) and it is relative to
-    // /storage/v1. Returning it straight through sends the browser to the
-    // web app's own origin.
+    // Verified live: the key is `signedURL` (the upload endpoint returns `url`)
+    // and it is relative to /storage/v1. Returned straight through it sends the
+    // browser to the web app's own origin.
     expect(out).toBe(
       'https://example.supabase.co/storage/v1/object/sign/majlis-storage/certificates/c1/certificate.pdf?token=tok',
     );
@@ -96,12 +92,10 @@ describe('createSignedDownloadUrl', () => {
   });
 
   it('signs and uploads a certificate into the private bucket, not the public one', async () => {
-    // The whole point of the second bucket. Signing a URL in the PUBLIC
-    // bucket closes nothing: the object path is a pure function of the
-    // certificate id, every holder of registration:read can list those ids,
-    // and /object/public/<path> answers 200 with no cookie. Only a bucket
-    // that refuses the unsigned path fixes it, so this pins which bucket the
-    // bytes actually land in and which one the URL is signed against.
+    // Signing a URL in the public bucket closes nothing: the path is a pure
+    // function of the certificate id and /object/public/<path> answers with no
+    // cookie. Pins which bucket the bytes land in and which the URL is signed
+    // against.
     const calls: string[] = [];
     const { svc } = serviceWith((async (url: string) => {
       calls.push(url);
@@ -158,18 +152,14 @@ describe('statObject', () => {
   });
 
   it('returns null for a 400 too, and warns since that status is not unambiguous', async () => {
-    // Verified against the live Supabase project (task-2-report.md, Step 1):
-    // a missing object answers HTTP 400 with a NoSuchKey body, not the 404
-    // the Storage API docs' happy path implies. Catches an implementation
-    // written from the docs alone, which would throw here instead of
-    // returning null, and every caller checking for a missing upload would
-    // see a 500 instead of "not uploaded yet".
+    // Verified live: a missing object answers 400 with a NoSuchKey body, not
+    // the 404 the docs imply. Catches an implementation written from the docs
+    // alone, which throws here and turns "not uploaded yet" into a 500.
     const { svc, logger } = serviceWith((async () => new Response(null, { status: 400 })) as unknown as typeof fetch);
     expect(await svc.statObject('clubs/a/logo.webp')).toBeNull();
-    // A 400 can also mean a misconfigured bucket or a revoked key, and HEAD
-    // carries no body to tell the two apart from here. Catches the log call
-    // being dropped silently, which would hide a systemic failure behind a
-    // string of "not uploaded yet" results.
+    // A 400 can also mean a misconfigured bucket or a revoked key, and HEAD has
+    // no body to tell them apart. Catches the log call being dropped, which
+    // hides a systemic failure behind "not uploaded yet" results.
     expect(logger.warn).toHaveBeenCalledTimes(1);
     const [payload] = logger.warn.mock.calls[0] as [Record<string, unknown>, string];
     expect(payload).toEqual({ path: 'clubs/a/logo.webp', status: 400 });
@@ -187,10 +177,9 @@ describe('statObject', () => {
   });
 
   it('treats a missing content-length as size zero rather than NaN', async () => {
-    // Headers.get() returns null (never undefined) for an absent header, and
-    // Number(null) is 0 already. This locks in that zero, not a parse of some
-    // other fallback, is what a caller's `size > cap` comparison sees for an
-    // object with no reported length.
+    // Headers.get() returns null for an absent header and Number(null) is 0.
+    // Locks in that zero, not some other fallback, is what a caller's
+    // `size > cap` comparison sees when no length is reported.
     const { svc } = serviceWith((async () =>
       new Response(null, { status: 200, headers: { 'content-type': 'image/webp' } })) as unknown as typeof fetch);
 

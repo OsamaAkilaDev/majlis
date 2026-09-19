@@ -9,13 +9,9 @@ import type { Env } from '../config/env.schema';
 import { assertSweepSecret } from '../events/lifecycle-sweep.controller';
 import { NotificationService } from './notification.service';
 
-/**
- * Delivers the PENDING notifications the triggers have committed since the
- * last run. Authenticated by a shared secret rather than a session, because
- * the caller is an external scheduler with no user behind it, and by its own
- * secret rather than the lifecycle sweep's, so one leaked scheduler
- * credential does not authorise both endpoints.
- */
+// Authenticated by a shared secret, not a session: the caller is an external
+// scheduler with no user behind it. Its own secret rather than the lifecycle
+// sweep's, so one leaked credential does not authorise both endpoints.
 @Controller('internal')
 export class NotificationSweepController {
   constructor(

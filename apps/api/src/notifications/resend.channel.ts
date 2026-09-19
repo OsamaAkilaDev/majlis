@@ -3,17 +3,10 @@ import { renderNotificationEmail } from './emails/templates';
 import type { DeliverableNotification, DeliveryOutcome, NotificationChannel } from './notification-channel';
 
 /**
- * The email implementation of spec 7.7's channel. It resolves only when
- * RESEND_API_KEY is set; with no key the module provides SkippingChannel
- * instead, and nothing here ever runs.
- *
- * The key is held by the SDK and never logged: a failure is reported as the
- * SDK's message, which carries no credential, and the outbound request's
- * Authorization header is already covered by LOG_REDACT_PATHS.
- *
- * This never throws. A refused address, a rate limit and an outage are all
- * ordinary outcomes of sending mail, and one of them must not stop the rest
- * of the sweep's batch.
+ * Resolves only when RESEND_API_KEY is set; otherwise the module provides
+ * SkippingChannel. The key stays with the SDK and is never logged: failures
+ * are reported as the SDK's message, and the outbound Authorization header is
+ * covered by LOG_REDACT_PATHS. Never throws, so one bad send cannot stop a batch.
  */
 export class ResendChannel implements NotificationChannel {
   private readonly resend: Resend;

@@ -31,12 +31,8 @@ interface AppointmentRoleRow {
   role: ClubRole;
 }
 
-/**
- * Maps a membership row plus its club roles onto the wire shape.
- *
- * `withEmail` defaults to true because every caller but the roster list is an
- * officer-only write path that has already cleared `membership:decide`.
- */
+// `withEmail` defaults to true because every caller but the roster list is an
+// officer-only write path that has already cleared `membership:decide`.
 function toMember(row: MembershipWithUser, clubRoles: ClubRole[], withEmail = true): Member {
   return {
     id: row.id,
@@ -50,19 +46,14 @@ function toMember(row: MembershipWithUser, clubRoles: ClubRole[], withEmail = tr
   };
 }
 
-/** Groups active-appointment rows by whichever key the caller is batching on. */
 function groupRoles(rows: AppointmentRoleRow[], key: (r: AppointmentRoleRow) => string): Map<string, ClubRole[]> {
   const map = new Map<string, ClubRole[]>();
   for (const r of rows) map.set(key(r), [...(map.get(key(r)) ?? []), r.role]);
   return map;
 }
 
-/**
- * P2002 here is club_membership_one_open_per_user, hand-written SQL rather
- * than a Prisma `@@unique`. Applied to every write that can create an open
- * row (request, addMember): both insert into the same table under the same
- * partial index.
- */
+// P2002 here is club_membership_one_open_per_user, a hand-written partial index
+// rather than a Prisma `@@unique`. Applied to every write creating an open row.
 const mapWriteError = conflictOn({
   one_open_per_user: 'You already have an open membership in that club.',
 });
@@ -96,10 +87,8 @@ export class MembershipService {
     return (await this.rolesForMany(clubId, [userId])).get(userId) ?? [];
   }
 
-  /**
-   * POST /clubs/:clubId/membership-requests. Self-scoped; no
-   * @RequirePermission, the row is always the actor's own.
-   */
+  // Self-scoped: the row is always the actor's own, which is why the route
+  // carries no @RequirePermission.
   async request(actor: { id: string }, clubId: string): Promise<Member> {
     return this.host.run(async () => {
       const club = await loadClub(this.host, clubId, assertAcceptsNewActivity);
@@ -127,11 +116,9 @@ export class MembershipService {
   }
 
   /**
-   * POST /clubs/:clubId/members. The way in under INVITE_ONLY, and under
-   * OPEN and APPROVAL_REQUIRED too. Refused under CLOSED: if an officer
-   * could add a member to a CLOSED club, CLOSED and INVITE_ONLY would be
-   * behaviourally identical, so CLOSED has to be the one policy nobody
-   * joins by any route or it is not a distinct policy at all.
+   * The way in under INVITE_ONLY, and under OPEN and APPROVAL_REQUIRED too.
+   * Refused under CLOSED: if an officer could add a member there, CLOSED and
+   * INVITE_ONLY would behave identically and CLOSED would not be a policy.
    */
   async addMember(
     actor: { id: string; platformRole: PlatformRole },
@@ -165,14 +152,10 @@ export class MembershipService {
   }
 
   /**
-   * PATCH /clubs/:clubId/membership-requests/:requestId. Scoping the read to
-   * `{ id: requestId, clubId }` is what makes a request from another club a
-   * plain 404 rather than a cross-club decision (RULING D5).
-   *
-   * `assertAcceptsEdits` allows this in a SUSPENDED club (the request was
-   * already in flight) and refuses it in an ARCHIVED one (terminal, no new
-   * activity of any kind), same pattern as TeamService.accept for the same
-   * "pending thing turns into an active membership" case.
+   * Scoping the read to `{ id: requestId, clubId }` is what makes a request from
+   * another club a 404 rather than a cross-club decision (RULING D5).
+   * `assertAcceptsEdits` allows this in a SUSPENDED club, the request already
+   * being in flight, and refuses it in an ARCHIVED one.
    */
   async decide(actor: { id: string }, clubId: string, requestId: string, body: DecideMembershipBody): Promise<Member> {
     return this.host.run(async () => {
@@ -201,8 +184,8 @@ export class MembershipService {
         after: { status: row.status },
       });
 
-      // Spec 7.7, membership decision. Approval and rejection both notify:
-      // a student waiting on an answer needs to hear either one.
+      // Spec 7.7. Approval and rejection both notify: a student waiting on an
+      // answer needs to hear either one.
       await this.notifications.record({
         userId: row.userId,
         type: 'membership.decided',
@@ -214,7 +197,7 @@ export class MembershipService {
     });
   }
 
-  /** DELETE /clubs/:clubId/membership. Self-scoped; the caller leaves their own open membership. */
+  // Self-scoped: the caller leaves their own open membership.
   async leave(actor: { id: string }, clubId: string): Promise<void> {
     return this.host.run(async () => {
       await loadClub(this.host, clubId, assertAcceptsEdits);
@@ -241,11 +224,8 @@ export class MembershipService {
     });
   }
 
-  /**
-   * DELETE /clubs/:clubId/members/:userId. An officer's decision, distinct
-   * from `leave`: the row lands on REMOVED, never LEFT, so the two stay
-   * distinguishable in the historical record.
-   */
+  // An officer's decision, distinct from `leave`: the row lands on REMOVED,
+  // never LEFT, so the two stay distinguishable in the record.
   async remove(
     actor: { id: string; platformRole: PlatformRole },
     clubId: string,
@@ -279,11 +259,10 @@ export class MembershipService {
     });
   }
 
-  /** GET /clubs/:clubId/members. Same cursor pattern as ClubsService.list and TeamService.list. */
   async members(actor: RosterReader, clubId: string, query: MemberListQuery): Promise<MemberPage> {
     await assertCanReadRoster(this.host, actor, clubId);
-    // The route carries no @RequirePermission (the list is open to any
-    // signed-in user); this is the whole gate on the addresses in it.
+    // The route carries no @RequirePermission, the list being open to any
+    // signed-in user, so this is the whole gate on the addresses in it.
     const withEmail = await canReadRosterEmail(this.host, actor, clubId, 'membership:decide');
 
     const where: Prisma.ClubMembershipWhereInput = {
@@ -306,12 +285,9 @@ export class MembershipService {
     };
   }
 
-  /**
-   * GET /me/clubs. Self-scoped by `userId: actor.id`; no @RequirePermission.
-   * Only PENDING/ACTIVE rows: a club left and rejoined leaves a LEFT row
-   * behind alongside the new open one, and an unfiltered list would show
-   * that club twice, once as a dead entry with nothing sensible to do.
-   */
+  // Self-scoped by `userId: actor.id`, which is why the route carries no
+  // @RequirePermission. PENDING/ACTIVE only: a club left and rejoined keeps its
+  // LEFT row, and an unfiltered list would show that club twice.
   async myClubs(actor: { id: string }, query: CursorPageQuery): Promise<MyClubPage> {
     const rows = await this.host.tx.clubMembership.findMany({
       where: { userId: actor.id, status: { in: ['PENDING', 'ACTIVE'] } },

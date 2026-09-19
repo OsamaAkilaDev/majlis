@@ -59,10 +59,8 @@ export class MembershipController {
     return this.membership.remove(actor, clubId, userId, body);
   }
 
-  /**
-   * These two routes carry no @RequirePermission: they are self-scoped by
-   * `actor.id` inside MembershipService, not by any club permission.
-   */
+  // These two carry no @RequirePermission: MembershipService scopes them by
+  // `actor.id`, not by any club permission.
   @Post('clubs/:clubId/membership-requests')
   @ApiResponse({ status: 404, description: 'No such club.', type: ProblemDetailsDto })
   @ApiResponse({ status: 409, description: 'You already have an open membership in that club.', type: ProblemDetailsDto })

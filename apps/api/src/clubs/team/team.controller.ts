@@ -72,10 +72,8 @@ export class TeamController {
     return this.team.end(actor, clubId, appointmentId, body);
   }
 
-  /**
-   * These three routes carry no @RequirePermission: they are self-scoped by
-   * `actor.id` inside TeamService, not by any club or event permission.
-   */
+  // These three carry no @RequirePermission: TeamService scopes them by
+  // `actor.id`, not by any club or event permission.
   @Get('me/invitations')
   myInvitations(@Actor() actor: User, @Query() query: TeamListQueryDto): Promise<InvitationPage> {
     return this.team.myInvitations(actor, query);

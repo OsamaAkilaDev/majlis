@@ -1,11 +1,8 @@
 import { Body, Container, Head, Heading, Html, Link, Preview, Section, Text } from '@react-email/components';
 import type { ReactNode } from 'react';
 
-/**
- * The shell every notification email renders inside. Inline styles only:
- * an email client strips a stylesheet, and half of them strip a style
- * block too, so the tokens the product uses on screen cannot travel here.
- */
+// Inline styles only: email clients strip stylesheets and most strip a style
+// block too, so the product's design tokens cannot travel here.
 const page = { backgroundColor: '#f6f5f3', fontFamily: 'ui-sans-serif, system-ui, sans-serif' };
 const card = {
   backgroundColor: '#ffffff',
@@ -22,7 +19,7 @@ export interface LayoutProps {
   /** The one-line summary an inbox shows beside the subject. */
   preview: string;
   heading: string;
-  /** Where the "open it" link points. Absolute, because an email has no origin. */
+  /** Absolute: an email has no origin to resolve a relative URL against. */
   actionUrl: string;
   actionLabel: string;
   children: ReactNode;
@@ -48,7 +45,6 @@ export function EmailLayout({ preview, heading, actionUrl, actionLabel, children
   );
 }
 
-/** A paragraph in the layout's type scale, so no template restates it. */
 export function EmailText({ children }: { children: ReactNode }) {
   return <Text style={textStyle}>{children}</Text>;
 }

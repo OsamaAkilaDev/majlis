@@ -1,7 +1,5 @@
-/**
- * The slug is the club's public identifier and is never editable after
- * creation, because rewriting it breaks every link that exists.
- */
+// The slug is the club's public identifier and is never editable after
+// creation: rewriting it breaks every existing link.
 export function deriveSlug(name: string): string {
   const slug = name
     .normalize('NFKD')
@@ -13,10 +11,6 @@ export function deriveSlug(name: string): string {
   return slug.slice(0, 80);
 }
 
-/**
- * `taken` is injected rather than queried here so this stays a pure function
- * of its inputs and can be tested without a database.
- */
 export async function uniqueSlug(base: string, taken: (candidate: string) => Promise<boolean>): Promise<string> {
   if (!(await taken(base))) return base;
   for (let n = 2; n < 1000; n += 1) {

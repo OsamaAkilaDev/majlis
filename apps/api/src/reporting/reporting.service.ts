@@ -3,11 +3,9 @@ import type { ClubReport, OverviewReport } from '@majlis/contracts';
 import { NotFoundError } from '../common/problem/domain-error';
 import { TransactionHost } from '../prisma/transaction.host';
 
-/**
- * The same set AttendanceService counts as `expected`: a waitlisted student
- * never held a place and was never expected in the room, so counting them in
- * the denominator would make a full event look badly attended.
- */
+// The same set AttendanceService counts as `expected`: a waitlisted student
+// never held a place, so counting them in the denominator would make a full
+// event look badly attended.
 const EXPECTED = ['CONFIRMED', 'CHECKED_IN', 'ATTENDED', 'NO_SHOW'] as const;
 const ATTENDED = ['CHECKED_IN', 'ATTENDED'] as const;
 
@@ -19,16 +17,14 @@ function tally<T extends string>(rows: { status: T; _count: number }[]): Record<
 export class ReportingService {
   constructor(private readonly host: TransactionHost) {}
 
-  /** GET /reports/overview. Platform totals. */
   async overview(): Promise<OverviewReport> {
     const [clubs, events, users, activeMemberships, certificatesIssued] = await Promise.all([
       this.host.tx.club.groupBy({ by: ['status'], _count: true }),
       this.host.tx.event.groupBy({ by: ['status'], _count: true }),
       this.host.tx.user.count(),
       this.host.tx.clubMembership.count({ where: { status: 'ACTIVE' } }),
-      // Every row, revoked ones included: a revoked certificate was still
-      // issued, and filtering to ACTIVE made the number fall when one was
-      // revoked.
+      // Every row, revoked included: a revoked certificate was still issued,
+      // and filtering to ACTIVE makes the number fall when one is revoked.
       this.host.tx.certificate.count(),
     ]);
 
@@ -41,7 +37,6 @@ export class ReportingService {
     };
   }
 
-  /** GET /clubs/:clubId/reports. */
   async forClub(clubId: string): Promise<ClubReport> {
     const club = await this.host.tx.club.findUnique({ where: { id: clubId }, select: { id: true } });
     if (!club) throw new NotFoundError('No such club.');
@@ -62,8 +57,8 @@ export class ReportingService {
       registrations,
       expected,
       attended,
-      // Zero, not NaN: a club whose events nobody registered for still has a
-      // report, and a NaN would fail the response schema.
+      // Zero, not NaN: a club nobody registered for still has a report, and a
+      // NaN would fail the response schema.
       attendanceRate: expected === 0 ? 0 : attended / expected,
       certificatesIssued,
     };

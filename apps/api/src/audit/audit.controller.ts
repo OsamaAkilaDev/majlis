@@ -8,10 +8,8 @@ import { AuditReadService } from './audit-read.service';
 
 class AuditListQueryDto extends createZodDto(auditListQuerySchema) {}
 
-/**
- * Spec 6.1's "Read audit log" row: Admin over the platform, club Lead scoped
- * to their own club. Read-only, both of them.
- */
+// Spec 6.1's "Read audit log" row: Admin over the platform, club Lead scoped
+// to their own club. Read-only, both.
 @Controller()
 export class AuditController {
   constructor(private readonly audit: AuditReadService) {}

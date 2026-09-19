@@ -23,12 +23,9 @@ class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
 export class RegistrationsController {
   constructor(private readonly registrations: RegistrationsService) {}
 
-  /**
-   * No @RequirePermission: spec 6.1's "Register for an event" row reads "as
-   * student" for every role, so this is self-scoped by `actor.id`. The Admin
-   * override in the body is checked inside the service, against the actor's
-   * real platform role.
-   */
+  // No @RequirePermission: spec 6.1 lets every role register as a student, so
+  // this is self-scoped by `actor.id`. The Admin override in the body is checked
+  // in the service, against the actor's real platform role.
   @Post('events/:eventId/registrations')
   @ApiResponse({ status: 403, description: 'Only an administrator may register someone else.', type: ProblemDetailsDto })
   @ApiResponse({ status: 404, description: 'No such event.', type: ProblemDetailsDto })
