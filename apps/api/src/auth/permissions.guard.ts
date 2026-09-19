@@ -179,8 +179,17 @@ export class PermissionsGuard implements CanActivate {
       return { ...base, clubRoles };
     }
 
-    const { eventResponsibilities } = await resolveEventFacts(this.host, actor.id, scopeId);
-    const { clubRoles } = await resolveEventClubFacts(this.host, actor.id, scopeId);
+    // Concurrent, not sequential: the two read different tables and neither
+    // feeds the other, so serialising them spent a round trip for nothing on
+    // every event-scoped request. The guard runs before any handler opens a
+    // transaction, so these are two connections from the pool rather than two
+    // statements queued on one — which is why the same change does NOT apply
+    // to the pairs inside EventsService.toDetail or AuthService.issueSession.
+    // The scan path is where it is felt (spec 7.5).
+    const [{ eventResponsibilities }, { clubRoles }] = await Promise.all([
+      resolveEventFacts(this.host, actor.id, scopeId),
+      resolveEventClubFacts(this.host, actor.id, scopeId),
+    ]);
     return { ...base, clubRoles, eventResponsibilities };
   }
 }
