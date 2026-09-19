@@ -1,6 +1,5 @@
 import type { AuditPage, ClubReport } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
@@ -25,13 +24,11 @@ export default async function ReportsPage({ params }: { params: Promise<{ clubId
     user.clubRoles.some((role) => role.clubId === clubId && role.role === 'LEAD');
 
   return (
-    <ConsoleShell title="Reports">
-      <ClubReports
-        clubId={clubId}
-        initialReport={report}
-        initialAudit={audit}
-        canAudit={canAudit}
-      />
-    </ConsoleShell>
+    <ClubReports
+      clubId={clubId}
+      initialReport={report}
+      initialAudit={audit}
+      canAudit={canAudit}
+    />
   );
 }

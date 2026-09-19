@@ -1,23 +1,12 @@
 'use client';
 
-import { CalendarDots, House, QrCode, Users } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import { ICON_WEIGHT } from '@/lib/icons';
 import { activeNavHref } from '@/lib/routing';
 import { SideNav } from './SideNav';
-
-// One list behind both student navigations, so the dock and the desktop
-// sidebar cannot drift apart. The inbox and profile are deliberately absent:
-// both live in the header, so a screen under /profile lights no tab and the
-// avatar carries the current state instead.
-const TABS = [
-  { href: '/home', label: 'Home', icon: House },
-  { href: '/clubs', label: 'Clubs', icon: Users },
-  { href: '/events', label: 'Events', icon: CalendarDots },
-  { href: '/profile/qr', label: 'QR', icon: QrCode },
-] as const;
+import { STUDENT_NAV, STUDENT_TABS as TABS } from './student-nav';
 
 const HREFS = TABS.map((t) => t.href);
 
@@ -79,13 +68,5 @@ export function TabBar() {
 
 /** The same destinations as a desktop sidebar. */
 export function StudentSideNav() {
-  return (
-    <SideNav
-      items={TABS.map(({ href, label, icon: Icon }) => ({
-        href,
-        label,
-        icon: <Icon size={16} weight={ICON_WEIGHT} className="shrink-0" aria-hidden />,
-      }))}
-    />
-  );
+  return <SideNav items={STUDENT_NAV} />;
 }

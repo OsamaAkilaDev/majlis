@@ -1,17 +1,19 @@
-import { CalendarDots, ChartBar, Scan, Shield, SquaresFour, Trophy, Users } from '@phosphor-icons/react/ssr';
-import { ICON_WEIGHT } from '@/lib/icons';
+import type { ClubSection } from '@/components/shell/ClubWorkspace';
 
-const icon = { size: 16, weight: ICON_WEIGHT, className: 'shrink-0', 'aria-hidden': true } as const;
-
-export function clubNav(clubId: string) {
+/**
+ * A club's sections are tabs inside the workspace, not a side navigation: the
+ * rail belongs to the platform and never changes. No icons, for the same
+ * reason a browser's tab strip has none.
+ */
+export function clubSections(clubId: string): ClubSection[] {
   const base = `/manage/${clubId}`;
   return [
-    { href: `${base}/overview`, label: 'Overview', icon: <SquaresFour {...icon} /> },
-    { href: `${base}/members`, label: 'Members', icon: <Users {...icon} /> },
-    { href: `${base}/team`, label: 'Team', icon: <Shield {...icon} /> },
-    { href: `${base}/events`, label: 'Events', icon: <CalendarDots {...icon} /> },
-    { href: `${base}/scan`, label: 'Scan', icon: <Scan {...icon} /> },
-    { href: `${base}/certificates`, label: 'Certificates', icon: <Trophy {...icon} /> },
-    { href: `${base}/reports`, label: 'Reports', icon: <ChartBar {...icon} /> },
-  ] as const;
+    { href: `${base}/overview`, label: 'Overview' },
+    { href: `${base}/members`, label: 'Members' },
+    { href: `${base}/team`, label: 'Team' },
+    { href: `${base}/events`, label: 'Events' },
+    { href: `${base}/scan`, label: 'Scan' },
+    { href: `${base}/certificates`, label: 'Certificates' },
+    { href: `${base}/reports`, label: 'Reports' },
+  ];
 }

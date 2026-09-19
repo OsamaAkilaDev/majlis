@@ -1,6 +1,5 @@
 import type { ClubDetail, MemberPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { MembersManager } from './MembersManager';
@@ -16,13 +15,11 @@ export default async function MembersPage({ params }: { params: Promise<{ clubId
   ]);
 
   return (
-    <ConsoleShell title="Members">
-      <MembersManager
-        clubId={clubId}
-        initialClub={club}
-        initialPending={pending}
-        initialActive={active}
-      />
-    </ConsoleShell>
+    <MembersManager
+      clubId={clubId}
+      initialClub={club}
+      initialPending={pending}
+      initialActive={active}
+    />
   );
 }

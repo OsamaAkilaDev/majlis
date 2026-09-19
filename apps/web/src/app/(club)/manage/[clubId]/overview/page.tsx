@@ -1,7 +1,6 @@
 import type { ClubDetail, DepartmentPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
 import { ClubProfileForm } from '@/components/ClubProfileForm';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
 
@@ -16,13 +15,11 @@ export default async function OverviewPage({ params }: { params: Promise<{ clubI
   ]);
 
   return (
-    <ConsoleShell title="Overview">
-      <ClubProfileForm
-        clubId={clubId}
-        platformRole={user.platformRole}
-        initialClub={club}
-        initialDepartments={departments?.items ?? null}
-      />
-    </ConsoleShell>
+    <ClubProfileForm
+      clubId={clubId}
+      platformRole={user.platformRole}
+      initialClub={club}
+      initialDepartments={departments?.items ?? null}
+    />
   );
 }

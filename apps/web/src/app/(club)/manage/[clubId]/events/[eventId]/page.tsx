@@ -1,7 +1,6 @@
 import type { AssignmentList, AttendancePage, EventDetail, RegistrationPage } from '@majlis/contracts';
 import { PAGE } from '@/lib/page-size';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
 import { EventEditor } from './EventEditor';
@@ -25,16 +24,14 @@ export default async function EventEditorPage({
   ]);
 
   return (
-    <ConsoleShell title="Event">
-      <EventEditor
-        clubId={clubId}
-        eventId={eventId}
-        platformRole={user.platformRole}
-        initialEvent={event}
-        initialAssignments={assignments}
-        initialRoster={roster}
-        initialAttendance={attendance}
-      />
-    </ConsoleShell>
+    <EventEditor
+      clubId={clubId}
+      eventId={eventId}
+      platformRole={user.platformRole}
+      initialEvent={event}
+      initialAssignments={assignments}
+      initialRoster={roster}
+      initialAttendance={attendance}
+    />
   );
 }

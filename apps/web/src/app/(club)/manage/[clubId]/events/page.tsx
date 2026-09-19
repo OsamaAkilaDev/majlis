@@ -1,6 +1,5 @@
 import type { ClubDetail, EventPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
@@ -17,13 +16,11 @@ export default async function EventsPage({ params }: { params: Promise<{ clubId:
   ]);
 
   return (
-    <ConsoleShell title="Events">
-      <EventsManager
-        clubId={clubId}
-        platformRole={user.platformRole}
-        initialRoles={club?.viewerClubRoles ?? null}
-        initialEvents={events}
-      />
-    </ConsoleShell>
+    <EventsManager
+      clubId={clubId}
+      platformRole={user.platformRole}
+      initialRoles={club?.viewerClubRoles ?? null}
+      initialEvents={events}
+    />
   );
 }

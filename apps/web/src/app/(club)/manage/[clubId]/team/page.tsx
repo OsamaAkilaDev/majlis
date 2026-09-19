@@ -1,6 +1,5 @@
 import type { AppointmentPage, ClubDetail } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
@@ -17,13 +16,11 @@ export default async function TeamPage({ params }: { params: Promise<{ clubId: s
   ]);
 
   return (
-    <ConsoleShell title="Team">
-      <TeamManager
-        clubId={clubId}
-        viewerUserId={user.id}
-        initialClub={club}
-        initialTeam={team}
-      />
-    </ConsoleShell>
+    <TeamManager
+      clubId={clubId}
+      viewerUserId={user.id}
+      initialClub={club}
+      initialTeam={team}
+    />
   );
 }

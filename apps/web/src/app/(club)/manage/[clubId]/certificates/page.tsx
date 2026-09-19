@@ -1,6 +1,5 @@
 import type { EventPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
@@ -20,12 +19,10 @@ export default async function CertificatesPage({
   ]);
 
   return (
-    <ConsoleShell title="Certificates">
-      <CertificatesManager
-        clubId={clubId}
-        platformRole={user.platformRole}
-        initialEvents={events?.items ?? null}
-      />
-    </ConsoleShell>
+    <CertificatesManager
+      clubId={clubId}
+      platformRole={user.platformRole}
+      initialEvents={events?.items ?? null}
+    />
   );
 }

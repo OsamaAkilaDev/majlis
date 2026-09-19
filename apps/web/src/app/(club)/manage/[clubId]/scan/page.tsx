@@ -1,6 +1,5 @@
 import type { EventPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
-import { ConsoleShell } from '@/components/shell/ConsoleShell';
 import { ScanSession } from '@/components/scanner/ScanSession';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
@@ -12,8 +11,6 @@ export default async function ScanPage({ params }: { params: Promise<{ clubId: s
   const events = await serverFetch<EventPage>(`/events?clubId=${clubId}&limit=${CONSOLE_PAGE}`);
 
   return (
-    <ConsoleShell title="Scan">
-      <ScanSession clubId={clubId} initialEvents={events?.items ?? null} />
-    </ConsoleShell>
+    <ScanSession clubId={clubId} initialEvents={events?.items ?? null} />
   );
 }
