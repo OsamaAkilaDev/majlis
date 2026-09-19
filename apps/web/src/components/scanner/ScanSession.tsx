@@ -67,10 +67,9 @@ function ManualForm({
           className="h-12"
         />
       </Field>
-      {/* text-base, not this project's text-body: cn() runs tailwind-merge,
-          which cannot know a custom --text-body is a font size and files it
-          under text colour instead, silently dropping the variant's
-          text-primary-fg. That shipped as ink on primary at 1.87:1. */}
+      {/* text-base, not text-body: tailwind-merge cannot know a custom
+          --text-body is a font size, files it under colour, and silently drops
+          the variant's text-primary-fg. That shipped at 1.87:1. */}
       <Button type="submit" disabled={disabled} className="h-12 text-base">
         Check in
       </Button>
@@ -78,15 +77,8 @@ function ManualForm({
   );
 }
 
-/**
- * The check-in screen, spec 9.4. Dark in both themes on purpose: the operator
- * stands in a lit hall holding a viewfinder, and the surround has to stay dark
- * for the feed to read and for a white screen not to blind them between two
- * people. The theme toggle does not decide that; the use scene does.
- *
- * No mode to set. Pick the event, then scan. The camera is the default and the
- * email form is the fallback, which is the only choice the operator makes.
- */
+/** The check-in screen, spec 9.4. Dark in both themes: a viewfinder in a lit
+ *  hall needs a dark surround, and the use scene decides that, not the toggle. */
 export function ScanSession({
   clubId,
   initialEvents,
@@ -113,12 +105,9 @@ export function ScanSession({
       .catch(fail);
   }, [clubId, initialEvents, fail]);
 
-  /**
-   * The counter, and the prewarm the session opens with: the first real scan
-   * is then not also the first connection to the API. An operator who may scan
-   * but not read the roster gets a 403 here, which still warms the connection
-   * and simply leaves the counter off.
-   */
+  // Prewarms the connection, so the first real scan is not also the first call
+  // to the API. A 403 here (may scan, may not read the roster) still warms it
+  // and simply leaves the counter off.
   const refreshCounts = useCallback(async (id: string) => {
     try {
       const page = await listAttendance(id, { limit: 1 });
@@ -146,8 +135,7 @@ export function ScanSession({
         else sentinel = held;
       })
       .catch(() => {
-        // A denied or unsupported wake lock is not worth telling the operator
-        // about. A dimming screen is the whole consequence.
+
       });
 
     return () => {
@@ -168,8 +156,8 @@ export function ScanSession({
         if (result.result === 'CHECKED_IN') void refreshCounts(id);
         return result.result === 'CHECKED_IN';
       } catch (err) {
-        // A 403 here is spec 7.5's seventh outcome, written by the guard. It
-        // is a fault in the request, not a verdict on a person.
+        // Spec 7.5's seventh outcome, written by the guard: a fault in the
+        // request, never a verdict on a person.
         setError(
           err instanceof ProblemError
             ? (err.detail ?? err.title)
@@ -187,9 +175,8 @@ export function ScanSession({
     (raw: string) => {
       if (!eventId) return;
       const last = answered.current;
-      // The same code stays in frame after it has been answered. Without this
-      // the operator is shown "already checked in" for the person they have
-      // just let through.
+      // The code stays in frame after being answered. Without this the operator
+      // is shown "already checked in" for the person they just let through.
       if (last && last.raw === raw && Date.now() - last.at < REPEAT_MS) return;
       answered.current = { raw, at: Date.now() };
       void record(eventId, () => scanPass(eventId, { token: raw }));
@@ -204,9 +191,8 @@ export function ScanSession({
   const showManual = manualOpen || !scanning;
 
   return (
-    // Full bleed over the console's own padding: a viewfinder inset in a
-    // content column is a video thumbnail, not a scanner. The dark palette
-    // comes from the shell, which carries it across the header too.
+    // Full bleed over the console's padding. The dark palette comes from the
+    // shell, which carries it across the header too.
     <section className="-mx-4 -my-5 flex min-h-[calc(100dvh-3.75rem)] flex-col bg-bg text-ink lg:-mx-8 lg:-my-6">
       {event === null ? (
         <div className="flex flex-col gap-2 p-4">
@@ -242,8 +228,7 @@ export function ScanSession({
                 onToken={onToken}
                 onState={setCamera}
               />
-              {/* Over the feed, so the counter and the event never cost the
-                  viewfinder any height. */}
+
               <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
                 <span className="min-w-0 truncate rounded-control bg-black/80 px-2.5 py-1 text-sm text-white">
                   {event.title}
@@ -256,8 +241,7 @@ export function ScanSession({
               </div>
             </div>
           ) : (
-            // Said once, and then out of the way. A viewfinder-sized black
-            // rectangle that will never show a feed is pretending to scan.
+
             <div className="flex shrink-0 flex-col gap-1 border-b border-border p-4">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0 truncate font-semibold text-ink">{event.title}</span>
@@ -274,7 +258,7 @@ export function ScanSession({
           {verdict ? (
             <ScanVerdict verdict={verdict} onClear={() => setVerdict(null)} />
           ) : (
-            // Low, within one thumb of the bottom edge, never a top bar.
+
             <div className="mt-auto flex flex-col gap-3 border-t border-border p-4 pb-[calc(1rem+var(--safe-b))]">
               {error ? (
                 <p role="alert" className="text-sm text-bad-fg">

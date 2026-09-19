@@ -51,11 +51,8 @@ const RESPONSIBILITIES: EventResponsibility[] = ['EVENT_LEAD', 'OPERATIONS', 'MA
 /** enumLabel would render QR_SCAN as "Qr scan", which reads as a typo. */
 const METHOD: Record<AttendanceMethod, string> = { QR_SCAN: 'Scan', MANUAL: 'Manual' };
 
-/**
- * Two sections read behind their own permission (`event:assign`,
- * `registration:read`). A viewer without it gets a 403, which is the section
- * not existing rather than an error: the server is the protection either way.
- */
+/** Two sections sit behind their own permission. A 403 renders as the section
+ *  not existing rather than an error; the server is the protection either way. */
 async function optional<T>(promise: Promise<T>): Promise<T | null> {
   try {
     return await promise;
@@ -182,9 +179,8 @@ export function EventEditor({
     show: showAttendance,
     append: appendAttendance,
   } = useCursorPage(initialAttendance);
-  // The counter lives beside the page rather than in it: useCursorPage owns
-  // items and cursor, and checkedIn/expected are totals for the whole event,
-  // not for the page that happens to be on screen.
+  // Beside the page, not in it: these are totals for the whole event, not for
+  // the page on screen.
   const [counts, setCounts] = useState<{ checkedIn: number; expected: number } | null>(
     initialAttendance
       ? { checkedIn: initialAttendance.checkedIn, expected: initialAttendance.expected }
@@ -196,11 +192,10 @@ export function EventEditor({
   const [pending, setPending] = useState(false);
   const viewerZone = useViewerZone();
 
-  // getEvent FIRST, then the other three together. Not a taste for chains:
-  // reading the event is what calls lifecycle.advance() server-side, and the
-  // other three read rows that hop changes. Fired in one Promise.all, opening
-  // an event whose check-in window had just shut showed stale CONFIRMED
-  // badges and a pre-hop `expected` count until somebody refreshed.
+  // getEvent FIRST, then the other three together: reading the event is what
+  // calls lifecycle.advance() server-side, and the other three read rows that
+  // hop changes. In one Promise.all this showed stale CONFIRMED badges and a
+  // pre-hop `expected` count on an event whose check-in had just shut.
   const load = useCallback(async () => {
     const detail = await getEvent(eventId);
     const [assigned, registered, attended] = await Promise.all([
@@ -251,7 +246,7 @@ export function EventEditor({
   const roles = event.viewerClubRoles;
   const can = (field: EventField) => canEditEventField(field, roles, platformRole);
   // Mirrors PERMISSIONS in apps/api/src/auth/permissions.ts. Presentation
-  // only: the guard re-derives every one of these per request.
+  // only: the guard re-derives every one per request.
   const isAdmin = platformRole === 'ADMIN';
   // Spec 6.1: an Admin holding no role in this club is overriding, and every
   // action on this screen has to carry why.
@@ -259,18 +254,16 @@ export function EventEditor({
   const overrideReason = override ? reason.trim() || undefined : undefined;
   const canPublish = isAdmin || roles.includes('LEAD') || roles.includes('VICE_LEAD');
   const canCancel = isAdmin || roles.includes('LEAD');
-  // Mirrors 'attendance:correct' in apps/api/src/auth/permissions.ts: an
-  // EventAssignment grants the right to scan a queue, never to rewrite the
-  // record afterwards, so Vice Lead and an assigned operator are both absent.
-  // The API re-derives it per request, and enforces the correction window and
-  // the CERTIFIED lock that this cannot see at all.
+  // Mirrors 'attendance:correct': an EventAssignment grants the right to scan
+  // a queue, never to rewrite the record, so Vice Lead and an assigned
+  // operator are both absent. The API also enforces the correction window and
+  // the CERTIFIED lock, which this cannot see at all.
   const canCorrect = isAdmin || roles.includes('LEAD') || roles.includes('OPERATIONS');
   const times = eventTimes(event.startsAt, event.endsAt, event.timezone, viewerZone);
 
   async function correct(registrationId: string, present: boolean, why: string | undefined) {
-    // eventId, not event.id: this is a hoisted declaration, so TypeScript
-    // analyses it above the guard that narrows the event and would want a
-    // non-null assertion it does not actually need.
+    // eventId, not event.id: hoisted, so TypeScript analyses it above the
+    // guard that narrows the event and would want a needless assertion.
     await correctAttendance(eventId, registrationId, {
       present,
       reason: why ?? '',
@@ -350,8 +343,7 @@ export function EventEditor({
           />
         ) : null}
 
-        {/* Inputs the viewer's club role may not change are disabled, so an
-            officer is not invited to type a change the server will refuse. */}
+
         <EventFields values={values} set={set} disabled={(field) => !can(field)} error={error} />
 
         {override ? <OverrideReason value={reason} onChange={setReason} /> : null}
@@ -467,9 +459,7 @@ export function EventEditor({
         </Section>
       )}
 
-      {/* Beside the registration list, not instead of it: one answers who
-          signed up and carries the waitlist and the source, the other answers
-          who actually came. */}
+
       {attendance === null ? null : (
         <Section
           title="Attendance"
@@ -499,8 +489,8 @@ export function EventEditor({
               <TableBody>
                 {attendance.map((row) => {
                   // The attendance record, never the registration status: a
-                  // correction deletes the record, and the two would disagree
-                  // for as long as the page went unrefreshed.
+                  // correction deletes the record and the two would disagree
+                  // until a refresh.
                   const present = row.checkedInAt !== null;
                   return (
                     <TableRow key={row.id}>

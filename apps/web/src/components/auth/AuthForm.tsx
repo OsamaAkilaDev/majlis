@@ -18,19 +18,13 @@ export const PASSWORD_MISMATCH = 'Both passwords must match.';
 const NO_RESPONSE = 'Could not reach the server. Check your connection and try again.';
 
 /**
- * The rule that is otherwise invisible until submit, shown on the label row
- * rather than as a sentence under the control. Exported for the reset and
- * first-admin forms, which set a password under the same rule.
- *
- * The label carries two different things by design. Below the minimum the
- * only thing worth saying is the rule, because nothing else the field could
- * report would let the user submit. Once the rule is met the rule is settled,
- * and the grade is the only thing left to say.
+ * The label carries two different things by design: below the minimum, the
+ * rule, since nothing else would let the user submit; once met, the grade.
+ * Exported for the reset and first-admin forms.
  */
 export function PasswordRule({ password }: { password: string }) {
   const { score, label, met } = passwordStrength(password);
-  // Weak and Fair are accepted by the API, so they cannot be shown in the
-  // error colour. Amber says "this will go through, and you can do better".
+  // Weak and Fair are accepted by the API, so they must not read as errors.
   const tone = !met ? 'text-ink-2' : score <= 2 ? 'text-warn-fg' : 'text-primary';
   const fill = !met ? 'bg-border-control' : score <= 2 ? 'bg-warn-fg' : 'bg-primary';
 
@@ -47,9 +41,8 @@ export function PasswordRule({ password }: { password: string }) {
           />
         ))}
       </span>
-      {/* Not aria-hidden, unlike the bars: the grade is the only form the
-          meter takes for a screen reader, and it is polite so that typing a
-          password is not narrated one character at a time. */}
+      {/* Not aria-hidden, unlike the bars: this is the only form the meter
+          takes for a screen reader. Polite, or typing is narrated per key. */}
       <span
         role="status"
         aria-live="polite"
@@ -74,9 +67,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    // Before the request, not after it. The API has no second password to
-    // compare against and never will: a typo caught here costs nothing, and
-    // one that gets through creates an account nobody can sign in to.
+    // The API has no second password to compare against and never will, so a
+    // typo that gets through creates an account nobody can sign in to.
     if (signup && password !== confirm) {
       setMismatch(PASSWORD_MISMATCH);
       return;
@@ -86,7 +78,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
     setProblem(null);
     setNetworkError(null);
 
-    // confirm never leaves the browser. The contract has no field for it, so
+    // confirm never leaves the browser: the contract has no field for it, so
     // sending it would lean on Zod stripping unknown keys to stay correct.
     const body = new FormData(event.currentTarget);
     body.delete('confirm');
@@ -153,8 +145,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
             value={confirm}
             onChange={(e) => {
               setConfirm(e.target.value);
-              // Cleared on edit, not re-checked: re-checking every keystroke
-              // reports a mismatch against a value still being typed.
+              // Cleared on edit, never re-checked: that reports a mismatch
+              // against a value still being typed.
               setMismatch(null);
             }}
           />

@@ -32,9 +32,9 @@ describe('apiFetch', () => {
   });
 
   it('prefixes the path with /api/v1 and sends credentials', async () => {
-    // Catches a client that calls the API origin directly. That bypasses the
-    // rewrite, makes the request cross-origin, and the session cookie stops
-    // being sent at all, which presents as "randomly logged out".
+    // Catches calling the API origin directly: that bypasses the rewrite, the
+    // request goes cross-origin, the cookie stops being sent, and it presents
+    // as "randomly logged out".
     const calls = mockFetch([() => json({})]);
     await apiFetch('/auth/me');
     expect(calls[0]?.url).toBe('/api/v1/auth/me');
@@ -59,9 +59,8 @@ describe('apiFetch', () => {
   });
 
   it('refreshes once and retries the original request on 401', async () => {
-    // Catches both halves of the contract. An implementation that retries
-    // without refreshing, or refreshes without retrying, fails here; a test
-    // that only asserted the final value would pass against both.
+    // Catches retrying without refreshing AND refreshing without retrying. A
+    // test asserting only the final value passes against both.
     const calls = mockFetch([
       () => problem(401),
       () => json({}),            // refresh
@@ -73,9 +72,8 @@ describe('apiFetch', () => {
   });
 
   it('does not retry more than once when the retry also 401s', async () => {
-    // Catches a recursive retry. The mock clamps on its last entry, so an
-    // implementation that retries on every 401 keeps calling and the length
-    // assertion is what stops it. Three calls is exactly one retry.
+    // Catches a recursive retry: the mock clamps on its last entry, so the
+    // length assertion is what stops it. Three calls is exactly one retry.
     const calls = mockFetch([() => problem(401), () => json({}), () => problem(401)]);
     await expect(apiFetch('/me')).rejects.toBeInstanceOf(ProblemError);
     expect(calls).toHaveLength(3);
@@ -89,9 +87,8 @@ describe('apiFetch', () => {
   });
 
   it('throws ProblemError on a non-JSON 500 rather than a parse error', async () => {
-    // Catches an unguarded res.json(). A proxy or gateway 500 is HTML, and an
-    // unguarded parse throws SyntaxError, which loses the status entirely and
-    // renders as a blank screen rather than an error state.
+    // Catches an unguarded res.json(): a gateway 500 is HTML, and the
+    // SyntaxError loses the status and renders as a blank screen.
     mockFetch([() => new Response('<html>502</html>', { status: 502, headers: { 'content-type': 'text/html' } })]);
     const err = (await apiFetch('/me').catch((e) => e)) as ProblemError;
     expect(err).toBeInstanceOf(ProblemError);
@@ -100,9 +97,9 @@ describe('apiFetch', () => {
   });
 
   it('sends a session that cannot be refreshed to /login', async () => {
-    // The skeleton-forever defect the Stage 5 handoff names first. A promise
-    // rejected inside a load() effect reaches no error boundary, so a revoked
-    // refresh token has to end the session here or the screen never recovers.
+    // A promise rejected inside a load() effect reaches no error boundary, so
+    // a revoked refresh token has to end the session here or the screen stays
+    // on its skeleton forever.
     const assign = vi.fn();
     vi.stubGlobal('window', { location: { assign } });
     mockFetch([() => problem(401), () => json({}), () => problem(401)]);
@@ -111,9 +108,8 @@ describe('apiFetch', () => {
   });
 
   it('leaves a wrong password on the sign-in form rather than reloading it', async () => {
-    // Catches a redirect that fires for every 401. /auth/login answers 401 to
-    // a wrong password, and navigating away from the form throws the message
-    // the user needed to read.
+    // Catches redirecting on every 401: /auth/login answers 401 to a wrong
+    // password, and navigating away throws the message away with it.
     const assign = vi.fn();
     vi.stubGlobal('window', { location: { assign } });
     mockFetch([() => problem(401, { detail: 'Email or password is incorrect.' })]);
@@ -129,9 +125,8 @@ describe('apiFetch', () => {
 
   it('returns undefined for a bodyless 202, not a parse error', async () => {
     // /auth/forgot-password answers 202 with no body. A 204-only special case
-    // let res.json() throw SyntaxError here, which is not a ProblemError, so
-    // the form reported "could not reach the server" on a request that had
-    // just succeeded.
+    // threw SyntaxError, which is not a ProblemError, so the form reported
+    // "could not reach the server" on a request that had just succeeded.
     mockFetch([() => new Response(null, { status: 202 })]);
     await expect(apiFetch('/auth/forgot-password', { method: 'POST' })).resolves.toBeUndefined();
   });
@@ -139,9 +134,8 @@ describe('apiFetch', () => {
 
 describe('onMutation', () => {
   it('fires after a mutation succeeds', async () => {
-    // Catches the invalidator never being wired up, which is the stale-list
-    // defect staleTimes introduces: register for an event, go back to the
-    // cached /events, and the seat count is the one from before you booked.
+    // Catches the invalidator never being wired up: register for an event, go
+    // back to the cached /events, and the seat count predates your booking.
     const invalidate = vi.fn();
     onMutation(invalidate);
     mockFetch([() => json({ id: 'r1' })]);
