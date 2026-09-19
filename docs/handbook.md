@@ -293,6 +293,36 @@ stored or logged anywhere.
 | Certificate QR codes point at the wrong host | `PUBLIC_WEB_ORIGIN`. Already-issued certificates keep the old URL |
 | Scanner will not open the camera | Not a secure context. Use HTTPS or `localhost` |
 
+### When a test looks broken
+
+Four failures that look like product defects and are not. Each one cost a session.
+
+**A Playwright failure about times, after a pull.** The Stage 8 timezone fix pins
+`options=-c timezone=UTC` on the connection. Every row written to `majlis_dev` before
+that commit is four hours off. Reseed with `pnpm --filter @majlis/api db:seed` before
+believing the assertion.
+
+**"Element not found" on a second or third full Playwright run.** `next dev` reaches
+1.7 GB after two runs and Node's 4 GB cap then produces failures that read as missing
+markup. Restart it between full runs. Stopping the pnpm wrapper does not kill the
+child; find the process holding port 3000.
+
+**"Internal Server Error" in an e2e run, with nothing wrong in the API log.** Check the
+*web* server's proxy log. A burst of `Restarting 'src/main.ts'` in the API plus
+`ECONNREFUSED` in the proxy has produced phantom failures in Stages 6, 7 and 8. The API
+log alone shows nothing.
+
+**Dozens of integration failures at once, with `40P01 deadlock detected` in
+`beforeEach`.** Two integration runs against the one test database deadlock each other:
+`truncateAll` takes ACCESS EXCLUSIVE while the other run holds row locks. Run one at a
+time. A full-suite result collected alongside a single re-run file once showed 63
+spurious failures.
+
+A fifth, for whoever adds a test: **a test that logs out, resets a password, or suspends
+a user must create its own account.** Logout stamps `sessions_invalidated_at`
+account-wide, so a destructive test sharing a seeded fixture invalidates it under every
+test running in parallel.
+
 ## Where the rest is written down
 
 - [`docs/specs/2026-09-10-majlis-design.md`](specs/2026-09-10-majlis-design.md).

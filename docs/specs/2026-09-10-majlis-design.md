@@ -1531,3 +1531,66 @@ deadlock each other. `truncateAll` takes ACCESS EXCLUSIVE on every table while t
 holds row locks, and the losing side reports `40P01 deadlock detected` from `beforeEach`, after
 which every assertion in that file fails on stale data. A full-suite result collected while a
 single file was being re-run alongside it showed 63 spurious failures. Run one at a time.
+
+### A repo-wide cleanup pass (2026-09-19)
+
+No stage. An over-engineering audit of the whole tree, applied. Recorded here because
+three of the findings changed what the suites prove, not just how much code there is.
+
+**The contrast suite was validating a copy.** `apps/web/src/styles/tokens.ts` held a
+second set of all 25 colours, imported by nothing but `tokens.contrast.test.ts`, while
+the values the browser loads live in `globals.css`. Editing a hex in the stylesheet left
+all 52 assertions green. The test parses `globals.css` now and `tokens.ts` is deleted.
+Two bugs fell out of doing it, both of which had been passing: `.dark` first occurs
+inside `@custom-variant dark (&:where(.dark, .dark *))` on line 3, so a plain `indexOf`
+walked to the `:root` brace and **the dark palette had never been checked at all**; and
+`it.each` with array rows interpolates `%s` positionally, so titles read "ink3 on bg
+meets #7C6F62:1". Proven to discriminate before being trusted: `--ink-3` set to #AAAAAA
+fails two pairs, `--mute-fg` deleted from `.dark` fails the file.
+
+**`consistent-type-imports` was suppressed 86 times in `apps/api/src`.** Nest resolves
+constructor DI from `design:paramtypes`, so an injected provider must be a value import;
+the `import type` the rule asks for emits `Object` and breaks injection at runtime with
+no type error and no failing test. A rule that is wrong at every call site is not a rule.
+Turned off for `apps/api/src/**` only — `test/` and `prisma/seed.ts` have no DI and keep
+it, as do web and contracts.
+
+**`@RequirePermission` emits its own 403.** The guard refuses every route carrying it
+with one message, and the matching `@ApiResponse` was hand-written identically beside all
+41 call sites. Folded in with `applyDecorators`. Two tests on the generated document, in
+opposite directions: `/audit` must carry the 403 with a resolved Problem Details schema,
+and `GET /me/invitations`, self-scoped by `actor.id`, must not.
+
+Also cut: `apiText` and two comments describing the `text/csv` exports deleted on
+2026-09-17 (`text/csv` now appears nowhere in the repository); `sonner`, whose `<Toaster />`
+was mounted in the root layout with `toast()` never called once; four unused contract
+exports (`meSchema`, `AttendanceRow`, `SessionClubRole`, `OverrideBody`, all four schemas
+retained); and 17 `String(query.limit)` call sites, `qs` having been widened to take
+numbers and booleans.
+
+**`@majlis/contracts` was resolving `@types/node` by accident.** Removing the root
+`@types/pg`, which existed only for a `node -e` one-liner that is never typechecked, broke
+the contracts build: it needs the `URL` global under `lib: ["ES2023"]` and had been getting
+it through that hoist. Declared explicitly. This is precisely the class of thing the
+never-run CI would have caught on its first clean install.
+
+**One optimisation, and two deliberately not taken.** `PermissionsGuard.loadFacts` awaited
+`resolveEventFacts` then `resolveEventClubFacts` in sequence on every event-scoped request,
+including the scan path §7.5 gives a latency requirement. They read different tables and
+neither feeds the other, so they run concurrently now. The same shape in
+`EventsService.toDetail` and `AuthService.issueSession` is left alone: both sit inside
+`host.run`, where concurrent calls would queue on one transaction connection rather than
+taking two from the pool.
+
+`handoff.md` is reconciled and deleted, per the read order in `CLAUDE.md`. Its three
+local-development traps — reseed before believing a timestamp failure, restart `next dev`
+between full Playwright runs, read the web proxy log rather than the API log — had no
+permanent home and are now in the handbook under "When a test looks broken", with the
+integration deadlock and the destructive-test rule beside them. `docs/NEXT-AGENT-PROMPT.md`,
+a prompt to build Stage 6, is deleted.
+
+**Open, and deliberately not decided here:** `GET /reports/overview` has no web consumer.
+It is exercised only by `reporting.integration.test.ts`. The 2026-09-16 entry above kept it
+on purpose when `/admin/metrics` went, but that same entry argues that "dead endpoints behind
+a deleted screen are worse than no endpoints". It is one or the other and wants an owner's
+decision, not an agent's.
