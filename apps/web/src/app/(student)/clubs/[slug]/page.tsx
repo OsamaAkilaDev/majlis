@@ -10,8 +10,10 @@ export default async function ClubDetailPage({ params }: { params: Promise<{ slu
   const { slug } = await params;
   const club = await serverFetch<Club>(`/clubs/by-slug/${encodeURIComponent(slug)}`);
 
+  // The club's own name once the server has it: the header is the viewer's
+  // sense of place, and "Club" tells them nothing they did not already know.
   return (
-    <StudentShell title="Club">
+    <StudentShell title={club?.name ?? 'Club'}>
       <ClubDetail slug={slug} initialClub={club} />
     </StudentShell>
   );

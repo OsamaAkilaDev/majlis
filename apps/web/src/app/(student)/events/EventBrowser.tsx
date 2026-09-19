@@ -59,12 +59,15 @@ function EventCard({ event, viewerZone }: { event: EventSummary; viewerZone: str
 export function EventBrowser({
   initialEvents,
   initialClubs,
+  initialClubId,
 }: {
   initialEvents: EventPage | null;
   initialClubs: ClubSummary[] | null;
+  /** From `?club=`; the server already applied it to `initialEvents`. */
+  initialClubId?: string;
 }) {
   const [clubs, setClubs] = useState<ClubSummary[]>(initialClubs ?? []);
-  const [clubId, setClubId] = useState(ANY_CLUB);
+  const [clubId, setClubId] = useState(initialClubId ?? ANY_CLUB);
   const [q, setQ] = useState('');
   const { items, cursor, show, append } = useCursorPage(initialEvents);
   const [loadingMore, setLoadingMore] = useState(false);

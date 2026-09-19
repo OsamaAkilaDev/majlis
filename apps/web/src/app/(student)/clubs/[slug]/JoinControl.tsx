@@ -1,39 +1,73 @@
 'use client';
 
 import type { ClubDetail } from '@majlis/contracts';
+import Link from 'next/link';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { ProblemError } from '@/lib/api';
 import { leaveClub, requestMembership } from '@/lib/clubs';
 
-/**
- * What a viewer can do, derived from the club's policy, its status, and the
- * viewer's own most recent membership row. The API refuses anything this
- * gets wrong; hiding a control is presentation, never protection.
- */
-function decide(club: ClubDetail): { kind: 'join' | 'request' | 'leave' | 'pending' | 'none'; why?: string } {
-  const status = club.viewerMembershipStatus;
-  if (status === 'ACTIVE') return { kind: 'leave' };
-  if (status === 'PENDING') return { kind: 'pending' };
-  if (status === 'REMOVED') return { kind: 'none', why: 'You were removed from this club' };
+type Kind = 'join' | 'request' | 'withdraw' | 'leave' | 'console' | 'blocked';
 
-  if (club.status === 'SUSPENDED') return { kind: 'none', why: 'This club is suspended' };
-  if (club.status === 'ARCHIVED') return { kind: 'none', why: 'This club is archived' };
+interface Decision {
+  kind: Kind;
+  label: string;
+  /** Only on `blocked`: why the control cannot be pressed. The label alone is
+   *  the reason for a sighted reader; this is the same reason for a screen
+   *  reader, which never sees a disabled button's styling. */
+  why?: string;
+}
+
+/**
+ * One control carries the whole membership policy: its label states the
+ * policy, its enabled state states whether this viewer can act. Nothing else
+ * on the club page mentions joining.
+ *
+ * The API refuses anything this gets wrong; a control's appearance is
+ * presentation, never protection.
+ */
+export function decide(club: ClubDetail): Decision {
+  if (club.viewerClubRoles.length > 0) return { kind: 'console', label: 'Open club console' };
+
+  switch (club.viewerMembershipStatus) {
+    case 'ACTIVE':
+      return { kind: 'leave', label: 'Leave club' };
+    case 'PENDING':
+      return { kind: 'withdraw', label: 'Withdraw request' };
+    case 'REMOVED':
+      return { kind: 'blocked', label: 'Removed from club', why: 'You were removed from this club' };
+    default:
+      break;
+  }
+
+  // Students never reach a club that is not ACTIVE: the API answers 404. An
+  // officer or an Admin does, and for them joining is still shut.
+  if (club.status !== 'ACTIVE') {
+    return { kind: 'blocked', label: 'Joining unavailable', why: `This club is ${club.status.toLowerCase()}` };
+  }
 
   switch (club.membershipPolicy) {
     case 'OPEN':
-      return { kind: 'join' };
+      return { kind: 'join', label: 'Join club' };
     case 'APPROVAL_REQUIRED':
-      return { kind: 'request' };
+      return { kind: 'request', label: 'Request to join' };
     case 'INVITE_ONLY':
-      return { kind: 'none', why: 'This club admits members by invitation only' };
+      return { kind: 'blocked', label: 'Invite only', why: 'This club admits members by invitation only' };
     case 'CLOSED':
-      return { kind: 'none', why: 'This club is not accepting members' };
+      return { kind: 'blocked', label: 'Joining closed', why: 'This club is not accepting members' };
   }
 }
 
-export function JoinControl({ club, onChanged }: { club: ClubDetail; onChanged: () => Promise<void> }) {
+export function JoinControl({
+  club,
+  onChanged,
+  className,
+}: {
+  club: ClubDetail;
+  onChanged: () => Promise<void>;
+  className?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const action = decide(club);
@@ -51,50 +85,48 @@ export function JoinControl({ club, onChanged }: { club: ClubDetail; onChanged: 
     }
   }
 
+  const wide = 'w-full sm:w-auto';
+
   return (
-    <div className="flex flex-col gap-2">
-      {action.kind === 'join' ? (
-        <Button onClick={() => run(() => requestMembership(club.id))} disabled={busy}>
-          Join
+    <div className={className}>
+      {action.kind === 'join' || action.kind === 'request' ? (
+        <Button
+          size="lg"
+          className={wide}
+          disabled={busy}
+          onClick={() => run(() => requestMembership(club.id))}
+        >
+          {action.label}
         </Button>
       ) : null}
 
-      {action.kind === 'request' ? (
-        <Button onClick={() => run(() => requestMembership(club.id))} disabled={busy}>
-          Request to join
+      {action.kind === 'console' ? (
+        <Button asChild size="lg" className={wide}>
+          <Link href={`/manage/${club.id}`}>{action.label}</Link>
         </Button>
       ) : null}
 
-      {action.kind === 'pending' ? (
-        <Button disabled aria-label="Your request is pending a decision">
-          Request pending
-        </Button>
-      ) : null}
-
-      {action.kind === 'leave' ? (
+      {action.kind === 'withdraw' || action.kind === 'leave' ? (
         <ConfirmDialog
-          title={`Leave ${club.name}?`}
-          confirmLabel="Leave"
+          title={action.kind === 'leave' ? `Leave ${club.name}?` : `Withdraw your request to join ${club.name}?`}
+          confirmLabel={action.label}
           trigger={
-            <Button variant="outline" disabled={busy}>
-              Leave
+            <Button variant="outline" size="lg" className={wide} disabled={busy}>
+              {action.label}
             </Button>
           }
           onConfirm={() => run(() => leaveClub(club.id))}
         />
       ) : null}
 
-      {/* A disabled control needs an accessible name carrying the reason, or
-          the refusal exists only in the layout and a screen reader user
-          learns nothing about why they cannot act. */}
-      {action.kind === 'none' ? (
-        <Button disabled aria-label={action.why}>
-          Join
+      {action.kind === 'blocked' ? (
+        <Button size="lg" className={wide} disabled aria-label={action.why}>
+          {action.label}
         </Button>
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-sm text-bad-fg">
+        <p role="alert" className="mt-2 text-sm text-bad-fg">
           {error}
         </p>
       ) : null}

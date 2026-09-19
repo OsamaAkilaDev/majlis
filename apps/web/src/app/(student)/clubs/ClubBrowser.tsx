@@ -34,12 +34,15 @@ function ClubCard({ club }: { club: ClubSummary }) {
 export function ClubBrowser({
   initialClubs,
   initialDepartments,
+  initialDepartmentId,
 }: {
   initialClubs: ClubPage | null;
   initialDepartments: Department[] | null;
+  /** From `?department=`; the server already applied it to `initialClubs`. */
+  initialDepartmentId?: string;
 }) {
   const [departments, setDepartments] = useState<Department[]>(initialDepartments ?? []);
-  const [departmentId, setDepartmentId] = useState(ANY_DEPARTMENT);
+  const [departmentId, setDepartmentId] = useState(initialDepartmentId ?? ANY_DEPARTMENT);
   const [q, setQ] = useState('');
   const { items, cursor, show, append } = useCursorPage(initialClubs);
   const [loadingMore, setLoadingMore] = useState(false);

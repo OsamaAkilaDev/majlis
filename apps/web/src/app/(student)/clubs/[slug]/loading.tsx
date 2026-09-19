@@ -7,15 +7,16 @@ export default function Loading() {
   return (
     <StudentShell title="Club">
       <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-4">
-          <Bar className="size-16 shrink-0 rounded-card" />
-          <span className="flex min-w-0 flex-1 flex-col gap-2">
+        <Bar className="aspect-[8/3] w-full rounded-card" />
+        <div className="-mt-15 flex items-end gap-4 px-3">
+          <Bar className="size-19 shrink-0 rounded-card" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2 pb-1">
             <Bar className="h-6 w-1/2" />
             <Bar className="h-3.5 w-1/3" />
           </span>
-          <Bar className="h-9 w-24 shrink-0 rounded-control" />
         </div>
-        <Bar className="h-16 w-full rounded-card" />
+        <Bar className="h-9 w-full rounded-control sm:w-40" />
+        <Bar className="h-16 w-full" />
         <SectionSkeleton width="w-28">
           <RowsSkeleton count={3} action={false} />
         </SectionSkeleton>
