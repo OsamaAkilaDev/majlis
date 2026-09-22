@@ -20,8 +20,7 @@ function club(overrides: Partial<ClubDetail> = {}): ClubDetail {
     viewerMembershipStatus: null,
     viewerClubRoles: [],
     committee: [],
-    upcoming: [],
-    past: [],
+    pendingMemberCount: null,
     eventsRun: 0,
     ...overrides,
   };

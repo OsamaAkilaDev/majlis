@@ -1,129 +1,120 @@
 'use client';
 
-import { CLUB_EVENT_PREVIEW, type ClubDetail as Club, type ClubEvent } from '@majlis/contracts';
+import type { ClubDetail as Club, EventSummary } from '@majlis/contracts';
 import { CaretRight } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ClubBanner } from '@/components/ClubBanner';
 import { EmptyState } from '@/components/EmptyState';
+import { EventRow } from '@/components/EventRow';
+import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
-import { useViewerZone } from '@/lib/use-viewer-zone';
 import { cn } from '@/lib/cn';
 import { getClubBySlug } from '@/lib/clubs';
+import { splitOnEnd } from '@/lib/event-schedule';
+import { listEvents } from '@/lib/events';
 import { ICON_WEIGHT } from '@/lib/icons';
+import { PAGE } from '@/lib/page-size';
 import { useAsyncError } from '@/lib/use-async-error';
+import { useCursorPage } from '@/lib/use-cursor-page';
 import { AboutBlock, CommitteeBlock, DepartmentBlock } from './ClubAbout';
 import { JoinControl } from './JoinControl';
-
-/** One piece of an instant, on the viewer's own clock. Blank until the zone is
- *  known, because the server's is not it. */
-function datePart(
-  at: string,
-  timeZone: string | undefined,
-  options: Intl.DateTimeFormatOptions,
-  locale = 'en-GB',
-): string {
-  if (!timeZone) return ' ';
-  return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(new Date(at));
-}
-
-function EventRow({ event, past }: { event: ClubEvent; past?: boolean }) {
-  const left = Math.max(event.capacity - event.confirmedCount, 0);
-  const zone = useViewerZone();
-
-  return (
-    <Link
-      href={`/events/${event.id}`}
-      className="flex items-center gap-3 rounded-card border border-border bg-surface p-2.5 transition-colors duration-(--dur-fast) ease-(--ease-out) hover:bg-surface-2"
-    >
-      <span className="w-11 shrink-0 overflow-hidden rounded-control border border-border bg-surface-2 text-center">
-        <span className="block bg-primary py-0.5 text-[0.5625rem] font-bold tracking-[0.06em] text-primary-fg uppercase">
-          {datePart(event.startsAt, zone, { month: 'short' })}
-        </span>
-        <span className="block py-0.5 text-base font-bold tabular-nums text-ink">
-          {datePart(event.startsAt, zone, { day: '2-digit' })}
-        </span>
-      </span>
-
-      <span className="min-w-0 flex-1">
-        {/* Two lines before it gives up: the title is what the row is for. */}
-        <span className="block font-semibold text-ink line-clamp-2">{event.title}</span>
-        <span className="block truncate text-sm tabular-nums text-ink-2">
-          {datePart(
-            event.startsAt,
-            zone,
-            { hour: 'numeric', minute: '2-digit', hour12: true },
-            'en-US',
-          )}
-          {' · '}
-          {event.venue ?? 'Online'}
-        </span>
-      </span>
-
-      {past ? (
-        <StatusBadge status={event.status} compact />
-      ) : (
-        <span
-          className={cn(
-            'shrink-0 text-sm tabular-nums',
-            left === 0 ? 'text-warn-fg' : 'text-ink-2',
-          )}
-        >
-          {left === 0 ? 'Full' : `${left} left`}
-        </span>
-      )}
-    </Link>
-  );
-}
 
 function EventSection({
   title,
   events,
-  clubId,
-  empty,
   past,
 }: {
   title: string;
-  events: ClubEvent[];
-  clubId: string;
-  empty?: string;
+  events: EventSummary[];
   past?: boolean;
 }) {
-  // The API sends one row past the preview so this can tell whether there is
-  // more without a second count query.
-  const more = events.length > CLUB_EVENT_PREVIEW;
-  const shown = events.slice(0, CLUB_EVENT_PREVIEW);
-
-  if (shown.length === 0 && !empty) return null;
+  if (events.length === 0) return null;
 
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-baseline gap-2">
         <h3 className="font-display text-h1 text-ink">{title}</h3>
-        {more ? (
-          <Link
-            href={`/events?club=${clubId}`}
-            className="text-sm font-semibold text-primary hover:underline"
-          >
-            See all
-          </Link>
-        ) : null}
+        <span className="text-sm tabular-nums text-ink-3">{events.length}</span>
       </div>
 
-      {shown.length === 0 ? (
-        <EmptyState title={empty as string} />
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {shown.map((event) => (
+      <ul className="flex flex-col gap-2">
+        {events.map((event) => {
+          const left = Math.max(event.capacity - event.confirmedCount, 0);
+          return (
             <li key={event.id}>
-              <EventRow event={event} past={past} />
+              <EventRow
+                event={event}
+                club={false}
+                trailing={
+                  past ? (
+                    <StatusBadge status={event.status} compact />
+                  ) : (
+                    <span
+                      className={cn(
+                        'shrink-0 text-[0.8125rem] tabular-nums',
+                        left === 0 ? 'text-warn-fg' : 'text-ink-2',
+                      )}
+                    >
+                      {left === 0 ? 'Full' : `${left} left`}
+                    </span>
+                  )
+                }
+              />
             </li>
-          ))}
-        </ul>
-      )}
+          );
+        })}
+      </ul>
     </section>
+  );
+}
+
+/**
+ * The club's whole programme, drafts and all: no `upcoming` filter, so an
+ * officer keeps seeing what is not published yet and everyone keeps seeing
+ * what is over. Which half a row belongs in is decided here, because this
+ * route has no `past` flag to ask for.
+ */
+function ClubEvents({ clubId }: { clubId: string }) {
+  const { items, cursor, show, append } = useCursorPage<EventSummary>(null);
+  const [busy, setBusy] = useState(false);
+  const fail = useAsyncError();
+
+  useEffect(() => {
+    let cancelled = false;
+    listEvents({ clubId, limit: PAGE })
+      .then((page) => {
+        if (!cancelled) show(page);
+      })
+      .catch(fail);
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, show]);
+
+  async function loadMore() {
+    if (!cursor) return;
+    setBusy(true);
+    try {
+      append(await listEvents({ clubId, limit: PAGE, cursor }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (items === null) return <Skeleton className="h-40" />;
+  if (items.length === 0) return <EmptyState title="No events" />;
+
+  const { upcoming, past } = splitOnEnd(items, Date.now());
+
+  return (
+    <div className="flex flex-col gap-6">
+      <EventSection title="Upcoming" events={upcoming} />
+      <EventSection title="Past" events={past} past />
+      <LoadMore cursor={cursor} onClick={loadMore} busy={busy} />
+    </div>
   );
 }
 
@@ -223,13 +214,7 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
           long venue line pushed the whole column past a 320px screen. */}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          <EventSection
-            title="Upcoming"
-            events={club.upcoming}
-            clubId={club.id}
-            empty="Nothing scheduled"
-          />
-          <EventSection title="Past" events={club.past} clubId={club.id} past />
+          <ClubEvents clubId={club.id} />
 
           {/* Phone and tablet have no rail to put About in, so it becomes a
               destination. The rail below replaces it from lg up. */}
