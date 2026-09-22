@@ -1,4 +1,4 @@
-import { CalendarDots, House, QrCode, Users } from '@phosphor-icons/react/ssr';
+import { CalendarDots, QrCode, Users } from '@phosphor-icons/react/ssr';
 import { ICON_WEIGHT } from '@/lib/icons';
 import type { NavItem } from './SideNav';
 
@@ -12,9 +12,8 @@ import type { NavItem } from './SideNav';
  * instead.
  */
 export const STUDENT_TABS = [
-  { href: '/home', label: 'Home', icon: House },
-  { href: '/clubs', label: 'Clubs', icon: Users },
   { href: '/events', label: 'Events', icon: CalendarDots },
+  { href: '/clubs', label: 'Clubs', icon: Users },
   { href: '/profile/qr', label: 'QR', icon: QrCode },
 ] as const;
 

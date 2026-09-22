@@ -1,5 +1,4 @@
 import type { SessionUser } from '@majlis/contracts';
-import { enumLabel } from './enum-label';
 
 // The API adds `__Host-` in production only (apps/api/src/auth/cookies.ts);
 // the prefix needs HTTPS and the dev loop runs over HTTP. Derived the same way
@@ -18,10 +17,7 @@ const PUBLIC_PREFIXES = ['/verify'];
 const AUTH_ROUTES = ['/login', '/signup', '/setup', '/forgot-password', '/reset-password'];
 
 export function landingFor(user: SessionUser): string {
-  if (user.platformRole === 'ADMIN') return '/admin';
-  const clubIds = user.clubRoles.map((r) => r.clubId).sort();
-  const first = clubIds[0];
-  return first ? `/manage/${first}` : '/home';
+  return user.platformRole === 'ADMIN' ? '/admin' : '/events';
 }
 
 /** The longest href that is a prefix of `pathname`, so a deep route lights the
@@ -37,21 +33,19 @@ export function activeNavHref(pathname: string, hrefs: readonly string[]): strin
 
 export type ShellDestination = { href: string; label: string; meta?: string };
 
+/** At most one entry. A club is reached from the Clubs tab, where the viewer's
+ *  own sit at the top wearing their role, so a switcher listing them again is
+ *  a second route to the same place. */
 export function shellDestinations(user: SessionUser): ShellDestination[] {
-  const destinations: ShellDestination[] = [];
-  if (user.platformRole === 'ADMIN') destinations.push({ href: '/admin', label: 'Admin' });
+  return user.platformRole === 'ADMIN' ? [{ href: '/admin', label: 'Admin' }] : [];
+}
 
-  const clubs = [...user.clubRoles].sort((a, b) => a.clubId.localeCompare(b.clubId));
-  for (const { clubId, clubName, role } of clubs) {
-    destinations.push({
-      href: `/manage/${clubId}/overview`,
-      label: clubName,
-      meta: enumLabel(role),
-    });
-  }
-
-  destinations.push({ href: '/home', label: 'Home' });
-  return destinations;
+/** Where a viewer of the club console belongs instead, or null if they belong
+ *  there. The console is Admin-only as of Stage 9; an officer does their work
+ *  inside the application, on the club page itself. */
+export function consoleRedirect(user: SessionUser, clubSlug: string | null): string | null {
+  if (user.platformRole === 'ADMIN') return null;
+  return clubSlug ? `/clubs/${clubSlug}` : '/clubs';
 }
 
 function isUnder(pathname: string, prefix: string): boolean {

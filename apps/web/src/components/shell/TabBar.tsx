@@ -30,22 +30,22 @@ export function TabBar() {
 
       <nav
         aria-label="Sections"
-        className="pointer-events-auto absolute inset-x-4 bottom-[calc(1rem+var(--safe-b))] grid grid-cols-4 rounded-full border border-border bg-surface/80 p-1.5 shadow-[var(--shadow-float)] backdrop-blur-xl"
+        className="pointer-events-auto absolute inset-x-4 bottom-[calc(1rem+var(--safe-b))] grid grid-cols-3 rounded-full border border-border bg-surface/80 p-1.5 shadow-[var(--shadow-float)] backdrop-blur-xl"
       >
         {/* Hidden outright when no tab is lit: under /profile the avatar is
-            current, and a pill parked on Home would contradict it. */}
+            current, and a pill parked on Events would contradict it. */}
         {index >= 0 ? (
           <span
             aria-hidden
             style={{ '--i': index } as React.CSSProperties}
-            className="absolute inset-y-1.5 left-1.5 w-[calc((100%-0.75rem)/4)] translate-x-[calc(var(--i)*100%)] rounded-full bg-primary transition-transform duration-(--dur) ease-(--ease-out) motion-reduce:transition-none"
+            className="absolute inset-y-1.5 left-1.5 w-[calc((100%-0.75rem)/3)] translate-x-[calc(var(--i)*100%)] rounded-full bg-primary transition-transform duration-(--dur) ease-(--ease-out) motion-reduce:transition-none"
           />
         ) : null}
 
         {/* `prefetch` rather than the default. Every screen here is dynamic,
             and for a dynamic route the default prefetch fetches the
             loading.tsx boundary and stops, so a tap always landed on a
-            skeleton while the real payload started only then. Four fixed
+            skeleton while the real payload started only then. Three fixed
             destinations, permanently on screen: fetch them whole up front. */}
         {TABS.map(({ href, label, icon: Icon }) => {
           const active = href === current;

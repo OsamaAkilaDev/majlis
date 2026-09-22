@@ -6,5 +6,5 @@ export default function StudentError(props: {
   error: Error & { digest?: string };
   retry: () => void;
 }) {
-  return <ErrorPanel {...props} home={{ href: '/home', label: 'Home' }} />;
+  return <ErrorPanel {...props} home={{ href: '/events', label: 'Events' }} />;
 }

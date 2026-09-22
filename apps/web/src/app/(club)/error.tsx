@@ -8,5 +8,5 @@ export default function ClubError(props: {
 }) {
   // No club id here: this boundary sits above [clubId], so the way out is the
   // one destination every officer can reach.
-  return <ErrorPanel {...props} home={{ href: '/home', label: 'Home' }} />;
+  return <ErrorPanel {...props} home={{ href: '/events', label: 'Events' }} />;
 }

@@ -73,10 +73,7 @@ export default async function ProfilePage() {
     serverFetch<CertificatePage>(`/me/certificates?limit=${PAGE}`),
   ]);
 
-  // Home is the shell this screen already belongs to, so it is never an
-  // onward destination from here; what is left is the consoles this viewer
-  // holds a role in. A plain student has none and the section disappears.
-  const consoles = shellDestinations(user).filter((d) => d.href !== '/home');
+  const consoles = shellDestinations(user);
 
   return (
     <StudentShell title="Profile">

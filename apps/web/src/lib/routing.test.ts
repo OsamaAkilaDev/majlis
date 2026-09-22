@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@majlis/contracts';
 import {
   activeNavHref,
+  consoleRedirect,
   decideRedirect,
   landingFor,
   mergeSessionCookie,
@@ -19,36 +20,11 @@ const user = (over: Partial<SessionUser> = {}): SessionUser => ({
 });
 
 describe('landingFor', () => {
-  it('sends a plain student to /home', () => {
-    expect(landingFor(user())).toBe('/home');
-  });
-
-  it('sends an admin to /admin', () => {
+  it('sends every non-admin to events, officer or not', () => {
+    expect(landingFor(user())).toBe('/events');
+    expect(landingFor(user({ clubRoles: [{ clubId: 'c1', clubName: 'Robotics', role: 'LEAD' }] })))
+      .toBe('/events');
     expect(landingFor(user({ platformRole: 'ADMIN' }))).toBe('/admin');
-  });
-
-  it('sends an officer to their club console', () => {
-    expect(landingFor(user({ clubRoles: [{ clubId: 'c1', clubName: 'Club c1', role: 'LEAD' }] }))).toBe('/manage/c1');
-  });
-
-  it('prefers /admin for a user who is BOTH admin and officer', () => {
-    // Catches checking clubRoles first, which passes every single-role test
-    // above and misroutes only an admin who also leads a club.
-    expect(
-      landingFor(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', clubName: 'Club c1', role: 'LEAD' }] })),
-    ).toBe('/admin');
-  });
-
-  it('picks the same club every time for an officer of several', () => {
-    // Catches clubRoles[0]: API order, so the same person lands on a different
-    // console between two page loads.
-    const roles = [
-      { clubId: 'c9', clubName: 'Club c9', role: 'LEAD' },
-      { clubId: 'c2', clubName: 'Club c2', role: 'OPERATIONS' },
-      { clubId: 'c5', clubName: 'Club c5', role: 'MARKETING' },
-    ];
-    expect(landingFor(user({ clubRoles: roles }))).toBe('/manage/c2');
-    expect(landingFor(user({ clubRoles: [...roles].reverse() }))).toBe('/manage/c2');
   });
 });
 
@@ -164,61 +140,35 @@ describe('mergeSessionCookie', () => {
 });
 
 describe('shellDestinations', () => {
-  it('gives a plain student one destination, so no switcher is shown', () => {
-    // Catches a switcher that always renders: a one-entry menu offering the
-    // shell you are already in.
-    expect(shellDestinations(user())).toEqual([{ href: '/home', label: 'Home' }]);
+  it('gives a club officer no shell destination at all', () => {
+    expect(shellDestinations(user({ clubRoles: [{ clubId: 'c1', clubName: 'Robotics', role: 'LEAD' }] })))
+      .toEqual([]);
   });
 
-  it('gives an admin who also leads a club every shell, admin first', () => {
-    // An ADMIN with clubRoles had no reachable path to /manage/*. Returning
-    // only the landingFor destination passes every single-role case and fails
-    // this one.
-    expect(
-      shellDestinations(user({ platformRole: 'ADMIN', clubRoles: [{ clubId: 'c1', clubName: 'Club c1', role: 'VICE_LEAD' }] })),
-    ).toEqual([
+  it('gives an admin exactly one', () => {
+    expect(shellDestinations(user({ platformRole: 'ADMIN' }))).toEqual([
       { href: '/admin', label: 'Admin' },
-      { href: '/manage/c1/overview', label: 'Club c1', meta: 'Vice Lead' },
-      { href: '/home', label: 'Home' },
-    ]);
-  });
-
-  it('names a club destination by the club, with the role as its meta line', () => {
-    // Catches labelling by role alone, which gave an officer of two clubs two
-    // rows both reading "Officer". The fixtures share a role on purpose.
-    const rows = shellDestinations(
-      user({
-        clubRoles: [
-          { clubId: 'ca', clubName: 'Robotics Club', role: 'OPERATIONS' },
-          { clubId: 'cb', clubName: 'Debate Society', role: 'OPERATIONS' },
-        ],
-      }),
-    );
-    expect(rows.slice(0, 2)).toEqual([
-      { href: '/manage/ca/overview', label: 'Robotics Club', meta: 'Operations' },
-      { href: '/manage/cb/overview', label: 'Debate Society', meta: 'Operations' },
-    ]);
-  });
-
-  it('orders a multi-club officer deterministically, not by array order', () => {
-    // Catches mapping clubRoles as given: the menu reshuffles whenever the API
-    // returns them in a different order.
-    const byIdOrder = shellDestinations(
-      user({ clubRoles: [{ clubId: 'cb', clubName: 'Club cb', role: 'LEAD' }, { clubId: 'ca', clubName: 'Club ca', role: 'OPERATIONS' }] }),
-    );
-    expect(byIdOrder.map((d) => d.href)).toEqual([
-      '/manage/ca/overview',
-      '/manage/cb/overview',
-      '/home',
     ]);
   });
 });
 
+describe('consoleRedirect', () => {
+  it('sends a club officer out of the console and leaves an admin in it', () => {
+    const lead = user({ clubRoles: [{ clubId: 'c1', clubName: 'Robotics', role: 'LEAD' }] });
+    expect(consoleRedirect(lead, 'robotics')).toBe('/clubs/robotics');
+    expect(consoleRedirect(user({ platformRole: 'ADMIN' }), 'robotics')).toBeNull();
+  });
+
+  it('sends an officer to the club list when the club could not be read', () => {
+    expect(consoleRedirect(user(), null)).toBe('/clubs');
+  });
+});
+
 describe('activeNavHref', () => {
-  const TABS = ['/home', '/clubs', '/events', '/profile/qr'];
+  const TABS = ['/events', '/clubs', '/profile/qr'];
 
   it('lights the tab for its own route', () => {
-    expect(activeNavHref('/home', TABS)).toBe('/home');
+    expect(activeNavHref('/events', TABS)).toBe('/events');
     expect(activeNavHref('/profile/qr', TABS)).toBe('/profile/qr');
   });
 
