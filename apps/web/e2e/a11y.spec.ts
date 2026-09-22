@@ -90,6 +90,28 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
+    test("the viewer's own events have no violations", async ({ page }) => {
+      // The landing screen, and the densest markup in the student shell: two
+      // section headings with counts beside them, a StatusBadge in full and in
+      // its icon-only form, and the certificate chip, which carries its
+      // meaning in an aria-label and nothing else.
+      await signIn(page, 'student@uni.ac.ae');
+      await page.goto('/events');
+      await expect(page.getByRole('heading', { name: 'Registered' })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Drone Build Night/ })).toBeVisible();
+      await scan(page);
+    });
+
+    test("the viewer's own clubs have no violations", async ({ page }) => {
+      // The Lead, not the student: a role chip is the one thing on this screen
+      // a viewer who belongs to nothing never renders, and it is colour on
+      // colour.
+      await signIn(page, 'lead@uni.ac.ae');
+      await page.goto('/clubs');
+      await expect(page.getByRole('heading', { name: 'Your clubs' })).toBeVisible();
+      await scan(page);
+    });
+
     test('the club directory has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/clubs/discover');
@@ -259,7 +281,7 @@ test('sign-in is reachable by keyboard alone', async ({ page }) => {
   await page.keyboard.press('Tab');
   await page.keyboard.type(PASSWORD);
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/events$/);
 });
 
 test('the header pair name themselves and announce which one is lit', async ({ page }) => {

@@ -37,7 +37,7 @@ test('a registration reaches the inbox, badges the header bell, and marking it r
   await page.getByLabel('Password', { exact: true }).fill(LONG_PASSWORD);
   await page.getByLabel('Confirm password').fill(LONG_PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/events$/);
 
   // Catches a badge that renders the number in pixels alone and never
   // announces it.

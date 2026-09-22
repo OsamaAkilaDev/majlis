@@ -22,9 +22,9 @@ test('an admin lands on /admin', async ({ page }) => {
   await expect(page).toHaveURL(/\/admin\/metrics$/);
 });
 
-test('a student lands on /home', async ({ page }) => {
+test('a student lands on /events', async ({ page }) => {
   await signIn(page, 'student@uni.ac.ae');
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/events$/);
 });
 
 test('a student is refused the admin console', async ({ page }) => {
@@ -113,7 +113,7 @@ test('a new account can be created and lands in the student shell', async ({ pag
   await page.getByLabel('Password', { exact: true }).fill('a-long-enough-password');
   await page.getByLabel('Confirm password').fill('a-long-enough-password');
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/events$/);
 });
 
 test('an expired session is refreshed on navigation rather than bounced', async ({ page, context }) => {
@@ -175,7 +175,7 @@ test('signing out ends the session server-side, not only in the browser', async 
   await page.getByLabel('Password', { exact: true }).fill('a-long-enough-password');
   await page.getByLabel('Confirm password').fill('a-long-enough-password');
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/events$/);
 
   // Through the avatar, which is now a link to /profile rather than a menu,
   // and the sign-out control lives on that screen.
@@ -187,7 +187,7 @@ test('signing out ends the session server-side, not only in the browser', async 
   // The assertion that matters. Landing on /login proves only that the client
   // navigated; a sign-out that cleared nothing server-side would still let this
   // navigation through on the surviving refresh cookie.
-  await page.goto('/home');
+  await page.goto('/events');
   await expect(page).toHaveURL(/\/login$/);
 });
 
@@ -202,7 +202,7 @@ test('an officer can reach both shells through the profile switcher', async ({ p
   await page.getByRole('link', { name: 'Profile' }).click();
   await expect(page).toHaveURL(/\/profile$/);
   await page.getByRole('link', { name: 'Home' }).first().click();
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/events$/);
 
   // And back the other way. The row is named by the club, not by the role:
   // the label that shipped before was "Lead", which told an officer of two

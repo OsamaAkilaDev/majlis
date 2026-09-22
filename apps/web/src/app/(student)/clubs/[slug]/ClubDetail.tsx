@@ -1,6 +1,6 @@
 'use client';
 
-import type { ClubDetail as Club, EventSummary } from '@majlis/contracts';
+import type { ClubDetail as Club, EventPage, EventSummary } from '@majlis/contracts';
 import { CaretRight } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -77,12 +77,22 @@ function EventSection({
  * what is over. Which half a row belongs in is decided here, because this
  * route has no `past` flag to ask for.
  */
-function ClubEvents({ clubId }: { clubId: string }) {
-  const { items, cursor, show, append } = useCursorPage<EventSummary>(null);
+function ClubEvents({
+  clubId,
+  initialEvents,
+}: {
+  clubId: string;
+  initialEvents: EventPage | null;
+}) {
+  const { items, cursor, show, append } = useCursorPage<EventSummary>(initialEvents);
   const [busy, setBusy] = useState(false);
   const fail = useAsyncError();
 
+  // Only when the server could not seed this: it resolves the club by slug and
+  // needs its id to ask for the events, so the page makes that second call
+  // itself. This is the fallback for the path where the first one failed.
   useEffect(() => {
+    if (initialEvents) return;
     let cancelled = false;
     listEvents({ clubId, limit: PAGE })
       .then((page) => {
@@ -92,7 +102,7 @@ function ClubEvents({ clubId }: { clubId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [clubId, show]);
+  }, [clubId, initialEvents, show]);
 
   async function loadMore() {
     if (!cursor) return;
@@ -136,7 +146,15 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: Club | null }) {
+export function ClubDetail({
+  slug,
+  initialClub,
+  initialEvents,
+}: {
+  slug: string;
+  initialClub: Club | null;
+  initialEvents: EventPage | null;
+}) {
   const [club, setClub] = useState<Club | null>(initialClub);
   const [missing, setMissing] = useState(false);
 
@@ -214,7 +232,7 @@ export function ClubDetail({ slug, initialClub }: { slug: string; initialClub: C
           long venue line pushed the whole column past a 320px screen. */}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          <ClubEvents clubId={club.id} />
+          <ClubEvents clubId={club.id} initialEvents={initialEvents} />
 
           {/* Phone and tablet have no rail to put About in, so it becomes a
               destination. The rail below replaces it from lg up. */}
