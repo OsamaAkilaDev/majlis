@@ -391,7 +391,7 @@ test('a failed load reaches the error boundary, not a skeleton that never resolv
   await page.goto('/manage/not-a-club/certificates');
   await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
 });
 
 for (const theme of ['light', 'dark'] as const) {
