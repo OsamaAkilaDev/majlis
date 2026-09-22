@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { addMember, decideMembership, getClub, listMembers, removeMember } from '@/lib/clubs';
-import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
+import { CONSOLE_PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import { useAsyncError } from '@/lib/use-async-error';
@@ -35,11 +35,15 @@ export function MembersManager({
   initialClub,
   initialPending,
   initialActive,
+  // Every reload this screen does itself, so it cannot ask for 50 rows on a
+  // phone after the page seeded it with 20.
+  limit = CONSOLE_PAGE,
 }: {
   clubId: string;
   initialClub: ClubDetail | null;
   initialPending: MemberPage | null;
   initialActive: MemberPage | null;
+  limit?: number;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const {
@@ -62,8 +66,8 @@ export function MembersManager({
   async function load() {
     const [c, pendingPage, activePage] = await Promise.all([
       getClub(clubId),
-      listMembers(clubId, { status: 'PENDING', limit: PAGE }),
-      listMembers(clubId, { status: 'ACTIVE', limit: PAGE }),
+      listMembers(clubId, { status: 'PENDING', limit }),
+      listMembers(clubId, { status: 'ACTIVE', limit }),
     ]);
     setClub(c);
     showPending(pendingPage);
@@ -72,12 +76,12 @@ export function MembersManager({
 
   async function loadMorePending() {
     if (!pendingCursor) return;
-    appendPending(await listMembers(clubId, { status: 'PENDING', limit: PAGE, cursor: pendingCursor }));
+    appendPending(await listMembers(clubId, { status: 'PENDING', limit, cursor: pendingCursor }));
   }
 
   async function loadMoreActive() {
     if (!activeCursor) return;
-    appendActive(await listMembers(clubId, { status: 'ACTIVE', limit: PAGE, cursor: activeCursor }));
+    appendActive(await listMembers(clubId, { status: 'ACTIVE', limit, cursor: activeCursor }));
   }
 
   const seeded = initialClub !== null && initialPending !== null && initialActive !== null;

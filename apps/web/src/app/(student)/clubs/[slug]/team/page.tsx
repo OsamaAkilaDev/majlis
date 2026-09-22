@@ -20,6 +20,7 @@ export default async function ClubTeamPage({ params }: { params: Promise<{ slug:
         viewerUserId={user.id}
         initialClub={club}
         initialTeam={team}
+        limit={PAGE}
       />
     </StudentShell>
   );

@@ -30,6 +30,7 @@ export default async function ClubMembersPage({
         initialClub={club}
         initialPending={pending}
         initialActive={active}
+        limit={PAGE}
       />
     </StudentShell>
   );

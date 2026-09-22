@@ -51,17 +51,29 @@ describe('decide', () => {
     expect(decide(club({ viewerMembershipStatus: 'REMOVED' })).kind).toBe('blocked');
   });
 
-  it('reads an officer by their membership, not by their role', () => {
+  it('offers a CTO with no membership row the ordinary way in', () => {
     // Stage 9 deleted the "Open club console" branch this control used to take
-    // first: an officer is already on the page their work happens on, and the
-    // Manage button beside this one is what opens it. A role is an appointment
-    // and a membership is a separate record, so the two are answered
-    // separately here.
-    expect(decide(club({ viewerClubRoles: ['LEAD'], viewerMembershipStatus: 'ACTIVE' })).kind).toBe(
+    // first, and the CTO is the case that matters: they are the one role that
+    // both holds an appointment and still reaches this control, because
+    // `clubSectionsFor` gives them no section and so the club page draws no
+    // action row for them.
+    //
+    // An appointment and a membership are separate records (the seed writes
+    // both for every officer, apps/api/prisma/seed.ts:101-131), and the API
+    // accepts a membership request from an officer who holds no membership.
+    // So "Request to join" is the honest answer here rather than a control
+    // suppressed because of a role that has nothing to do with it.
+    expect(
+      decide(
+        club({
+          viewerClubRoles: ['CTO'],
+          viewerMembershipStatus: null,
+          membershipPolicy: 'APPROVAL_REQUIRED',
+        }),
+      ).kind,
+    ).toBe('request');
+    expect(decide(club({ viewerClubRoles: ['CTO'], viewerMembershipStatus: 'ACTIVE' })).kind).toBe(
       'leave',
-    );
-    expect(decide(club({ viewerClubRoles: ['LEAD'], viewerMembershipStatus: null })).kind).toBe(
-      'join',
     );
   });
 

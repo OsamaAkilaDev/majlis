@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { endAppointment, getClub, inviteTeamMember, listTeam } from '@/lib/clubs';
 import { enumLabel } from '@/lib/enum-label';
-import { CONSOLE_PAGE as PAGE } from '@/lib/page-size';
+import { CONSOLE_PAGE } from '@/lib/page-size';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { useViewerZone } from '@/lib/use-viewer-zone';
 import { useAsyncError } from '@/lib/use-async-error';
@@ -61,11 +61,15 @@ export function TeamManager({
   viewerUserId,
   initialClub,
   initialTeam,
+  // See MembersManager: the page seeds this screen, and the screen must reload
+  // at the size it was seeded with.
+  limit = CONSOLE_PAGE,
 }: {
   clubId: string;
   viewerUserId: string;
   initialClub: ClubDetail | null;
   initialTeam: AppointmentPage | null;
+  limit?: number;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const { items, cursor, show, append } = useCursorPage(initialTeam);
@@ -73,14 +77,14 @@ export function TeamManager({
   const mounted = useViewerZone() !== undefined;
 
   async function load() {
-    const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit: PAGE })]);
+    const [c, page] = await Promise.all([getClub(clubId), listTeam(clubId, { limit })]);
     setClub(c);
     show(page);
   }
 
   async function loadMore() {
     if (!cursor) return;
-    append(await listTeam(clubId, { limit: PAGE, cursor }));
+    append(await listTeam(clubId, { limit, cursor }));
   }
 
   const seeded = initialClub !== null && initialTeam !== null;

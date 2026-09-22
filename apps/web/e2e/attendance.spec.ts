@@ -191,8 +191,10 @@ test('the scanner controls stay within a thumb of the bottom edge', async ({ pag
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(box.y).toBeGreaterThan(844 / 2);
 
-  const change = page.getByRole('button', { name: 'Change event' });
-  expect((await change.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // And no way off the event from inside the scanner: this route arrives with
+  // one chosen, so "Change event" would be a control that emptied the screen
+  // with nothing to put back on it.
+  await expect(page.getByRole('button', { name: 'Change event' })).toHaveCount(0);
 });
 
 test('an officer corrects attendance and the roster follows', async ({ page }) => {

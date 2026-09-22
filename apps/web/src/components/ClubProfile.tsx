@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserPickerDialog } from '@/components/UserPickerDialog';
 import { ProblemError } from '@/lib/api';
 import { canEditClubField, type ClubField } from '@/lib/club-fields';
+import { clubSectionsFor } from '@/lib/club-sections';
 import { appointLead, getClub, listDepartments, updateClub, updateClubStatus } from '@/lib/clubs';
 import { enumLabel } from '@/lib/enum-label';
 import { needsOverrideReason } from '@/lib/override';
@@ -104,6 +105,9 @@ export function ClubProfile({
   const live = club.status !== 'ARCHIVED';
   const can = (field: ClubField) =>
     live && canEditClubField(field, club.viewerClubRoles, platformRole);
+  const canManageTeam = clubSectionsFor(club.viewerClubRoles, platformRole).some(
+    (s) => s.key === 'team',
+  );
 
   function set(key: Edited, value: string) {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
@@ -279,12 +283,17 @@ export function ClubProfile({
           <section className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-display text-h1 text-ink">Committee</h3>
-              <Link
-                href={`/manage/${clubId}/team`}
-                className="text-sm font-semibold text-primary hover:underline"
-              >
-                Manage
-              </Link>
+              {/* Only a viewer who holds the Team section: `club:edit` reaches
+                  this screen and `club:team-manage` is narrower, so Marketing
+                  would otherwise be offered a destination that refuses them. */}
+              {canManageTeam ? (
+                <Link
+                  href={`/clubs/${club.slug}/team`}
+                  className="text-sm font-semibold text-primary hover:underline"
+                >
+                  Manage
+                </Link>
+              ) : null}
             </div>
             <Roster
               empty="No officers appointed"

@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/table';
 import { ProblemError } from '@/lib/api';
 import { enumLabel } from '@/lib/enum-label';
+import { eventActionsFor } from '@/lib/event-actions';
 import { canEditEventField, type EventField } from '@/lib/event-fields';
 import {
   assignResponsibility,
@@ -207,18 +208,19 @@ export function EventForm({
 
   const roles = event.viewerClubRoles;
   const can = (field: EventField) => canEditEventField(field, roles, platformRole);
-  // Mirrors PERMISSIONS in apps/api/src/auth/permissions.ts. Presentation
-  // only: the guard re-derives every one per request.
-  const isAdmin = platformRole === 'ADMIN';
   // Spec 6.1: an Admin holding no role in this club is overriding, and every
   // action on this screen has to carry why.
   const override = needsOverrideReason(platformRole, roles);
   const overrideReason = override ? reason.trim() || undefined : undefined;
-  const canPublish = isAdmin || roles.includes('LEAD') || roles.includes('VICE_LEAD');
+  // The one mirror of the permission matrix, the same one the event page draws
+  // its controls from, rather than a second copy of two of its rules. Both
+  // keys this screen reads turn on status alone, so `new Date()` cannot make
+  // the server's render and the browser's disagree; check-in is the key that
+  // reads the clock and it is not a control here.
+  const actions = eventActionsFor(event, new Date(), platformRole).map((a) => a.key);
   // The four window rules the API enforces, applied as the officer types.
   // Submitting into a 422 the form could already name is the whole defect.
   const scheduleBroken = Object.keys(validateSchedule(values)).length > 0;
-  const canCancel = isAdmin || roles.includes('LEAD');
 
   async function act(fn: () => Promise<EventDetail | void>) {
     setPending(true);
@@ -248,7 +250,7 @@ export function EventForm({
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={event.status} />
-          {canPublish && event.status === 'DRAFT' ? (
+          {actions.includes('publish') ? (
             <Button
               onClick={() => act(() => publishEvent(event.id, { overrideReason }))}
               disabled={pending}
@@ -366,7 +368,7 @@ export function EventForm({
       )}
 
       {/* At the foot, away from the row: destructive and rare. */}
-      {canCancel && event.status !== 'CANCELLED' && event.status !== 'CERTIFIED' ? (
+      {actions.includes('cancel') ? (
         <div className="border-t border-border pt-6">
           <ConfirmDialog
             title={`Cancel ${event.title}?`}
