@@ -20,6 +20,9 @@ export default async function OverviewPage({ params }: { params: Promise<{ clubI
       platformRole={user.platformRole}
       initialClub={club}
       initialDepartments={departments?.items ?? null}
+      // The console's own Team section, so Committee's Manage keeps an Admin
+      // inside the shell they are working in.
+      teamHref={`/manage/${clubId}/team`}
     />
   );
 }

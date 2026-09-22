@@ -52,11 +52,16 @@ export function ClubProfile({
   platformRole,
   initialClub,
   initialDepartments,
+  teamHref,
 }: {
   clubId: string;
   platformRole: 'STUDENT' | 'ADMIN';
   initialClub: ClubDetail | null;
   initialDepartments: { id: string; name: string }[] | null;
+  /** Where the Committee panel's Manage link goes. This screen is rendered in
+   *  two shells and each knows its own href scheme; the default is the student
+   *  one, which is where an officer works. */
+  teamHref?: string;
 }) {
   const [club, setClub] = useState<ClubDetail | null>(initialClub);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>(
@@ -288,7 +293,7 @@ export function ClubProfile({
                   would otherwise be offered a destination that refuses them. */}
               {canManageTeam ? (
                 <Link
-                  href={`/clubs/${club.slug}/team`}
+                  href={teamHref ?? `/clubs/${club.slug}/team`}
                   className="text-sm font-semibold text-primary hover:underline"
                 >
                   Manage
