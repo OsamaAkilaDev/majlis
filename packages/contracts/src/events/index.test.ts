@@ -52,11 +52,21 @@ describe('eventListQuerySchema', () => {
     expect(eventListQuerySchema.parse({ upcoming: 'false' }).upcoming).toBe(false);
     expect(eventListQuerySchema.parse({}).upcoming).toBeUndefined();
   });
+
+  it('reads fromMyClubs out of a query string, both ways', () => {
+    // z.coerce.boolean() is Boolean(input), and Boolean('true') is true too,
+    // so a 'true'-only assertion passes against the exact bug being guarded.
+    // The 'false' case is what discriminates.
+    expect(eventListQuerySchema.parse({ fromMyClubs: 'true' }).fromMyClubs).toBe(true);
+    expect(eventListQuerySchema.parse({ fromMyClubs: 'false' }).fromMyClubs).toBe(false);
+  });
 });
 
 describe('myRegistrationListQuerySchema', () => {
-  it('reads fromMyClubs and past out of query strings', () => {
-    expect(eventListQuerySchema.parse({ fromMyClubs: 'true' }).fromMyClubs).toBe(true);
+  it('reads past out of a query string, and leaves it undefined when absent', () => {
+    // The 'false' case discriminates: z.coerce.boolean() is Boolean(input),
+    // and Boolean('false') is true (any non-empty string is truthy).
+    expect(myRegistrationListQuerySchema.parse({ past: 'true' }).past).toBe(true);
     expect(myRegistrationListQuerySchema.parse({ past: 'false' }).past).toBe(false);
     expect(myRegistrationListQuerySchema.parse({}).past).toBeUndefined();
   });
