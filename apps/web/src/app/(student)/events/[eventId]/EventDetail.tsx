@@ -4,6 +4,7 @@ import type { EventDetail as Event } from '@majlis/contracts';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
+import { OverrideReason } from '@/components/OverrideReason';
 import { useShellSession } from '@/components/shell/shell-session';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { ProblemError } from '@/lib/api';
 import { Moment, TimeRange } from '@/components/LocalTime';
 import { eventActionsFor } from '@/lib/event-actions';
 import { getEvent, publishEvent } from '@/lib/events';
+import { needsOverrideReason } from '@/lib/override';
 import { RegisterControl } from './RegisterControl';
 import { useAsyncError } from '@/lib/use-async-error';
 
@@ -49,6 +51,7 @@ export function EventDetail({
   const [missing, setMissing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
   const { user } = useShellSession();
 
   const load = useCallback(async () => {
@@ -76,15 +79,22 @@ export function EventDetail({
   // Cancel is not here: it is destructive and rare, so it sits at the foot of
   // the edit screen instead of a row the officer scans past.
   const links = actions.filter((a) => a.path !== null);
+  // Spec 6.1: an Admin holding no role in this club is overriding, and
+  // publish has to carry why.
+  const override = needsOverrideReason(user.platformRole, event.viewerClubRoles);
 
   async function runPublish() {
     setPublishing(true);
     setActionError(null);
     try {
-      await publishEvent(eventId);
+      await publishEvent(eventId, {
+        overrideReason: override ? reason.trim() || undefined : undefined,
+      });
       await load();
     } catch (err) {
-      setActionError(err instanceof ProblemError ? (err.detail ?? err.title) : 'That action failed.');
+      setActionError(
+        err instanceof ProblemError ? (err.detail ?? err.title) : 'That action failed.',
+      );
     } finally {
       setPublishing(false);
     }
@@ -129,6 +139,7 @@ export function EventDetail({
 
       {publish || links.length > 0 ? (
         <div className="flex flex-col gap-2">
+          {publish && override ? <OverrideReason value={reason} onChange={setReason} /> : null}
           <div className="flex flex-wrap items-center gap-2">
             {publish ? (
               <Button size="lg" className="h-11" disabled={publishing} onClick={runPublish}>
