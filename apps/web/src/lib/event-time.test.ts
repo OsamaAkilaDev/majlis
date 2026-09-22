@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDay, formatMoment, formatRange } from './event-time';
+import { formatChip, formatClock, formatDay, formatMoment, formatRange } from './event-time';
 
 // 2026-09-12T14:00Z is 18:00 in Dubai (+04) and 15:00 in London (BST, +01).
 const STARTS = '2026-09-12T14:00:00.000Z';
@@ -64,5 +64,25 @@ describe('formatDay', () => {
     // sitting exactly at UTC there is nothing to catch here, which is also
     // true of the defect.
     expect(formatDay('2026-09-13T23:59:00.000Z')).toBe(formatDay('2026-09-13T00:01:00.000Z'));
+  });
+});
+
+describe('formatChip and formatClock', () => {
+  // 21:30Z on the 12th is 01:30 on the 13th in Dubai: a row's chip and its
+  // clock are the one place a zone slip shows as the wrong DAY, not an hour.
+  const LATE = '2026-09-12T21:30:00.000Z';
+
+  it('dates the chip in the zone it is given', () => {
+    expect(formatChip(LATE, 'Asia/Dubai')).toEqual({ month: 'Sept', day: '13' });
+    expect(formatChip(LATE, 'Europe/London')).toEqual({ month: 'Sept', day: '12' });
+  });
+
+  it('pads the day, so a chip does not jump width between the 9th and the 10th', () => {
+    expect(formatChip('2026-09-09T12:00:00.000Z', 'Asia/Dubai').day).toBe('09');
+  });
+
+  it('writes the clock 12-hour and in the reader zone', () => {
+    expect(formatClock(LATE, 'Asia/Dubai')).toBe('1:30 AM');
+    expect(formatClock(LATE, 'Europe/London')).toBe('10:30 PM');
   });
 });

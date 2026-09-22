@@ -11,7 +11,16 @@ import { useShellSession } from './shell-session';
  * navigation back. Returns two siblings, not a wrapper: they are the two rows
  * of `StudentFrame`'s grid.
  */
-export function StudentShell({ title, children }: { title: string; children: ReactNode }) {
+export function StudentShell({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  /** Rendered between the title and the bell. One control, not a toolbar. */
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   const { user, unread } = useShellSession();
 
   return (
@@ -23,6 +32,7 @@ export function StudentShell({ title, children }: { title: string; children: Rea
         <h1 className="min-w-0 flex-1 truncate pr-2 font-display text-h1 text-ink sm:text-title">
           {title}
         </h1>
+        {action}
         <NotificationBell unread={unread} />
         <ProfileButton user={user} />
       </header>

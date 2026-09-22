@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { scheduleSpans, validateSchedule, type Schedule } from './event-schedule';
+import { scheduleSpans, splitOnEnd, validateSchedule, type Schedule } from './event-schedule';
 
 const SOURCE = '../api/src/events/events.service.ts';
 
@@ -95,5 +95,44 @@ describe('scheduleSpans', () => {
         registrationClosesAt: '',
       }),
     ).toBeNull();
+  });
+});
+
+describe('splitOnEnd', () => {
+  const event = (id: string, startsAt: string, endsAt: string) => ({ id, startsAt, endsAt });
+  const NOW = Date.parse('2026-09-12T12:00:00.000Z');
+
+  it('keeps an event that has started but not finished out of the past', () => {
+    // The API cuts `?past=` on the end, and a row that vanished from Upcoming
+    // the moment its doors opened is an attendee who cannot find it.
+    const running = event('running', '2026-09-12T11:00:00.000Z', '2026-09-12T13:00:00.000Z');
+    const { upcoming, past } = splitOnEnd([running], NOW);
+    expect(upcoming.map((e) => e.id)).toEqual(['running']);
+    expect(past).toEqual([]);
+  });
+
+  it('reads each half in its own direction, whatever order it arrives in', () => {
+    // The order the API sends is by id, so the input here is deliberately
+    // neither: a pass-through implementation fails both assertions.
+    const rows = [
+      event('soon', '2026-09-13T09:00:00.000Z', '2026-09-13T10:00:00.000Z'),
+      event('old', '2026-08-01T09:00:00.000Z', '2026-08-01T10:00:00.000Z'),
+      event('later', '2026-10-01T09:00:00.000Z', '2026-10-01T10:00:00.000Z'),
+      event('recent', '2026-09-10T09:00:00.000Z', '2026-09-10T10:00:00.000Z'),
+    ];
+    const { upcoming, past } = splitOnEnd(rows, NOW);
+    expect(upcoming.map((e) => e.id)).toEqual(['soon', 'later']);
+    expect(past.map((e) => e.id)).toEqual(['recent', 'old']);
+  });
+
+  it('leaves the page it was handed alone', () => {
+    // It sorts what React is still rendering from, so a sort in place is a
+    // mutation of state under the tree that read it.
+    const rows = [
+      event('b', '2026-10-01T09:00:00.000Z', '2026-10-01T10:00:00.000Z'),
+      event('a', '2026-09-13T09:00:00.000Z', '2026-09-13T10:00:00.000Z'),
+    ];
+    splitOnEnd(rows, NOW);
+    expect(rows.map((e) => e.id)).toEqual(['b', 'a']);
   });
 });

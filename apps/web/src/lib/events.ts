@@ -8,6 +8,7 @@ import type {
   EventDetail,
   EventListQuery,
   EventPage,
+  MyRegistrationListQuery,
   MyRegistrationPage,
   NewEventUpload,
   PatchEventBody,
@@ -45,6 +46,7 @@ export const listEvents = (query: EventListQuery): Promise<EventPage> =>
       status: query.status,
       q: query.q,
       upcoming: query.upcoming,
+      fromMyClubs: query.fromMyClubs,
       direction: query.direction,
       cursor: query.cursor,
       limit: query.limit,
@@ -100,5 +102,5 @@ export const listRoster = (eventId: string, query: RegistrationListQuery): Promi
     })}`,
   );
 
-export const myRegistrations = (query: CursorPageQuery): Promise<MyRegistrationPage> =>
-  apiFetch(`/me/registrations${qs({ cursor: query.cursor, limit: query.limit })}`);
+export const myRegistrations = (query: MyRegistrationListQuery): Promise<MyRegistrationPage> =>
+  apiFetch(`/me/registrations${qs({ past: query.past, cursor: query.cursor, limit: query.limit })}`);

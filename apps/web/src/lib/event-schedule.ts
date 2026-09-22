@@ -124,3 +124,45 @@ export function scheduleSpans(
     }),
   };
 }
+
+/**
+ * Events in reading order: soonest first, or most recent first looking back.
+ * Copies rather than sorting in place, because what the caller holds is a
+ * fetched page that React is still rendering from.
+ *
+ * ponytail: every event list on the site orders inside its loaded page only.
+ * `GET /events` and `GET /me/registrations` both paginate by `id`, not by
+ * date, which apps/api/src/events/events.service.ts documents as deferred
+ * because a date cursor changes the contract every caller holds. So one page
+ * of a club's programme, which is nearly always all of it, reads in date
+ * order, and a reader past that sorts what they have. Drop this when those
+ * cursors go date-ordered.
+ */
+export function byStart<T>(
+  items: readonly T[],
+  startsAt: (item: T) => string,
+  newestFirst = false,
+): T[] {
+  const ascending = (a: T, b: T) => Date.parse(startsAt(a)) - Date.parse(startsAt(b));
+  return [...items].sort(newestFirst ? (a, b) => ascending(b, a) : ascending);
+}
+
+/**
+ * An event list cut into what is still to come and what is over, each in
+ * reading order.
+ *
+ * The cut is on the end, which is the rule `GET /me/registrations?past=`
+ * applies, so an event that has started but not finished is still upcoming.
+ */
+export function splitOnEnd<T extends { startsAt: string; endsAt: string }>(
+  events: readonly T[],
+  now: number,
+): { upcoming: T[]; past: T[] } {
+  const upcoming: T[] = [];
+  const past: T[] = [];
+  for (const event of events) {
+    (Date.parse(event.endsAt) < now ? past : upcoming).push(event);
+  }
+  const at = (event: T) => event.startsAt;
+  return { upcoming: byStart(upcoming, at), past: byStart(past, at, true) };
+}

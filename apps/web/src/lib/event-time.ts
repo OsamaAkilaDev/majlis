@@ -48,6 +48,21 @@ export function formatRange(startsAt: string, endsAt: string, timeZone: string):
     : `${startDate}, ${from} to ${endDate}, ${to}`;
 }
 
+/** The clock alone, for a row that already carries the date on its chip. */
+export function formatClock(at: string, timeZone: string): string {
+  return clock(new Date(at), timeZone);
+}
+
+/** The two halves of an event row's date chip, on the reader's clock: an
+ *  instant near midnight belongs to different days in different zones. */
+export function formatChip(at: string, timeZone: string): { month: string; day: string } {
+  const value = new Date(at);
+  return {
+    month: part(value, timeZone, { month: 'short' }, DATE_LOCALE),
+    day: part(value, timeZone, { day: '2-digit' }, DATE_LOCALE),
+  };
+}
+
 export function formatMoment(at: string, timeZone: string): string {
   const value = new Date(at);
   return `${date(value, timeZone)}, ${clock(value, timeZone)}`;
