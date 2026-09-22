@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { clubRoleSchema, eventStatusSchema, membershipStatusSchema } from '../common/enums';
+import { clubRoleSchema, membershipStatusSchema } from '../common/enums';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 
 export const clubStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'ARCHIVED']);
@@ -134,30 +134,6 @@ export const committeeMemberSchema = z.object({
   since: z.string().nullable(),
 });
 
-/**
- * The slice of an event a club page draws. Deliberately not
- * `eventSummarySchema`: that lives in ../events, which imports from here.
- */
-export const clubEventSchema = z.object({
-  id: z.uuid(),
-  title: z.string(),
-  startsAt: z.string(),
-  endsAt: z.string(),
-  timezone: z.string(),
-  venue: z.string().nullable(),
-  onlineUrl: z.string().nullable(),
-  capacity: z.number().int(),
-  confirmedCount: z.number().int(),
-  status: eventStatusSchema,
-});
-
-/**
- * `upcoming` and `past` are bounded previews, never pages. One row beyond
- * CLUB_EVENT_PREVIEW is included so the page can tell whether to offer "see
- * all" without paying for a second count query; the full lists live on
- * /events.
- */
-export const CLUB_EVENT_PREVIEW = 3;
 
 export const clubDetailSchema = clubSummarySchema.extend({
   description: z.string(),
@@ -168,8 +144,12 @@ export const clubDetailSchema = clubSummarySchema.extend({
   viewerMembershipStatus: membershipStatusSchema.nullable(),
   viewerClubRoles: z.array(clubRoleSchema),
   committee: z.array(committeeMemberSchema),
-  upcoming: z.array(clubEventSchema),
-  past: z.array(clubEventSchema),
+  /**
+   * Null, never 0, for a viewer without `membership:decide` in this club:
+   * "you may not see this" and "there are none" are different facts, and a
+   * zero would let the Manage badge disappear for the wrong reason.
+   */
+  pendingMemberCount: z.number().int().nonnegative().nullable(),
   /** Events this club has actually run: COMPLETED or CERTIFIED. */
   eventsRun: z.number().int().nonnegative(),
 });
@@ -192,7 +172,6 @@ export type SignedUpload = z.infer<typeof signedUploadSchema>;
 export type NewClubUpload = z.infer<typeof newClubUploadSchema>;
 export type ClubSummary = z.infer<typeof clubSummarySchema>;
 export type CommitteeMember = z.infer<typeof committeeMemberSchema>;
-export type ClubEvent = z.infer<typeof clubEventSchema>;
 export type ClubDetail = z.infer<typeof clubDetailSchema>;
 export type ClubPage = z.infer<typeof clubPageSchema>;
 export type ClubListQuery = z.infer<typeof clubListQuerySchema>;

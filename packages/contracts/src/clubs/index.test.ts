@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IMAGE_KINDS, academicYearSchema, createClubBodySchema, patchClubStatusBodySchema } from './index';
+import { IMAGE_KINDS, academicYearSchema, clubDetailSchema, createClubBodySchema, patchClubStatusBodySchema } from './index';
 
 describe('academicYearSchema', () => {
   it('rejects a year pair that is not consecutive', () => {
@@ -55,6 +55,18 @@ describe('createClubBodySchema', () => {
       membershipPolicy: 'OPEN',
     };
     expect(createClubBodySchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('clubDetailSchema', () => {
+  it('accepts a null pending count and refuses an absent one', () => {
+    // On the field, not a whole fixture: `.nullable()` and `.nullish()` differ
+    // only here, and the wrong one lets the API omit the key while every client
+    // reads `undefined` and renders no badge for a club with twelve requests.
+    const field = clubDetailSchema.shape.pendingMemberCount;
+    expect(field.safeParse(null).success).toBe(true);
+    expect(field.safeParse(3).success).toBe(true);
+    expect(field.safeParse(undefined).success).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEventBodySchema, eventListQuerySchema, registerBodySchema } from './index';
+import { createEventBodySchema, eventListQuerySchema, myRegistrationListQuerySchema, registerBodySchema } from './index';
 
 describe('registerBodySchema', () => {
   it('accepts the empty body a student sends', () => {
@@ -51,5 +51,13 @@ describe('eventListQuerySchema', () => {
     expect(eventListQuerySchema.parse({ upcoming: 'true' }).upcoming).toBe(true);
     expect(eventListQuerySchema.parse({ upcoming: 'false' }).upcoming).toBe(false);
     expect(eventListQuerySchema.parse({}).upcoming).toBeUndefined();
+  });
+});
+
+describe('myRegistrationListQuerySchema', () => {
+  it('reads fromMyClubs and past out of query strings', () => {
+    expect(eventListQuerySchema.parse({ fromMyClubs: 'true' }).fromMyClubs).toBe(true);
+    expect(myRegistrationListQuerySchema.parse({ past: 'false' }).past).toBe(false);
+    expect(myRegistrationListQuerySchema.parse({}).past).toBeUndefined();
   });
 });

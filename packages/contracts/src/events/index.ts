@@ -145,6 +145,7 @@ export const eventSummarySchema = z.object({
   id: z.uuid(),
   clubId: z.uuid(),
   clubName: z.string(),
+  clubSlug: z.string(),
   clubLogoUrl: z.string(),
   title: z.string(),
   slug: z.string(),
@@ -188,6 +189,12 @@ export const eventListQuerySchema = cursorPageQuerySchema.extend({
   q: z.string().trim().min(1).max(160).optional(),
   /** Only events that have not ended yet. */
   upcoming: z.stringbool().optional(),
+  /**
+   * Events from clubs the caller is an ACTIVE member of, minus any they already
+   * hold a non-cancelled registration for. Orthogonal to `upcoming`, which it
+   * does not imply: the Events screen sends both.
+   */
+  fromMyClubs: z.stringbool().optional(),
   /** `desc` is for a picker that has to reach the event somebody just made. */
   direction: z.enum(['asc', 'desc']).optional(),
 });
@@ -239,6 +246,16 @@ export const myRegistrationSchema = z.object({
 
 export const myRegistrationPageSchema = cursorPageSchema(myRegistrationSchema);
 
+/**
+ * Absent means every registration, which is what /profile/registrations has
+ * always shown and must keep showing. `true` is ended events, `false` is
+ * events still to come; both split on the event's END, so one that has started
+ * but not finished is still upcoming.
+ */
+export const myRegistrationListQuerySchema = cursorPageQuerySchema.extend({
+  past: z.stringbool().optional(),
+});
+
 export const sweepResultSchema = z.object({
   scanned: z.number().int(),
   advanced: z.number().int(),
@@ -272,4 +289,5 @@ export type RegistrationPage = z.infer<typeof registrationPageSchema>;
 export type RegistrationListQuery = z.infer<typeof registrationListQuerySchema>;
 export type MyRegistration = z.infer<typeof myRegistrationSchema>;
 export type MyRegistrationPage = z.infer<typeof myRegistrationPageSchema>;
+export type MyRegistrationListQuery = z.infer<typeof myRegistrationListQuerySchema>;
 export type SweepResult = z.infer<typeof sweepResultSchema>;
