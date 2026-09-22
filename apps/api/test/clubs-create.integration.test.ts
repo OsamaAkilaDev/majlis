@@ -277,15 +277,16 @@ describe('GET /clubs/:clubId', () => {
     expect(res.body.memberCount).toBe(1);
   });
 
-  it('carries the club own events, and never a draft', async () => {
-    // A club page shows what the club is. The draft is the discriminator: an
-    // implementation that just listed the club's events would leak it to every
-    // student holding the slug.
+  it('counts only events the club has actually run', async () => {
+    // eventsRun is what is left of the event previews once they moved off the
+    // club detail. The draft and the still-upcoming event are the
+    // discriminators: counting every event regardless of status passes on
+    // this fixture at 3, not 1.
     const lead = await loginAsStudent(app);
     const club = await makeClub();
-    const soon = await mkEvent(club.id, lead.userId, { startsAt: in7Days(), endsAt: in7Days(2) });
+    await mkEvent(club.id, lead.userId, { startsAt: in7Days(), endsAt: in7Days(2) });
     await mkEvent(club.id, lead.userId, { status: 'DRAFT', startsAt: in7Days(), endsAt: in7Days(2) });
-    const ran = await mkEvent(club.id, lead.userId, {
+    await mkEvent(club.id, lead.userId, {
       status: 'COMPLETED',
       startsAt: daysAgo(9),
       endsAt: daysAgo(9, 2),
@@ -297,9 +298,40 @@ describe('GET /clubs/:clubId', () => {
       .get(`${CLUBS_PATH}/${club.id}`)
       .set('Cookie', lead.sessionCookie);
 
-    expect(res.body.upcoming.map((e: { id: string }) => e.id)).toEqual([soon.id]);
-    expect(res.body.past.map((e: { id: string }) => e.id)).toEqual([ran.id]);
     expect(res.body.eventsRun).toBe(1);
+  });
+
+  describe('pendingMemberCount', () => {
+    it('is null for an ordinary active member', async () => {
+      // The ordinary member is the case that matters: asserting against a
+      // stranger alone would pass an implementation gating on membership
+      // rather than on membership:decide.
+      const club = await makeClub();
+      const lead = await makeActiveLead(app, club.id);
+      const member = await loginAsStudent(app);
+      const stranger = await loginAsAdmin(app);
+      await prisma.clubMembership.create({
+        data: { clubId: club.id, userId: member.userId, status: 'ACTIVE' },
+      });
+      await prisma.clubMembership.create({
+        data: { clubId: club.id, userId: (await mkUser()).id, status: 'PENDING' },
+      });
+
+      const asLead = await request(app.getHttpServer())
+        .get(`${CLUBS_PATH}/${club.id}`)
+        .set('Cookie', lead.sessionCookie);
+      expect(asLead.body.pendingMemberCount).toBe(1);
+
+      const asMember = await request(app.getHttpServer())
+        .get(`${CLUBS_PATH}/${club.id}`)
+        .set('Cookie', member.sessionCookie);
+      expect(asMember.body.pendingMemberCount).toBeNull();
+
+      const asAdmin = await request(app.getHttpServer())
+        .get(`${CLUBS_PATH}/${club.id}`)
+        .set('Cookie', stranger.sessionCookie);
+      expect(asAdmin.body.pendingMemberCount).toBe(1);
+    });
   });
 
   it('carries the committee, active appointments only', async () => {

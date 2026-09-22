@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiResponse } from '@nestjs/swagger';
 import {
-  cursorPageQuerySchema,
+  myRegistrationListQuerySchema,
   registerBodySchema,
   registrationListQuerySchema,
   type MyRegistrationPage,
@@ -17,7 +17,7 @@ import { RegistrationsService } from './registrations.service';
 
 class RegisterDto extends createZodDto(registerBodySchema) {}
 class RegistrationListQueryDto extends createZodDto(registrationListQuerySchema) {}
-class CursorPageQueryDto extends createZodDto(cursorPageQuerySchema) {}
+class MyRegistrationListQueryDto extends createZodDto(myRegistrationListQuerySchema) {}
 
 @Controller()
 export class RegistrationsController {
@@ -59,7 +59,10 @@ export class RegistrationsController {
   }
 
   @Get('me/registrations')
-  mine(@Actor() actor: User, @Query() query: CursorPageQueryDto): Promise<MyRegistrationPage> {
+  mine(
+    @Actor() actor: User,
+    @Query() query: MyRegistrationListQueryDto,
+  ): Promise<MyRegistrationPage> {
     return this.registrations.mine(actor, query);
   }
 }

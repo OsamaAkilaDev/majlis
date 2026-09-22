@@ -7,7 +7,7 @@ import { SWEEP_SECRET_HEADER } from '../src/events/lifecycle-sweep.controller';
 import { createTestApp } from './app';
 import { loginAsAdmin, loginAsStudent } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent } from './factories';
+import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent, mkRegistration } from './factories';
 
 const prisma = createTestPrisma();
 let app: INestApplication;
@@ -738,5 +738,70 @@ describe('GET /events?q=', () => {
     expect(await titlesFor(cookie, 'chess_open')).toEqual(['Chess Open']);
 
     expect(await titlesFor(cookie, 'quantum')).toEqual([]);
+  });
+});
+
+describe('GET /events?fromMyClubs=true', () => {
+  function fromMyClubs(cookie: string) {
+    return request(app.getHttpServer())
+      .get(`${API_PREFIX}/events?fromMyClubs=true`)
+      .set('Cookie', cookie);
+  }
+
+  it("returns only the caller's own clubs", async () => {
+    // One user and one club would pass an implementation that ignores the
+    // flag entirely and just returns every visible event.
+    const clubA = await makeClub();
+    const clubB = await makeClub();
+    const leadA = await makeActiveLead(app, clubA.id);
+    const leadB = await makeActiveLead(app, clubB.id);
+    const userA = await loginAsStudent(app);
+    const userB = await loginAsStudent(app);
+    await prisma.clubMembership.create({
+      data: { clubId: clubA.id, userId: userA.userId, status: 'ACTIVE' },
+    });
+    await prisma.clubMembership.create({
+      data: { clubId: clubB.id, userId: userB.userId, status: 'ACTIVE' },
+    });
+    const eventA = await mkEvent(clubA.id, leadA.userId);
+    const eventB = await mkEvent(clubB.id, leadB.userId);
+
+    const asA = await fromMyClubs(userA.sessionCookie);
+    expect(asA.status).toBe(200);
+    expect(asA.body.items.map((e: { id: string }) => e.id)).toEqual([eventA.id]);
+
+    const asB = await fromMyClubs(userB.sessionCookie);
+    expect(asB.body.items.map((e: { id: string }) => e.id)).toEqual([eventB.id]);
+  });
+
+  it('excludes an event the caller is WAITLISTED for', async () => {
+    // Filtering on CONFIRMED alone would pass this test if the fixture used a
+    // confirmed place; WAITLISTED is what proves the exclusion checks "holds a
+    // place" and not one specific status.
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const user = await loginAsStudent(app);
+    await prisma.clubMembership.create({
+      data: { clubId: club.id, userId: user.userId, status: 'ACTIVE' },
+    });
+    const notHeld = await mkEvent(club.id, lead.userId);
+    const held = await mkEvent(club.id, lead.userId);
+    await mkRegistration(held.id, user.userId, 'WAITLISTED');
+
+    const res = await fromMyClubs(user.sessionCookie);
+    expect(res.body.items.map((e: { id: string }) => e.id)).toEqual([notHeld.id]);
+  });
+
+  it('returns nothing for a caller in no clubs', async () => {
+    // Guards the `{ in: [] }` path: an implementation that skips the club
+    // filter when the membership list is empty would return every event in
+    // the university instead of none.
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    await mkEvent(club.id, lead.userId);
+    const user = await loginAsStudent(app);
+
+    const res = await fromMyClubs(user.sessionCookie);
+    expect(res.body.items).toEqual([]);
   });
 });

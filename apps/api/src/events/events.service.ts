@@ -32,8 +32,10 @@ import { NotificationService } from '../notifications/notification.service';
 import { assertEventAcceptsEdits, assertTransition, dueStatus } from './event-status';
 import { promoteFromWaitlist } from './waitlist';
 
-const WITH_CLUB = { club: { select: { name: true, logoUrl: true, status: true } } } as const;
-type EventWithClub = EventRow & { club: { name: string; logoUrl: string; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' } };
+const WITH_CLUB = { club: { select: { name: true, slug: true, logoUrl: true, status: true } } } as const;
+type EventWithClub = EventRow & {
+  club: { name: string; slug: string; logoUrl: string; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' };
+};
 
 // Exactly the columns `toSummary` reads. A list page is the hottest read here
 // and the full row carries `description`, the longest column on the table.
@@ -58,7 +60,7 @@ const SUMMARY_SELECT = {
   waitlistEnabled: true,
   requiresClubMembership: true,
   status: true,
-  club: { select: { name: true, logoUrl: true } },
+  club: { select: { name: true, slug: true, logoUrl: true } },
 } as const;
 
 type EventSummaryRow = Prisma.EventGetPayload<{ select: typeof SUMMARY_SELECT }>;
@@ -121,6 +123,7 @@ function toSummary(row: EventSummaryRow, now = new Date()): EventSummary {
     id: row.id,
     clubId: row.clubId,
     clubName: row.club.name,
+    clubSlug: row.club.slug,
     clubLogoUrl: row.club.logoUrl,
     title: row.title,
     slug: row.slug,
@@ -302,9 +305,13 @@ export class EventsService {
       ...(query.upcoming ? { endsAt: { gte: new Date() } } : {}),
     };
     const visible = await this.visibilityFilter(actor);
+    const mine = query.fromMyClubs ? await this.myClubsFilter(actor) : null;
+    const and = [filters, visible, mine].filter(
+      (f): f is Prisma.EventWhereInput => f !== null && f !== undefined,
+    );
 
     const rows = await this.host.tx.event.findMany({
-      where: visible ? { AND: [filters, visible] } : filters,
+      where: { AND: and },
       ...cursorArgs(query, query.direction),
       select: SUMMARY_SELECT,
     });
@@ -351,6 +358,28 @@ export class EventsService {
     const row = await this.host.tx.event.findUnique({ where: { id: eventId }, include: WITH_CLUB });
     if (!row) throw new NotFoundError('No such event.');
     return row;
+  }
+
+  /**
+   * The viewer's own clubs, minus what they already hold a place at: an event in
+   * Registered must not also appear in From your clubs. Excluded server-side
+   * because de-duplicating on the client is right for the first page and wrong
+   * for every page after it.
+   *
+   * An empty membership list yields `{ in: [] }`, which correctly matches
+   * nothing. Both halves are indexed: club_membership(user_id, status) and
+   * event_registration's own user index.
+   */
+  private async myClubsFilter(actor: Actor): Promise<Prisma.EventWhereInput> {
+    const memberships = await this.host.tx.clubMembership.findMany({
+      where: { userId: actor.id, status: 'ACTIVE' },
+      select: { clubId: true },
+    });
+
+    return {
+      clubId: { in: memberships.map((m) => m.clubId) },
+      registrations: { none: { userId: actor.id, status: { not: 'CANCELLED' } } },
+    };
   }
 
   // Restricts a read to what `actor` may see, or null for Admin. A DRAFT is

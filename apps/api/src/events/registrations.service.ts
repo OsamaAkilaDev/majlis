@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type {
   ClubStatus,
-  CursorPageQuery,
   EventStatus,
+  MyRegistrationListQuery,
   MyRegistrationPage,
   RegisterBody,
   Registration,
@@ -270,9 +270,18 @@ export class RegistrationsService {
 
   // Self-scoped by `userId: actor.id`, which is why the route carries no
   // @RequirePermission. Cancelled rows are excluded: this lists places held.
-  async mine(actor: Actor, query: CursorPageQuery): Promise<MyRegistrationPage> {
+  async mine(actor: Actor, query: MyRegistrationListQuery): Promise<MyRegistrationPage> {
+    // Split on the event's END, not its start: one that is running right now
+    // has not passed. Absent means every registration, which is what
+    // /profile/registrations has always shown.
+    const now = new Date();
+    const window =
+      query.past === undefined
+        ? {}
+        : { event: query.past ? { endsAt: { lt: now } } : { endsAt: { gte: now } } };
+
     const rows = await this.host.tx.eventRegistration.findMany({
-      where: { userId: actor.id, ...OPEN },
+      where: { userId: actor.id, ...OPEN, ...window },
       ...cursorArgs(query),
       include: { event: { select: EVENT_SUMMARY_SELECT } },
     });

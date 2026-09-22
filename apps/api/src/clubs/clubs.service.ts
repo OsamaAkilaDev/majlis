@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
-  CLUB_EVENT_PREVIEW,
   IMAGE_KINDS,
   type ClubDetail,
-  type ClubEvent,
   type CommitteeMember,
   type ClubListQuery,
   type ClubPage,
@@ -19,7 +17,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AuditService } from '../audit/audit.service';
 import { CLUB_FIELDS, assertFieldsAllowed, overrideReasonFor } from '../auth/field-permissions';
 import { resolveClubFacts } from '../auth/permissions.guard';
-import type { PlatformRole } from '../auth/permissions';
+import { matches, PERMISSIONS, type PlatformRole } from '../auth/permissions';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
 import { conflictOn } from '../common/prisma-constraint';
@@ -34,40 +32,8 @@ import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
 
-/** What a club has actually run. Drives the `eventsRun` stat and the `past` list. */
+/** What a club has actually run. Drives the `eventsRun` stat. */
 const RAN: Prisma.EventWhereInput = { status: { in: ['COMPLETED', 'CERTIFIED'] } };
-
-/**
- * What the club page may show as upcoming. DRAFT is excluded for everybody,
- * officers included: this is the club's public face, and its own drafts belong
- * on the workspace's events tab.
- */
-const PUBLIC_UPCOMING: Prisma.EventWhereInput = {
-  status: { in: ['PUBLISHED', 'REGISTRATION_CLOSED', 'ONGOING'] },
-};
-
-const CLUB_EVENT_SELECT = {
-  id: true,
-  title: true,
-  startsAt: true,
-  endsAt: true,
-  timezone: true,
-  venue: true,
-  onlineUrl: true,
-  capacity: true,
-  confirmedCount: true,
-  status: true,
-} as const;
-
-type ClubEventRow = Prisma.EventGetPayload<{ select: typeof CLUB_EVENT_SELECT }>;
-
-function toClubEvent(row: ClubEventRow): ClubEvent {
-  return {
-    ...row,
-    startsAt: row.startsAt.toISOString(),
-    endsAt: row.endsAt.toISOString(),
-  };
-}
 
 /** Lead first, then the order the roles are listed in the enum. A committee
  *  sorted by id puts whoever was appointed first at the top, which is noise. */
@@ -120,8 +86,7 @@ interface DetailExtras {
   viewerMembershipStatus: ClubDetail['viewerMembershipStatus'];
   viewerClubRoles: ClubDetail['viewerClubRoles'];
   committee: CommitteeMember[];
-  upcoming: ClubEvent[];
-  past: ClubEvent[];
+  pendingMemberCount: ClubDetail['pendingMemberCount'];
   eventsRun: number;
 }
 
@@ -141,13 +106,14 @@ function toClubDetail(
   };
 }
 
-/** A club nobody has joined, run an event for, or appointed anyone to. */
+/** A club nobody has joined, run an event for, or appointed anyone to.
+ *  Only reachable from `create`, which is Admin-only, hence 0 rather than
+ *  null: an Admin may always see the count, and there is nothing pending. */
 const NO_EXTRAS: DetailExtras = {
   viewerMembershipStatus: null,
   viewerClubRoles: [],
   committee: [],
-  upcoming: [],
-  past: [],
+  pendingMemberCount: 0,
   eventsRun: 0,
 };
 
@@ -310,7 +276,7 @@ export class ClubsService {
    * Two round trips, not six. The database is remote, so each one is real
    * latency on the club page's first paint: the club, its department, its
    * committee, both counts and the viewer's own membership all come back in
-   * one read, and the two event previews run together.
+   * one read.
    *
    * Callable in parallel because nothing here runs inside a transaction any
    * more: `update` and `updateStatus` re-read AFTER theirs commits.
@@ -349,30 +315,26 @@ export class ClubsService {
       .filter((a) => a.userId === actor.id)
       .map((a) => a.role);
 
-    // One row past the preview, so the page knows whether there is more to
-    // show without a second count query.
-    const take = CLUB_EVENT_PREVIEW + 1;
-    const [upcoming, past] = await Promise.all([
-      this.host.tx.event.findMany({
-        where: { clubId, ...PUBLIC_UPCOMING, endsAt: { gte: new Date() } },
-        orderBy: { startsAt: 'asc' },
-        take,
-        select: CLUB_EVENT_SELECT,
-      }),
-      this.host.tx.event.findMany({
-        where: { clubId, ...RAN },
-        orderBy: { startsAt: 'desc' },
-        take,
-        select: CLUB_EVENT_SELECT,
-      }),
-    ]);
+    // A second query rather than a second `_count` entry: Prisma cannot alias
+    // two filtered counts of one relation. Skipped entirely for a viewer who
+    // may not see it, and null for them rather than 0, so the Manage badge
+    // cannot vanish for the wrong reason.
+    const canDecide = matches(PERMISSIONS['membership:decide'], {
+      userId: actor.id,
+      platformRole: actor.platformRole,
+      clubRoles: viewerClubRoles,
+      eventResponsibilities: [],
+    });
+
+    const pendingMemberCount = canDecide
+      ? await this.host.tx.clubMembership.count({ where: { clubId, status: 'PENDING' } })
+      : null;
 
     return toClubDetail(club, club.department.name, club._count.memberships, {
       viewerMembershipStatus: club.memberships[0]?.status ?? null,
       viewerClubRoles,
       committee: toCommittee(club.appointments),
-      upcoming: upcoming.map(toClubEvent),
-      past: past.map(toClubEvent),
+      pendingMemberCount,
       eventsRun: club._count.events,
     });
   }

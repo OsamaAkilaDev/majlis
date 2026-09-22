@@ -5,7 +5,7 @@ import { API_PREFIX } from '../src/config/api-prefix';
 import { createTestApp } from './app';
 import { loginAsAdmin, loginAsStudent, type LoggedInUser } from './auth-helpers';
 import { createTestPrisma, disconnectTestPrisma, truncateAll } from './db';
-import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent, uniq } from './factories';
+import { makeActiveLead, makeActiveOfficer, makeClub, mkEvent, mkRegistration, uniq } from './factories';
 
 const prisma = createTestPrisma();
 let app: INestApplication;
@@ -393,6 +393,73 @@ describe('PATCH /events/:eventId capacity, against the confirmed count', () => {
     expect(res.status).toBe(422);
     expect(res.body.detail).toBe('Capacity cannot be lower than the 3 students already confirmed.');
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).capacity).toBe(3);
+  });
+});
+
+describe('GET /me/registrations?past=', () => {
+  function mine(cookie: string, qs = '') {
+    return request(app.getHttpServer())
+      .get(`${API_PREFIX}/me/registrations${qs}`)
+      .set('Cookie', cookie);
+  }
+
+  /** Three events the caller holds a CONFIRMED place at, spanning the boundary
+   *  that matters: one that has started but not ended is still "upcoming". */
+  async function threeRegistrations() {
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const student = await loginAsStudent(app);
+
+    const past = await mkEvent(club.id, lead.userId, {
+      startsAt: new Date(Date.now() - 3 * DAY),
+      endsAt: new Date(Date.now() - 3 * DAY + 2 * HOUR),
+      registrationOpensAt: new Date(Date.now() - 5 * DAY),
+      registrationClosesAt: new Date(Date.now() - 3 * DAY),
+    });
+    const future = await mkEvent(club.id, lead.userId, {
+      startsAt: new Date(Date.now() + 3 * DAY),
+      endsAt: new Date(Date.now() + 3 * DAY + 2 * HOUR),
+      registrationOpensAt: new Date(Date.now() - DAY),
+      registrationClosesAt: new Date(Date.now() + 2 * DAY),
+    });
+    // Started but not ended: without this fixture, splitting on startsAt
+    // would pass the same as splitting on endsAt.
+    const ongoing = await mkEvent(club.id, lead.userId, {
+      startsAt: new Date(Date.now() - HOUR),
+      endsAt: new Date(Date.now() + 2 * HOUR),
+      registrationOpensAt: new Date(Date.now() - DAY),
+      registrationClosesAt: new Date(Date.now() - 30 * 60 * 1000),
+    });
+
+    for (const event of [past, future, ongoing]) {
+      await mkRegistration(event.id, student.userId, 'CONFIRMED');
+    }
+
+    return { student, past, future, ongoing };
+  }
+
+  const idsOf = (res: request.Response): string[] =>
+    (res.body.items as { event: { id: string } }[]).map((r) => r.event.id);
+
+  it("splits on the event's end, not its start", async () => {
+    // Without the ongoing event, an implementation splitting on startsAt
+    // passes this test identically to one splitting on endsAt.
+    const { student, past, future, ongoing } = await threeRegistrations();
+
+    const upcoming = await mine(student.sessionCookie, '?past=false');
+    expect(new Set(idsOf(upcoming))).toEqual(new Set([future.id, ongoing.id]));
+
+    const ended = await mine(student.sessionCookie, '?past=true');
+    expect(idsOf(ended)).toEqual([past.id]);
+  });
+
+  it('returns every registration when past is absent', async () => {
+    // Guards /profile/registrations, which has never taken this flag: an
+    // implementation defaulting past to false would drop the ended event here.
+    const { student, past, future, ongoing } = await threeRegistrations();
+
+    const res = await mine(student.sessionCookie);
+    expect(new Set(idsOf(res))).toEqual(new Set([past.id, future.id, ongoing.id]));
   });
 });
 
