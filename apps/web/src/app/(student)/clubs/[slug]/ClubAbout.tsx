@@ -56,7 +56,7 @@ export function DepartmentBlock({ club }: { club: ClubDetail }) {
       <div className="flex flex-col items-start gap-1 rounded-card border border-border bg-surface p-3.5">
         <span className="text-sm font-semibold text-ink">{club.departmentName}</span>
         <Link
-          href={`/clubs?department=${club.departmentId}`}
+          href={`/clubs/discover?department=${club.departmentId}`}
           className="text-sm font-semibold text-primary hover:underline"
         >
           Other clubs here

@@ -123,7 +123,7 @@ export function ProfileManager({
             title="No clubs yet"
             action={
               <Button asChild>
-                <Link href="/clubs">Browse clubs</Link>
+                <Link href="/clubs/discover">Browse clubs</Link>
               </Button>
             }
           />

@@ -59,7 +59,7 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
         title="Nothing booked yet"
         action={
           <Button asChild>
-            <Link href="/events">Browse events</Link>
+            <Link href="/events/discover">Browse events</Link>
           </Button>
         }
       />

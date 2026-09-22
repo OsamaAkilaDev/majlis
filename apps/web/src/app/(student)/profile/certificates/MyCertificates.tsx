@@ -72,7 +72,7 @@ export function MyCertificates({ initial }: { initial: CertificatePage | null })
         title="No certificates yet"
         action={
           <Button asChild>
-            <Link href="/events">Browse events</Link>
+            <Link href="/events/discover">Browse events</Link>
           </Button>
         }
       />
