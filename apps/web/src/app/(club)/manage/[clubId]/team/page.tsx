@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
-import { TeamManager } from './TeamManager';
+import { TeamManager } from '@/components/club/TeamManager';
 
 export const metadata: Metadata = { title: 'Team' };
 

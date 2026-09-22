@@ -138,13 +138,13 @@ describe('eventActionsFor', () => {
   });
 
   it('offers publish only on a draft', () => {
-    const lead = { viewerClubRoles: ['LEAD'] } as const;
+    const lead = { viewerClubRoles: ['LEAD'] } satisfies Partial<EventDetail>;
     expect(keys(event({ ...lead, status: 'DRAFT' }))).toContain('publish');
     expect(keys(event({ ...lead, status: 'PUBLISHED' }))).not.toContain('publish');
   });
 
   it("shuts check-in outside the event's own window, and on a draft inside it", () => {
-    const lead = { viewerClubRoles: ['LEAD'] } as const;
+    const lead = { viewerClubRoles: ['LEAD'] } satisfies Partial<EventDetail>;
     // Before it starts and after it ends, with the same row.
     expect(keys(event(lead), 'STUDENT', new Date('2026-09-20T17:59:00.000Z'))).not.toContain(
       'checkIn',
@@ -157,7 +157,7 @@ describe('eventActionsFor', () => {
   });
 
   it('withdraws edit and cancel as the event reaches the end of its life', () => {
-    const lead = { viewerClubRoles: ['LEAD'] } as const;
+    const lead = { viewerClubRoles: ['LEAD'] } satisfies Partial<EventDetail>;
     // An hour after it ended, which is the only clock these three statuses can
     // honestly carry.
     const after = new Date('2026-09-20T22:00:00.000Z');

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
-import { ClubReports } from './ClubReports';
+import { ClubReports } from '@/components/club/ClubReports';
 
 export const metadata: Metadata = { title: 'Reports' };
 

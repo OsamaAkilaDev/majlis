@@ -2,7 +2,7 @@ import type { ClubDetail, MemberPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
 import { CONSOLE_PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
-import { MembersManager } from './MembersManager';
+import { MembersManager } from '@/components/club/MembersManager';
 
 export const metadata: Metadata = { title: 'Members' };
 
