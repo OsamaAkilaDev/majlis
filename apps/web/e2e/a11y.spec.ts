@@ -11,12 +11,16 @@ async function signIn(page: Page, email: string) {
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
-/** A club officer's landing is /manage/{clubId}, so the id comes from the URL
- *  rather than from a nav click, which lives behind a sheet on mobile. */
-async function officerClubId(page: Page): Promise<string> {
-  const clubId = new URL(page.url()).pathname.split('/')[2];
-  expect(clubId).toBeTruthy();
-  return clubId!;
+/** Robotics Club, seed.ts:69-79. An officer reaches their own club by slug
+ *  inside the student shell; the console is Admin-only as of Stage 9. */
+const CLUB = 'robotics-club';
+
+/** The club page lists the whole programme, drafts and all, and an officer
+ *  edits an event from the event's own page. */
+async function openEventEditor(page: Page, title: string) {
+  await page.goto(`/clubs/${CLUB}`);
+  await page.getByRole('link', { name: new RegExp(title) }).first().click();
+  await page.getByRole('link', { name: 'Edit' }).click();
 }
 
 async function scan(page: Page) {
@@ -71,9 +75,16 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
-    test('officer console has no violations', async ({ page }) => {
-      // Spec 9 names all three shells; only this one was never scanned.
+    test('the officer club page and its Manage sheet have no violations', async ({ page }) => {
+      // The one surface an officer has that a plain student does not: a filled
+      // action row, and a modal sheet whose rows are colour on colour.
       await signIn(page, 'lead@uni.ac.ae');
+      await page.goto(`/clubs/${CLUB}`);
+      await expect(page.getByRole('link', { name: 'New event' })).toBeVisible();
+      await scan(page);
+
+      await page.getByRole('button', { name: /^Manage/ }).click();
+      await expect(page.getByRole('dialog').getByRole('link', { name: 'Team' })).toBeVisible();
       await scan(page);
     });
 
@@ -204,15 +215,14 @@ for (const theme of ['light', 'dark'] as const) {
 
     test("the club's event list has no violations", async ({ page }) => {
       await signIn(page, 'lead@uni.ac.ae');
-      await page.goto(`/manage/${await officerClubId(page)}/events`);
-      await expect(page.getByRole('link', { name: 'Introduction to ROS 2' })).toBeVisible();
+      await page.goto(`/clubs/${CLUB}`);
+      await expect(page.getByRole('link', { name: /Introduction to ROS 2/ })).toBeVisible();
       await scan(page);
     });
 
     test('the event editor has no violations', async ({ page }) => {
       await signIn(page, 'lead@uni.ac.ae');
-      await page.goto(`/manage/${await officerClubId(page)}/events`);
-      await page.getByRole('link', { name: 'Introduction to ROS 2' }).click();
+      await openEventEditor(page, 'Introduction to ROS 2');
       await expect(page.getByRole('button', { name: 'Save changes' })).toBeVisible();
       await scan(page);
     });
@@ -221,8 +231,7 @@ for (const theme of ['light', 'dark'] as const) {
       // Operations holds venue and capacity but not the title, so this is the
       // only scan covering a disabled input.
       await signIn(page, 'ops@uni.ac.ae');
-      await page.goto(`/manage/${await officerClubId(page)}/events`);
-      await page.getByRole('link', { name: 'Introduction to ROS 2' }).click();
+      await openEventEditor(page, 'Introduction to ROS 2');
       await expect(page.getByLabel('Title', { exact: true })).toBeDisabled();
       await expect(page.getByLabel('Capacity')).toBeEnabled();
       await scan(page);
@@ -272,7 +281,7 @@ for (const theme of ['light', 'dark'] as const) {
 
     test('a club report has no violations', async ({ page }) => {
       await signIn(page, 'lead@uni.ac.ae');
-      await page.goto(`/manage/${await officerClubId(page)}/reports`);
+      await page.goto(`/clubs/${CLUB}/reports`);
       await expect(page.getByRole('img', { name: /Attendance/ })).toBeVisible();
       await scan(page);
     });
@@ -323,8 +332,7 @@ test('the event creation panel has no violations while open', async ({ page }) =
   // The largest form in the product, and the only screen carrying a Select
   // built from the runtime's whole tz database.
   await signIn(page, 'lead@uni.ac.ae');
-  await page.goto(`/manage/${await officerClubId(page)}/events`);
-  await page.getByRole('button', { name: 'New event' }).click();
+  await page.goto(`/clubs/${CLUB}/events/new`);
   await expect(page.getByRole('button', { name: 'Create event' })).toBeVisible();
   await scan(page);
 });

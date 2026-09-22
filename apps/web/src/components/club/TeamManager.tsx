@@ -29,7 +29,7 @@ function InviteDialog({ clubId, onInvited }: { clubId: string; onInvited: () => 
 
   return (
     <UserPickerDialog
-      trigger={<Button>Invite</Button>}
+      trigger={<Button className="h-11">Invite</Button>}
       title="Invite a team member"
       confirmLabel="Send invitation"
       clubId={clubId}
@@ -138,7 +138,7 @@ export function TeamManager({
                   {isLead && a.status === 'ACTIVE' && a.userId !== viewerUserId ? (
                     <ConfirmDialog
                       trigger={
-                        <Button variant="destructive" size="sm">
+                        <Button variant="destructive" size="sm" className="h-11">
                           End
                         </Button>
                       }

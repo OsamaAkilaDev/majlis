@@ -18,7 +18,7 @@ import { useAsyncError } from '@/lib/use-async-error';
 function AddMemberDialog({ clubId, onAdded }: { clubId: string; onAdded: () => void }) {
   return (
     <UserPickerDialog
-      trigger={<Button>Add member</Button>}
+      trigger={<Button className="h-11">Add member</Button>}
       title="Add a member"
       confirmLabel="Add"
       clubId={clubId}
@@ -133,13 +133,16 @@ export function MembersManager({
                     </TableCell>
                     <TableCell className="tabular text-ink-2">{mounted ? new Date(m.requestedAt).toLocaleDateString() : ''}</TableCell>
                     <TableCell>
+                      {/* h-11 on every control in this file: the screen is a
+                          phone screen in the student shell now, and `sm` is a
+                          28px target. */}
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" onClick={() => decide(m.id, 'ACTIVE')}>
+                        <Button size="sm" className="h-11" onClick={() => decide(m.id, 'ACTIVE')}>
                           Approve
                         </Button>
                         <ConfirmDialog
                           trigger={
-                            <Button variant="destructive" size="sm">
+                            <Button variant="destructive" size="sm" className="h-11">
                               Reject
                             </Button>
                           }
@@ -190,7 +193,7 @@ export function MembersManager({
                     {canDecide ? (
                       <ConfirmDialog
                         trigger={
-                          <Button variant="destructive" size="sm">
+                          <Button variant="destructive" size="sm" className="h-11">
                             Remove
                           </Button>
                         }

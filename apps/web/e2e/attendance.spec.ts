@@ -30,15 +30,26 @@ async function signIn(page: Page, email: string) {
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
-/** A club officer's landing is /manage/{clubId}, so the id comes from the URL. */
-async function officerClubId(page: Page): Promise<string> {
-  const clubId = new URL(page.url()).pathname.split('/')[2];
-  expect(clubId).toBeTruthy();
-  return clubId!;
+/** Robotics Club, seed.ts:69-79. An officer reaches their club by slug inside
+ *  the student shell; the console is Admin-only as of Stage 9. */
+const CLUB = 'robotics-club';
+
+/** The club page lists the whole programme, drafts and all (seed.ts:153-260). */
+async function openEvent(page: Page, title: string) {
+  await page.goto(`/clubs/${CLUB}`);
+  await page.getByRole('link', { name: new RegExp(title) }).first().click();
+  await page.waitForURL(/\/events\/[0-9a-f-]{36}$/);
+}
+
+/** The attendee roster, which an assignee reaches and nothing else. */
+async function openAttendees(page: Page, title: string) {
+  await openEvent(page, title);
+  await page.getByRole('link', { name: 'Attendees' }).click();
+  await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible();
 }
 
 /** admin@ holds no club role, so its club id comes from the admin club list,
- *  which opens the same club workspace an officer gets. */
+ *  which is the console an officer no longer reaches at all. */
 async function adminClubId(page: Page): Promise<string> {
   await page.goto('/admin/clubs');
   await page.getByRole('link', { name: /Robotics Club/ }).click();
@@ -54,13 +65,12 @@ async function axe(page: Page) {
 }
 
 /** Headless Chromium has no BarcodeDetector, which is the branch that falls
- *  through to the email form. Both paths render the same verdict. */
+ *  through to the email form. Both paths render the same verdict. The event is
+ *  chosen by the route now, so there is no picker to step through. */
 async function openScanner(page: Page, eventTitle: string) {
-  const clubId = await officerClubId(page);
-  await page.goto(`/manage/${clubId}/scan`);
-  await page.getByRole('button', { name: new RegExp(eventTitle) }).click();
+  await openEvent(page, eventTitle);
+  await page.getByRole('link', { name: 'Check in' }).click();
   await expect(page.getByLabel('Email')).toBeVisible();
-  return clubId;
 }
 
 async function checkIn(page: Page, email: string, reason: string) {
@@ -106,10 +116,7 @@ function attendanceRow(page: Page, name: string): Locator {
  */
 async function clearCheckIn(page: Page) {
   await signIn(page, 'lead@uni.ac.ae');
-  const clubId = await officerClubId(page);
-  await page.goto(`/manage/${clubId}/events`);
-  await page.getByRole('link', { name: 'Drone Build Night' }).click();
-  await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible();
+  await openAttendees(page, 'Drone Build Night');
 
   const row = attendanceRow(page, 'Layla Hassan');
   await expect(row).toBeVisible();
@@ -190,10 +197,7 @@ test('the scanner controls stay within a thumb of the bottom edge', async ({ pag
 
 test('an officer corrects attendance and the roster follows', async ({ page }) => {
   await signIn(page, 'lead@uni.ac.ae');
-  const clubId = await officerClubId(page);
-  await page.goto(`/manage/${clubId}/events`);
-  await page.getByRole('link', { name: 'Drone Build Night' }).click();
-  await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible();
+  await openAttendees(page, 'Drone Build Night');
 
   const row = attendanceRow(page, 'Layla Hassan');
   await row.getByRole('button', { name: 'Mark absent' }).click();
@@ -229,14 +233,23 @@ test('a correction past the window is refused in the API words, inside the dialo
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
-test('an officer sees the certificate list and none of its controls', async ({ page }) => {
-  // certificate:manage ticks no club role at all (spec 6.1). Hiding the
-  // controls is presentation; the API is the gate.
+test('an officer is offered no certificate screen, and refused the one that exists', async ({
+  page,
+}) => {
+  // certificate:manage ticks no club role at all (spec 6.1), so the Manage
+  // sheet offers a Lead no such row. Both halves matter: the absent row is
+  // presentation, and the refusal below is the protection.
   await signIn(page, 'lead@uni.ac.ae');
-  await pickCertificateEvent(page, await officerClubId(page));
+  await page.goto(`/clubs/${CLUB}`);
+  await page.getByRole('button', { name: /^Manage/ }).click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByRole('link', { name: 'Members' })).toBeVisible();
+  await expect(sheet.getByRole('link', { name: 'Certificates' })).toHaveCount(0);
 
-  await expect(page.getByRole('button', { name: 'Issue certificates' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Revoke' })).toHaveCount(0);
+  // Any club id at all: the console answers a non-Admin the same way whether
+  // the club resolves or not, so this needs no id the officer cannot get.
+  await page.goto('/manage/00000000-0000-7000-8000-000000000000/certificates');
+  await expect(page).toHaveURL(/\/clubs(\/|$)/);
 });
 
 test('an admin issues, and the student reaches the document', async ({ page }) => {
@@ -330,7 +343,6 @@ test.describe('with a camera', () => {
     expect(token).toBeTruthy();
 
     await signIn(page, 'ops@uni.ac.ae');
-    const clubId = await officerClubId(page);
     await page.addInitScript((raw) => {
       class FakeBarcodeDetector {
         detect() {
@@ -343,8 +355,8 @@ test.describe('with a camera', () => {
       });
     }, token);
 
-    await page.goto(`/manage/${clubId}/scan`);
-    await page.getByRole('button', { name: /Drone Build Night/ }).click();
+    await openEvent(page, 'Drone Build Night');
+    await page.getByRole('link', { name: 'Check in' }).click();
 
     const verdict = page.getByRole('status');
     await expect(verdict).toContainText('Checked in', { timeout: 15_000 });
@@ -353,9 +365,7 @@ test.describe('with a camera', () => {
     // QR_SCAN, not MANUAL. This is the assertion that separates the two
     // branches: everything above is identical on both.
     await signIn(page, 'lead@uni.ac.ae');
-    await page.goto(`/manage/${clubId}/events`);
-    await page.getByRole('link', { name: 'Drone Build Night' }).click();
-    await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible();
+    await openAttendees(page, 'Drone Build Night');
     await expect(attendanceRow(page, 'Layla Hassan')).toContainText('Scan');
   });
 });
@@ -405,17 +415,13 @@ for (const theme of ['light', 'dark'] as const) {
       await axe(page);
     });
 
-    test('the scanner has no violations, picker and session', async ({ page }) => {
+    test('the scanner has no violations', async ({ page }) => {
       // The one screen that forces the dark palette whatever the theme is, so
-      // the light run is what would catch a pair that only works on paper.
+      // the light run is what would catch a pair that only works on paper. The
+      // student route carries that palette itself, ConsoleFrame having no path
+      // ending /scan to key off here.
       await signIn(page, 'ops@uni.ac.ae');
-      const clubId = await officerClubId(page);
-      await page.goto(`/manage/${clubId}/scan`);
-      await expect(page.getByRole('heading', { name: 'Pick an event' })).toBeVisible();
-      await axe(page);
-
-      await page.getByRole('button', { name: /Drone Build Night/ }).click();
-      await expect(page.getByLabel('Email')).toBeVisible();
+      await openScanner(page, 'Drone Build Night');
       await axe(page);
     });
 

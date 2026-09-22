@@ -107,8 +107,9 @@ test('an admin reads the audit log', async ({ page }) => {
 
 test('a club lead reads their own club report', async ({ page }) => {
   await signIn(page, 'lead@uni.ac.ae');
-  const clubId = new URL(page.url()).pathname.split('/')[2];
-  await page.goto(`/manage/${clubId}/reports`);
+  // Robotics Club by slug (seed.ts:74): an officer reads their own club
+  // report inside the student shell now, the console being Admin-only.
+  await page.goto('/clubs/robotics-club/reports');
 
   await expect(page.getByRole('img', { name: /Attendance/ })).toBeVisible();
   await expect(page.getByText('Registrations')).toBeVisible();
