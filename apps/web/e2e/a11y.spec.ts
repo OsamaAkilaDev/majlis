@@ -91,14 +91,20 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test("the viewer's own events have no violations", async ({ page }) => {
-      // The landing screen, and the densest markup in the student shell: two
-      // section headings with counts beside them, a StatusBadge in full and in
-      // its icon-only form, and the certificate chip, which carries its
-      // meaning in an aria-label and nothing else.
+      // The landing screen. Anchored on Past and Line Follower Sprint, which
+      // the seed fixes 72 hours behind the seed run and nothing moves: the
+      // Registered group holds only Drone Build Night, which ends two hours
+      // after seeding, at which point it crosses into Past and the Registered
+      // heading stops rendering by the section rule.
+      //
+      // That group carries the section heading with its count, the icon-only
+      // StatusBadge, and the certificate chip, whose meaning lives in an
+      // aria-label and nowhere else. The full-form badge is in Registered, so
+      // it is scanned too while that group has anything in it.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/events');
-      await expect(page.getByRole('heading', { name: 'Registered' })).toBeVisible();
-      await expect(page.getByRole('link', { name: /Drone Build Night/ })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Past' })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Line Follower Sprint/ })).toBeVisible();
       await scan(page);
     });
 
@@ -164,10 +170,13 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('the student registrations page has no violations', async ({ page }) => {
-      // Rows, not the empty state, which is the harder scan.
+      // Rows, not the empty state, which is the harder scan. Line Follower
+      // Sprint rather than Drone Build Night for the same reason as the events
+      // scan above: the seed fixes this one in the past and the other one
+      // leaves its own window two hours after seeding.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/profile/registrations');
-      await expect(page.getByRole('link', { name: /Drone Build Night/ })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Line Follower Sprint/ })).toBeVisible();
       await scan(page);
     });
 

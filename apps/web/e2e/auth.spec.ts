@@ -156,7 +156,7 @@ test('signing in on a phone viewport shows the tab bar', async ({ page }) => {
   // moved from padding inside the <nav> to the dock's bottom offset: the tab
   // must stay a real 44px+ target and not be squeezed by the bar's own
   // padding. Measured on a real mobile viewport, not computed.
-  const tabHeight = await page.getByRole('link', { name: 'Home' }).evaluate(
+  const tabHeight = await nav.getByRole('link', { name: 'Events', exact: true }).evaluate(
     (el) => el.getBoundingClientRect().height,
   );
   console.warn(`[tab-row-height] ${tabHeight}px at viewport ${page.viewportSize()?.width}x${page.viewportSize()?.height}`);
@@ -191,30 +191,20 @@ test('signing out ends the session server-side, not only in the browser', async 
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test('an officer can reach both shells through the profile switcher', async ({ page }) => {
-  // admin@ holds no club role, so lead@ is the multi-destination account here:
-  // without a switcher an officer had no way back to the student shell, and
-  // the switcher moved out of the avatar dropdown onto /profile.
+test('an officer lands in the student shell and is offered no console', async ({ page }) => {
+  // Stage 9 closed the club console to everyone but an Admin. `landingFor`
+  // sends every non-admin to /events, and `shellDestinations` answers an
+  // officer with nothing, so the "Switch to" section on /profile is not
+  // rendered at all rather than rendered empty. lead@ is the account that
+  // proves it: they hold a club role and still get neither.
   await signIn(page, 'lead@uni.ac.ae');
-  await expect(page).toHaveURL(/\/manage\/[^/]+\/overview$/);
-
-  // Out of the console and into the student shell.
-  await page.getByRole('link', { name: 'Profile' }).click();
-  await expect(page).toHaveURL(/\/profile$/);
-  await page.getByRole('link', { name: 'Home' }).first().click();
   await expect(page).toHaveURL(/\/events$/);
 
-  // And back the other way. The row is named by the club, not by the role:
-  // the label that shipped before was "Lead", which told an officer of two
-  // clubs nothing about which console they were about to open.
-  await page.getByRole('link', { name: 'Profile' }).click();
-  // Scoped to the switcher: "My clubs" lists the same club with the same
-  // accessible name, and that row goes to the public club page instead.
-  const switcher = page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'Switch to' }) });
-  await switcher.getByRole('link', { name: /Robotics Club/ }).click();
-  await expect(page).toHaveURL(/\/manage\/[^/]+\/overview$/);
+  await page.goto('/profile');
+  // Waited for first, or the absence below passes on a page that rendered
+  // nothing at all.
+  await expect(page.getByRole('heading', { name: 'My clubs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Switch to', exact: true })).toHaveCount(0);
 });
 
 test('/login and /signup reach each other', async ({ page }) => {
