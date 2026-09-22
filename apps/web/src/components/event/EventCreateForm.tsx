@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 import { ImageUpload } from '@/components/ImageUpload';
 import { OverrideReason } from '@/components/OverrideReason';
@@ -27,8 +28,11 @@ export function EventCreateForm({
   clubId: string;
   /** Spec 6.1: an Admin holding no role in this club is overriding. */
   override: boolean;
-  onCreated: (eventId: string) => void;
+  /** Where the new event opens. Omitted, it opens on its own page, which is
+   *  where an officer inside the student shell already works. */
+  onCreated?: (eventId: string) => void;
 }) {
+  const router = useRouter();
   const [values, setValues] = useState<EventFormValues>(EMPTY_EVENT);
   const [reason, setReason] = useState('');
   const [eventId, setEventId] = useState<string | null>(null);
@@ -58,7 +62,8 @@ export function EventCreateForm({
         ...toCreateBody(id, values, eventId !== null),
         ...(override ? { overrideReason: reason.trim() } : {}),
       });
-      onCreated(event.id);
+      if (onCreated) onCreated(event.id);
+      else router.push(`/events/${event.id}`);
     } catch (err) {
       if (err instanceof ProblemError) setError(err);
       else throw err;

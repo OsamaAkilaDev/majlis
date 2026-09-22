@@ -51,10 +51,18 @@ describe('decide', () => {
     expect(decide(club({ viewerMembershipStatus: 'REMOVED' })).kind).toBe('blocked');
   });
 
-  it('offers the console to an officer before anything else', () => {
-    // An officer holds no ordinary membership row, so the policy branch would
-    // otherwise invite the Lead to join their own club.
-    expect(decide(club({ viewerClubRoles: ['LEAD'] })).kind).toBe('console');
+  it('reads an officer by their membership, not by their role', () => {
+    // Stage 9 deleted the "Open club console" branch this control used to take
+    // first: an officer is already on the page their work happens on, and the
+    // Manage button beside this one is what opens it. A role is an appointment
+    // and a membership is a separate record, so the two are answered
+    // separately here.
+    expect(decide(club({ viewerClubRoles: ['LEAD'], viewerMembershipStatus: 'ACTIVE' })).kind).toBe(
+      'leave',
+    );
+    expect(decide(club({ viewerClubRoles: ['LEAD'], viewerMembershipStatus: null })).kind).toBe(
+      'join',
+    );
   });
 
   it('treats LEFT and REJECTED as not a member, not as a refusal', () => {

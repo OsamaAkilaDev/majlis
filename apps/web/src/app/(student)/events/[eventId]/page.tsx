@@ -12,7 +12,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
 
   return (
     <StudentShell title="Event">
-      <EventDetail eventId={eventId} initialEvent={event} />
+      <EventDetail eventId={eventId} initialEvent={event} now={Date.now()} />
     </StudentShell>
   );
 }

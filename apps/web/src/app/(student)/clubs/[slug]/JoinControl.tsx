@@ -1,14 +1,13 @@
 'use client';
 
 import type { ClubDetail } from '@majlis/contracts';
-import Link from 'next/link';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { ProblemError } from '@/lib/api';
 import { leaveClub, requestMembership } from '@/lib/clubs';
 
-type Kind = 'join' | 'request' | 'withdraw' | 'leave' | 'console' | 'blocked';
+type Kind = 'join' | 'request' | 'withdraw' | 'leave' | 'blocked';
 
 interface Decision {
   kind: Kind;
@@ -28,8 +27,6 @@ interface Decision {
  * presentation, never protection.
  */
 export function decide(club: ClubDetail): Decision {
-  if (club.viewerClubRoles.length > 0) return { kind: 'console', label: 'Open club console' };
-
   switch (club.viewerMembershipStatus) {
     case 'ACTIVE':
       return { kind: 'leave', label: 'Leave club' };
@@ -97,12 +94,6 @@ export function JoinControl({
           onClick={() => run(() => requestMembership(club.id))}
         >
           {action.label}
-        </Button>
-      ) : null}
-
-      {action.kind === 'console' ? (
-        <Button asChild size="lg" className={wide}>
-          <Link href={`/manage/${club.id}`}>{action.label}</Link>
         </Button>
       ) : null}
 

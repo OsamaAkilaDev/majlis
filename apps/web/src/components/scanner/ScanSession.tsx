@@ -76,17 +76,28 @@ function ManualForm({
   );
 }
 
-/** The check-in screen, spec 9.4. Dark in both themes: a viewfinder in a lit
- *  hall needs a dark surround, and the use scene decides that, not the toggle. */
+/**
+ * The check-in screen, spec 9.4. Dark in both themes: a viewfinder in a lit
+ * hall needs a dark surround, and the use scene decides that, not the toggle.
+ * The dark palette comes from whatever renders this: `ConsoleFrame` derives it
+ * from a path ending `/scan`, and the student check-in route wraps it itself.
+ */
 export function ScanSession({
   clubId,
   initialEvents,
+  event: fixed,
 }: {
-  clubId: string;
-  initialEvents: EventSummary[] | null;
+  /** The console picks an event out of the club's list. Absent with `event`. */
+  clubId?: string;
+  initialEvents?: EventSummary[] | null;
+  /** The student route arrives from one event's own page, so there is nothing
+   *  to pick and no way back to a picker. */
+  event?: EventSummary;
 }) {
-  const [events, setEvents] = useState<EventSummary[] | null>(initialEvents);
-  const [eventId, setEventId] = useState<string | null>(null);
+  const [events, setEvents] = useState<EventSummary[] | null>(
+    fixed ? [fixed] : (initialEvents ?? null),
+  );
+  const [eventId, setEventId] = useState<string | null>(fixed?.id ?? null);
   const [camera, setCamera] = useState<CameraState>('starting');
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [counts, setCounts] = useState<{ checkedIn: number; expected: number } | null>(null);
@@ -97,11 +108,11 @@ export function ScanSession({
   const fail = useAsyncError();
 
   useEffect(() => {
-    if (initialEvents) return;
+    if (initialEvents || fixed || !clubId) return;
     listEvents({ clubId, limit: CONSOLE_PAGE })
       .then((page) => setEvents(page.items))
       .catch(fail);
-  }, [clubId, initialEvents, fail]);
+  }, [clubId, initialEvents, fixed, fail]);
 
   // Prewarms the connection, so the first real scan is not also the first call
   // to the API. A 403 here (may scan, may not read the roster) still warms it
@@ -283,18 +294,20 @@ export function ScanSession({
                     Check in by email
                   </Button>
                 ) : null}
-                <Button
-                  variant="ghost"
-                  className="h-12 flex-1 text-base"
-                  onClick={() => {
-                    setEventId(null);
-                    setVerdict(null);
-                    setError(null);
-                    setCounts(null);
-                  }}
-                >
-                  Change event
-                </Button>
+                {fixed ? null : (
+                  <Button
+                    variant="ghost"
+                    className="h-12 flex-1 text-base"
+                    onClick={() => {
+                      setEventId(null);
+                      setVerdict(null);
+                      setError(null);
+                      setCounts(null);
+                    }}
+                  >
+                    Change event
+                  </Button>
+                )}
               </div>
             </div>
           )}

@@ -1,16 +1,19 @@
 'use client';
 
 import type { ClubDetail as Club, EventPage, EventSummary } from '@majlis/contracts';
-import { CaretRight } from '@phosphor-icons/react/ssr';
+import { CaretRight, Plus } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ClubBanner } from '@/components/ClubBanner';
 import { EmptyState } from '@/components/EmptyState';
 import { EventRow } from '@/components/EventRow';
 import { LoadMore } from '@/components/LoadMore';
+import { useShellSession } from '@/components/shell/shell-session';
 import { StatusBadge } from '@/components/StatusBadge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
+import { canCreateEvent, clubSectionsFor } from '@/lib/club-sections';
 import { cn } from '@/lib/cn';
 import { getClubBySlug } from '@/lib/clubs';
 import { splitOnEnd } from '@/lib/event-schedule';
@@ -21,6 +24,7 @@ import { useAsyncError } from '@/lib/use-async-error';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { AboutBlock, CommitteeBlock, DepartmentBlock } from './ClubAbout';
 import { JoinControl } from './JoinControl';
+import { ManageSheet } from './ManageSheet';
 
 function EventSection({
   title,
@@ -157,6 +161,7 @@ export function ClubDetail({
 }) {
   const [club, setClub] = useState<Club | null>(initialClub);
   const [missing, setMissing] = useState(false);
+  const { user } = useShellSession();
 
   const load = useCallback(async () => {
     try {
@@ -177,6 +182,9 @@ export function ClubDetail({
 
   if (missing) return <EmptyState title="No such club" />;
   if (!club) return <Skeleton className="h-64" />;
+
+  const sections = clubSectionsFor(club.viewerClubRoles, user.platformRole);
+  const canCreate = canCreateEvent(club.viewerClubRoles, user.platformRole);
 
   return (
     <div className="flex flex-col gap-6">
@@ -219,7 +227,23 @@ export function ClubDetail({
         </div>
       </header>
 
-      <JoinControl club={club} onChanged={load} />
+      {/* Above the stats, and the same row for everybody: a viewer holding
+          neither of these two sees exactly the control they saw before. */}
+      {sections.length > 0 || canCreate ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreate ? (
+            <Button asChild size="lg" className="h-11">
+              <Link href={`/clubs/${slug}/events/new`}>
+                <Plus data-icon="inline-start" aria-hidden />
+                New event
+              </Link>
+            </Button>
+          ) : null}
+          {sections.length > 0 ? <ManageSheet club={club} sections={sections} /> : null}
+        </div>
+      ) : (
+        <JoinControl club={club} onChanged={load} />
+      )}
 
       <dl className="flex border-y border-border">
         <Stat label="Members" value={club.memberCount} />

@@ -1,13 +1,17 @@
 'use client';
 
 import type { EventDetail as Event } from '@majlis/contracts';
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
+import { useShellSession } from '@/components/shell/shell-session';
 import { StatusBadge } from '@/components/StatusBadge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProblemError } from '@/lib/api';
 import { Moment, TimeRange } from '@/components/LocalTime';
-import { getEvent } from '@/lib/events';
+import { eventActionsFor } from '@/lib/event-actions';
+import { getEvent, publishEvent } from '@/lib/events';
 import { RegisterControl } from './RegisterControl';
 import { useAsyncError } from '@/lib/use-async-error';
 
@@ -33,12 +37,19 @@ function Fact({
 export function EventDetail({
   eventId,
   initialEvent,
+  now,
 }: {
   eventId: string;
   initialEvent: Event | null;
+  /** The server's clock, so which controls are drawn is the same answer on the
+   *  first paint and on hydration. Check-in is the one that turns on it. */
+  now: number;
 }) {
   const [event, setEvent] = useState<Event | null>(initialEvent);
   const [missing, setMissing] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { user } = useShellSession();
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +71,25 @@ export function EventDetail({
   if (missing) return <EmptyState title="No such event" />;
   if (!event) return <Skeleton className="h-64" />;
 
+  const actions = eventActionsFor(event, new Date(now), user.platformRole);
+  const publish = actions.find((a) => a.key === 'publish');
+  // Cancel is not here: it is destructive and rare, so it sits at the foot of
+  // the edit screen instead of a row the officer scans past.
+  const links = actions.filter((a) => a.path !== null);
+
+  async function runPublish() {
+    setPublishing(true);
+    setActionError(null);
+    try {
+      await publishEvent(eventId);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ProblemError ? (err.detail ?? err.title) : 'That action failed.');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {event.bannerUrl ? (
@@ -71,16 +101,17 @@ export function EventDetail({
       ) : null}
 
       <div className="flex flex-col gap-1">
-        {/* Not a link: the student club route resolves by slug, and an event
-            carries its club's name and logo but not its slug. */}
-        <p className="flex items-center gap-2 text-sm text-ink-2">
+        <Link
+          href={`/clubs/${event.clubSlug}`}
+          className="flex w-fit items-center gap-2 text-sm text-ink-2 hover:text-ink hover:underline"
+        >
           <img
             src={event.clubLogoUrl}
             alt=""
             className="size-5 shrink-0 rounded-control object-cover"
           />
           <span className="truncate">{event.clubName}</span>
-        </p>
+        </Link>
         <h2 className="font-display text-display text-ink">{event.title}</h2>
         <p className="text-ink-2">{event.summary}</p>
         {event.status === 'PUBLISHED' ? null : (
@@ -94,6 +125,28 @@ export function EventDetail({
         <p role="alert" className="rounded-card bg-bad-soft px-3 py-2 text-sm text-bad-fg">
           {event.cancelledReason}
         </p>
+      ) : null}
+
+      {publish || links.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {publish ? (
+              <Button size="lg" className="h-11" disabled={publishing} onClick={runPublish}>
+                {publish.label}
+              </Button>
+            ) : null}
+            {links.map((action) => (
+              <Button key={action.key} asChild variant="outline" size="lg" className="h-11">
+                <Link href={`/events/${event.id}/${action.path}`}>{action.label}</Link>
+              </Button>
+            ))}
+          </div>
+          {actionError ? (
+            <p role="alert" className="text-sm text-bad-fg">
+              {actionError}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <dl className="grid grid-cols-2 gap-3">
