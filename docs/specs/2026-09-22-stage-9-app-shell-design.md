@@ -176,7 +176,10 @@ club page's `new` route.
   destination; everyone else gets none and the profile screen's section disappears. Clubs
   a viewer runs are reached from the Clubs tab, where they already sit at the top with a
   role chip.
-- Both `error.tsx` files point home at `/events`.
+- `(student)/error.tsx` points home at `/events`. `(club)/error.tsx` points at `/admin`:
+  that boundary sits above `[clubId]`, which is Admin-only now, so an Admin is the only
+  viewer who can reach it and the student shell is the wrong way out. Corrected
+  2026-09-23, during the final review.
 
 ## 5. Contract changes
 
