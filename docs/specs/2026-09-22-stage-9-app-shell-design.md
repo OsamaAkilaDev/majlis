@@ -85,9 +85,19 @@ which belongs on the event.
 moves to `/clubs/[slug]/edit` unchanged. The club page a Lead opens is the page a member
 opens; pressing Edit is what turns the fields into controls.
 
-The same rule gives events `/events/[eventId]/edit`, which is the existing `EventEditor`
-moved, and `/clubs/[slug]/events/new`, which is `EventsManager`'s create panel moved.
-Event creation is twenty-one fields and four window rules; it is a screen, not a sheet.
+The same rule gives events `/events/[eventId]/edit` and `/clubs/[slug]/events/new`, the
+latter being `EventsManager`'s create panel moved. Event creation is twenty-one fields and
+four window rules; it is a screen, not a sheet.
+
+`EventEditor` does not move, it **divides**. Its 576 lines already hold four things: the
+form, the assignment roster, the registration roster and the attendance corrections. The
+split runs along the permission seam. Form, poster, publish, cancel and assignments go to
+`/edit`, because `event:edit`, `event:publish`, `event:cancel` and `event:assign` are all
+held by the same people. Roster and corrections go to `/attendees`, because
+`registration:read` admits an `EVENT_LEAD` or `OPERATIONS` assignee who must reach the
+roster and nothing else. Assignments deliberately stay on the `/edit` side: putting them
+beside the roster would hand the person who was just assigned the control that assigns
+people.
 
 ### 2.5 Check-in is scoped to one event
 
@@ -133,8 +143,8 @@ branching on `platformRole` and is always `ADMIN_NAV`.
 | `/events` | Registered, From your clubs, Past | signed in |
 | `/events/discover` | `EventBrowser`, moved | signed in |
 | `/events/[eventId]` | event, plus officer actions | signed in |
-| `/events/[eventId]/edit` | `EventEditor`, moved | `event:edit` |
-| `/events/[eventId]/attendees` | registration roster | `registration:read` |
+| `/events/[eventId]/edit` | the form half of `EventEditor`, plus assignments | `event:edit` |
+| `/events/[eventId]/attendees` | the roster half of `EventEditor` | `registration:read` |
 | `/events/[eventId]/check-in` | `ScanSession`, minus its picker | `attendance:scan` |
 | `/clubs` | Your clubs, Requested | signed in |
 | `/clubs/discover` | `ClubBrowser`, moved | signed in |
@@ -170,9 +180,10 @@ club page's Events tab and its create panel becomes the `new` route.
 Four, and nothing else. Every members, team, reports, roster, scan and correction
 endpoint is already club- or event-scoped and already enforces the right permission.
 
-- **`eventListQuerySchema.fromMyClubs: boolean`**: upcoming events from clubs where the
-  caller holds an `ACTIVE` membership, excluding any the caller already holds an active
-  registration for. The exclusion is server-side deliberately: de-duplicating against the
+- **`eventListQuerySchema.fromMyClubs: boolean`**: events from clubs where the caller
+  holds an `ACTIVE` membership, excluding any the caller already holds a non-cancelled
+  registration for. Orthogonal to `upcoming`, which it does not imply: the Events screen
+  sends both. The exclusion is server-side deliberately: de-duplicating against the
   Registered section on the client is correct for the first page and wrong for every page
   after it.
 - **`/me/registrations?past=boolean`**: splits on `event.endsAt`, the same predicate
