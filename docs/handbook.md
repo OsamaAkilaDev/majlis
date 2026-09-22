@@ -86,8 +86,8 @@ No default. The process will not start without them.
 | `NOTIFICATION_SWEEP_SECRET` | example value | Shared secret for `POST /internal/notification-sweep`. Minimum 16 characters |
 | `ATTENDANCE_CORRECTION_WINDOW_HOURS` | `48` | Hours after an event ends during which Operations and Lead may correct attendance. Also gates issuance: certificates go out once it closes |
 | `PUBLIC_WEB_ORIGIN` | `http://localhost:3000` | Where the QR printed on a certificate points, for `/verify/{code}`. Set it to the real web origin or issued certificates carry a QR nobody can scan |
-| `RESEND_FROM` | `Majlis <notifications@majlis.invalid>` | From address on outbound email |
-| `RESEND_API_KEY` | unset | Turns email on. See below |
+| `BREVO_FROM` | `Majlis <notifications@majlis.invalid>` | From address on outbound email. Must be an address verified as a sender in Brevo |
+| `BREVO_API_KEY` | unset | Turns email on. See below |
 
 ### Refused in production
 
@@ -174,30 +174,45 @@ nothing.
 
 ## Turning on email
 
-Setting `RESEND_API_KEY` is the whole switch. There is no code change.
+Setting `BREVO_API_KEY` is the whole switch. There is no code change.
 
 With no key, the channel factory resolves `SkippingChannel`: every notification
 is marked `SKIPPED`, nothing is sent, and the in-app inbox works completely.
 That is the shipped state.
 
+**No domain is needed.** Brevo verifies a single sender address rather than a
+domain, which is the reason this project is on it. Create a free account, add
+the address you want mail to come from under Senders, click the link Brevo
+emails to it, then generate a key under SMTP & API. Set `BREVO_API_KEY` to the
+key and `BREVO_FROM` to `Your Name <that.address@example.com>`. The default
+`notifications@majlis.invalid` will not deliver.
+
+The free plan sends 300 a day across the whole account, marketing and
+transactional together, and puts a "Sent with Brevo" footer on every message.
+Removing the footer is a paid add-on.
+
+**SMTP will not work on Render's free tier, whatever the provider.** Render
+blocks outbound traffic to ports 25, 465 and 587 on free services, and port 25
+on every plan. That is why this channel is an HTTPS API call and not Nodemailer,
+and why Gmail SMTP cannot be substituted for it. A paid instance unblocks 465
+and 587 if you ever want SMTP.
+
 Two things belong in the same change as the key.
 
 **Email delivery has never been verified end to end.** There has never been a
 key. The abstraction, the triggers, the failure handling and the inbox are all
-real and tested. `ResendChannel` is exercised only through template render unit
-tests. The first real send is the first real send; watch the `email_status` and
-`email_error` columns on `notification` and treat the first day as a trial.
+real and tested, and `BrevoChannel` has unit tests against a stubbed `fetch`,
+but nothing has ever reached Brevo. The first real send is the first real send;
+watch the `email_status` and `email_error` columns on `notification` and treat
+the first day as a trial.
 
 **Rate limit `POST /auth/forgot-password` in the same change.** It is
 unauthenticated, it sends mail to an address the caller chooses, and it always
 answers 202 regardless of whether the address exists, so nothing slows a caller
 down. Unlimited, it can be pointed at any student's inbox and will burn the
-Resend quota. It costs nothing while no key is set, which is why it has
-survived. There is no rate limiting anywhere in the product to build on, so
+300-a-day quota in minutes. It costs nothing while no key is set, which is why
+it has survived. There is no rate limiting anywhere in the product to build on, so
 this means a proxy rule, a platform-level limit, or new code.
-
-Also set `RESEND_FROM` to a real address on a domain verified with Resend. The
-default is `notifications@majlis.invalid` and will not deliver.
 
 ## Known limits
 
@@ -292,7 +307,8 @@ been run against it. Treat that as an incident: the password is published here.
 `GET /api/v1/health` is the liveness check and hits the database.
 
 Logs are pino, structured, at `LOG_LEVEL`. Cookies, authorization headers,
-`set-cookie`, `RESEND_API_KEY` and token and code query parameters are redacted
+`set-cookie`, `BREVO_API_KEY`, the `api-key` header and token and code query
+parameters are redacted
 at the logger. No raw QR token, password, session token or reset token is
 stored or logged anywhere.
 
@@ -305,7 +321,7 @@ stored or logged anywhere.
 | API will not start | The environment failed validation. The error names the variable and the rule, never the value |
 | Login works but every API call 500s in the browser | `API_ORIGIN` points somewhere the web server cannot reach |
 | Certificates never appear after an event | Nothing is calling the lifecycle sweep |
-| Notifications appear in the inbox but no email arrives | `RESEND_API_KEY` unset, so every row is `SKIPPED`, or nothing is calling the notification sweep |
+| Notifications appear in the inbox but no email arrives | `BREVO_API_KEY` unset, so every row is `SKIPPED`, or nothing is calling the notification sweep |
 | Certificate QR codes point at the wrong host | `PUBLIC_WEB_ORIGIN`. Already-issued certificates keep the old URL |
 | Scanner will not open the camera | Not a secure context. Use HTTPS or `localhost` |
 

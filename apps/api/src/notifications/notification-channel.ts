@@ -27,7 +27,7 @@ export interface NotificationChannel {
 /** The DI token. An interface has no runtime value for Nest to resolve. */
 export const NOTIFICATION_CHANNEL = 'NOTIFICATION_CHANNEL';
 
-// The shipped default, resolved when no RESEND_API_KEY is set: every row lands
+// The shipped default, resolved when no BREVO_API_KEY is set: every row lands
 // on SKIPPED and the in-app inbox still works.
 export class SkippingChannel implements NotificationChannel {
   async deliver(): Promise<DeliveryOutcome> {

@@ -34,12 +34,17 @@ export const LOG_REDACT_PATHS = [
   // here and it landed verbatim in every request log.
   `req.headers["${NOTIFICATION_SWEEP_SECRET_HEADER}"]`,
   `*.headers["${NOTIFICATION_SWEEP_SECRET_HEADER}"]`,
-  // Unlike the sweep secrets this never travels in a header, so no
-  // req.headers path would see it: what logs it is an object carrying
-  // configuration, such as a bootstrap dump or an error with process.env on
-  // it. Bare key for top level, wildcard for any depth.
-  'RESEND_API_KEY',
-  '*.RESEND_API_KEY',
+  // Brevo authenticates on a header literally named `api-key`, which
+  // neither the cookie nor the authorization path above covers. Defensive
+  // today, since nothing serializes the outbound fetch: here so an
+  // http-client error carrying its own request cannot log a live credential.
+  'req.headers["api-key"]',
+  '*.headers["api-key"]',
+  // The same key in an object carrying configuration, which no req.headers
+  // path would see: a bootstrap dump, or an error with process.env on it.
+  // Bare key for top level, wildcard for any depth.
+  'BREVO_API_KEY',
+  '*.BREVO_API_KEY',
 ] as const;
 
 /** Drops the raw query from req.url, which no redaction path can reach into.

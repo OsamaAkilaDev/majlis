@@ -114,7 +114,7 @@ export class NotificationService {
    * whose process died between commit and send is not lost. PENDING only, so a
    * FAILED row is attempted once and not retried forever. No transaction wraps
    * the batch: a send cannot be rolled back, and one held open across the HTTP
-   * call to Resend would pin a pooled connection for the whole batch.
+   * call to Brevo would pin a pooled connection for the whole batch.
    */
   async deliverPending(limit = DELIVERY_SWEEP_LIMIT): Promise<NotificationSweepResult> {
     const rows = await this.host.tx.notification.findMany({

@@ -17,7 +17,7 @@ import { makeActiveLead, makeClub, mkEvent, mkUser } from './factories';
 
 const prisma = createTestPrisma();
 
-/** The real wiring, with no RESEND_API_KEY set. */
+/** The real wiring, with no BREVO_API_KEY set. */
 let app: INestApplication;
 /** The same app with the channel replaced, so failure is reachable. */
 let appWithChannel: INestApplication;
@@ -104,10 +104,10 @@ describe('POST /internal/notification-sweep, authentication', () => {
   });
 });
 
-describe('with no RESEND_API_KEY configured', () => {
+describe('with no BREVO_API_KEY configured', () => {
   it('resolves the skipping channel', async () => {
-    // "Resend ships unwired" rests on this branch of the factory. A default value
-    // on RESEND_API_KEY constructs a real ResendChannel and every row lands
+    // "Email ships unwired" rests on this branch of the factory. A default value
+    // on BREVO_API_KEY constructs a real BrevoChannel and every row lands
     // FAILED instead.
     expect(app.get(NOTIFICATION_CHANNEL)).toBeInstanceOf(SkippingChannel);
   });

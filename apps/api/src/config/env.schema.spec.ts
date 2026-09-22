@@ -175,22 +175,22 @@ describe('NOTIFICATION_SWEEP_SECRET', () => {
   });
 });
 
-describe('RESEND_API_KEY', () => {
+describe('BREVO_API_KEY', () => {
   it('is absent by default, which is what makes the channel skip', () => {
-    // Resend ships unwired. If this ever gained a default the factory in
-    // NotificationsModule would construct a real ResendChannel at boot with
+    // Email ships unwired. If this ever gained a default the factory in
+    // NotificationsModule would construct a real BrevoChannel at boot with
     // a bogus key, and every notification would land on FAILED instead of
     // SKIPPED.
-    expect(envSchema.parse(base).RESEND_API_KEY).toBeUndefined();
+    expect(envSchema.parse(base).BREVO_API_KEY).toBeUndefined();
   });
 
   it('rejects an empty string rather than treating it as configured', () => {
-    // An empty RESEND_API_KEY in a .env is the shape a half-finished
+    // An empty BREVO_API_KEY in a .env is the shape a half-finished
     // deployment takes. Accepting it would be indistinguishable from absent
     // here but not in the factory, which only checks for falsiness, so the
     // refusal belongs at boot where it is visible.
-    const r = envSchema.safeParse({ ...base, RESEND_API_KEY: '' });
+    const r = envSchema.safeParse({ ...base, BREVO_API_KEY: '' });
     expect(r.success).toBe(false);
-    expect(r.error?.issues.some((i) => i.path[0] === 'RESEND_API_KEY')).toBe(true);
+    expect(r.error?.issues.some((i) => i.path[0] === 'BREVO_API_KEY')).toBe(true);
   });
 });

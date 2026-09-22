@@ -90,15 +90,21 @@ export const envSchema = z
       .min(16, 'must be at least 16 characters')
       .default(EXAMPLE_NOTIFICATION_SWEEP_SECRET),
     /**
-     * Optional by design (decided 2026-09-13): Resend ships unwired. With no
+     * Optional by design (decided 2026-09-13): email ships unwired. With no
      * key the channel marks every notification SKIPPED and the in-app inbox
      * works completely; pasting a key in turns email on with no code change.
+     *
+     * Brevo, not a domain-backed sender (decided 2026-09-21): it verifies a
+     * single address by clicking a link in that inbox, so a fresh deployment
+     * sends real mail from an ordinary account with no domain bought and no
+     * DNS published. That is the whole reason this project is on Brevo.
      *
      * No message here interpolates the value, so a validation failure names
      * the rule that was broken and never the credential that broke it.
      */
-    RESEND_API_KEY: z.string().min(1, 'must not be empty').optional(),
-    RESEND_FROM: z.string().min(3).default('Majlis <notifications@majlis.invalid>'),
+    BREVO_API_KEY: z.string().min(1, 'must not be empty').optional(),
+    /** `Name <address>` or a bare address, and verified as a sender in Brevo. */
+    BREVO_FROM: z.string().min(3).default('Majlis <notifications@majlis.invalid>'),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.SESSION_SECRET !== EXAMPLE_SESSION_SECRET, {
     path: ['SESSION_SECRET'],

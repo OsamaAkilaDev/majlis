@@ -92,10 +92,15 @@ services:
       - key: PUBLIC_WEB_ORIGIN
         sync: false
 
-      # Optional. With RESEND_API_KEY unset every notification is marked
+      # Optional. With BREVO_API_KEY unset every notification is marked
       # SKIPPED and the in-app inbox works completely; password reset is the
       # only flow that needs mail.
-      - key: RESEND_API_KEY
+      #
+      # Brevo needs no domain, which is why it is here: verify BREVO_FROM as a
+      # sender ADDRESS under Senders in the dashboard by clicking the link it
+      # emails you. The free plan allows 300 sends a day across the account and
+      # stamps a "Sent with Brevo" footer on every message.
+      - key: BREVO_API_KEY
         sync: false
-      - key: RESEND_FROM
+      - key: BREVO_FROM
         sync: false

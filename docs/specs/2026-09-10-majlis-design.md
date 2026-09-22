@@ -65,7 +65,7 @@ These are settled. Do not re-litigate without asking the human.
 | Client data | TanStack Query + react-hook-form (sharing the Zod schemas) |
 | File storage | Supabase Storage, uploaded direct from browser via signed URL |
 | PDF | `@react-pdf/renderer` — pure JS, no Chromium |
-| Email | Resend, behind a channel adapter interface |
+| Email | **Brevo**, behind a channel adapter interface. Revised 2026-09-21, see 14 |
 | Logging | Pino, structured, with request IDs and redaction |
 | Monorepo | pnpm workspaces + Turborepo |
 | Testing | Vitest, Supertest, Playwright, against a **native local Postgres 18** |
@@ -456,7 +456,7 @@ Every certificate carries a unique `serial_number` and a high-entropy `verificat
 
 A `Notification` row is written in the same transaction as the triggering action, carrying a `dedupe_key` unique per user so a retried action cannot double-notify. An in-app inbox reads these rows.
 
-Delivery goes through a `NotificationChannel` interface. The email implementation uses Resend with React Email templates; failures set `email_status = 'FAILED'` with the error and are visible to an Admin — a failed email never rolls back the action that caused it.
+Delivery goes through a `NotificationChannel` interface. The email implementation uses Brevo with React Email templates; failures set `email_status = 'FAILED'` with the error and are visible to an Admin — a failed email never rolls back the action that caused it.
 
 Triggers: team invitation · membership decision · event published · registration confirmed or waitlisted · waitlist promotion · material event change · event cancellation · certificate issued or revoked.
 
@@ -554,7 +554,7 @@ Where a viewer lacks access, or a club is suspended, or something genuinely went
 - Server-side authorization on every protected endpoint, re-derived from the database per request. No exceptions. The UI hiding a control is presentation, never protection.
 - argon2id password hashing with sane parameters. httpOnly, `Secure`, `SameSite=Lax` cookies. Refresh tokens are opaque, stored only as SHA-256 hashes, and revoked on logout and on suspension. ~~Rotation with family-wide revocation on reuse detection~~ — dropped 2026-09-11 as disproportionate for this system; see §13.
 - Rate limiting on login, signup, scan, and `/verify/{code}` — **all of it in Stage 12**, none of it today.
-- QR signing keys, session secrets, the sweep secret, and the Resend key live in environment secrets. Never in code, never in a log, never in an audit row.
+- QR signing keys, session secrets, the sweep secret, and the Brevo key live in environment secrets. Never in code, never in a log, never in an audit row.
 - Least privilege on attendee personal data — Marketing does not see it; Operations sees it only for their assigned event; students see only their own.
 - Input validation at the boundary via Zod; uploaded images validated for declared type and size before a signed URL is issued.
 - Structured logging with redaction; a health endpoint that exposes nothing sensitive.
@@ -603,7 +603,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 4 | ✅ **Done** — Clubs, team & membership | Departments, club CRUD + status machine, image upload via signed URL, Lead appointment, in-app team invitations, the four membership policies, requests and decisions, member lists, leaving. Designed in [`2026-09-12-stage-4-clubs-team-membership-design.md`](2026-09-12-stage-4-clubs-team-membership-design.md) |
 | 5 | ✅ **Done** — Events & registration | Event CRUD, lifecycle state machine, lazy advance + sweep endpoint, publication, cancellation, event assignments, eligibility, registration window, capacity under lock, waitlist, transactional promotion, admin override. Field-level edit permissions, deferred from Stage 4, built here and applied to clubs too. Planned in [`2026-09-12-stage-5-events-registration.md`](../superpowers/plans/2026-09-12-stage-5-events-registration.md) |
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
-| 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Resend email, all triggers, club/event/attendance/certificate metrics, ~~CSV exports~~ (deleted 2026-09-16), audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
+| 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Brevo email, all triggers, club/event/attendance/certificate metrics, ~~CSV exports~~ (deleted 2026-09-16), audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
 | 8 | ✅ **Done**: Hardening | Whole-codebase security audit and nine fixes, six performance fixes, the em dash sweep, the README rewrite and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13. Planned in [`2026-09-13-stage-8-hardening.md`](../superpowers/plans/2026-09-13-stage-8-hardening.md) |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
@@ -991,10 +991,10 @@ Notifications and reporting, planned in
 | Verified | Every suite re-run by the orchestrator rather than taken on report, with the API restart count checked at zero during each Playwright run |
 
 **Email delivery is not verified anywhere in this stage, and must not be claimed.** There is
-no `RESEND_API_KEY`. With none set the factory resolves `SkippingChannel` and every
-notification lands `SKIPPED`; `ResendChannel` is exercised only through template render unit
-tests. The abstraction, the ten triggers, the failure handling and the inbox are all real and
-tested. The sending is not.
+no `BREVO_API_KEY`. With none set the factory resolves `SkippingChannel` and every
+notification lands `SKIPPED`. The abstraction, the ten triggers, the failure handling and the
+inbox are all real and tested. The sending is not. (The channel itself gained unit tests on
+2026-09-21, against a stubbed `fetch`; still nothing has sent a real message.)
 
 **Decisions taken in the plan rather than here:** delivery as a sweep rather than
 fire-and-forget, so a failed email can never roll back the action that caused it; the
@@ -1138,9 +1138,9 @@ plus a backfill of an append-only table and not a last-stage change.
 
 **Known limits, stated plainly rather than left to be discovered:** CI has never run, so
 eight stages of green suites are eight stages of green suites *on one Windows machine*.
-Email delivery has never been verified against a real Resend key. Both Supabase buckets are
+Email delivery has never been verified against a real Brevo key. Both Supabase buckets are
 created by hand and nothing in the repository creates or verifies them, which makes a fresh
-environment silently 500 on its first certificate download. Setting `RESEND_API_KEY` makes
+environment silently 500 on its first certificate download. Setting `BREVO_API_KEY` makes
 `POST /auth/forgot-password` able to send mail to a caller-chosen address, unauthenticated
 and unlimited, so it should be limited in the same change that turns email on.
 
@@ -1166,8 +1166,9 @@ for an oversight.
 
 **The one consequence worth carrying:** `POST /auth/forgot-password` is unauthenticated and
 sends mail to an address the caller chooses, and always answers 202, so nothing slows a
-caller down. Unlimited, it can be pointed at any student's inbox and will burn the Resend
-quota. It costs nothing while no `RESEND_API_KEY` is set, which is the state today. **Anyone
+caller down. Unlimited, it can be pointed at any student's inbox and will burn the Brevo
+quota, which on the free plan is 300 sends a day across the whole account. It costs nothing
+while no `BREVO_API_KEY` is set, which is the state today. **Anyone
 turning email on should limit that route in the same change**, and the handbook says so.
 
 ### Deployment is not part of Stage 8 (2026-09-13)
@@ -1749,3 +1750,57 @@ an officer types or what anyone sees. `Event.timezone` is still required by the 
 still names the venue's zone, so the field is honest, but it now looks more load-bearing
 than it is. Either it earns a purpose, such as labelling where the event physically is,
 or it comes off the form and takes its default. That is an owner's call.
+
+### Email moves to Brevo, and Resend is removed (2026-09-21)
+
+Resend verifies a sender **domain**. That makes working email conditional on owning DNS, so
+anyone standing this project up without a domain can only ever mark notifications
+`SKIPPED`. The owner's requirement was a prototype that sends real mail from an ordinary
+inbox with nothing bought, free or paid.
+
+**Brevo verifies a single sender address instead of a domain.** You paste an address, click
+the link it emails you, and send. The free plan allows 300 sends a day across the whole
+account and stamps a "Sent with Brevo" footer on every message. Both costs were put to the
+owner and accepted.
+
+Two things this is not. It is **not an SMTP fix**: Render blocks outbound traffic to ports
+25, 465 and 587 on free services, and port 25 on every plan, so Gmail SMTP and every other
+SMTP sender fails there whatever the provider. Brevo works because it is an HTTPS API on
+443, and any paid Render instance would have unblocked 465 and 587 instead. And it is **not
+a reason to remove `@react-email/components` or `@react-email/render`**: those are a
+rendering library that Resend happens to publish, every template imports them, and they
+stay. Removing them while "removing Resend" would break every email in the product.
+
+`ResendChannel` is deleted and the `resend` SDK is gone from `apps/api/package.json`.
+`BrevoChannel` replaces it behind the same `NotificationChannel` port: one `fetch` to
+`POST https://api.brevo.com/v3/smtp/email`, no SDK for a single request. `RESEND_API_KEY`
+and `RESEND_FROM` become `BREVO_API_KEY` and `BREVO_FROM`, the latter parsed from
+`Name <address>` into the two fields Brevo wants. Templates, `NotificationService`, the ten
+triggers and every caller are untouched, which is the whole point of the port.
+
+**The channel gained the unit tests the old one never had.** `ResendChannel` had no spec
+file. `brevo.channel.spec.ts` pins six behaviours, and each was proved by deliberately
+breaking the implementation and watching the right test go red:
+
+| Break | Test that caught it |
+|---|---|
+| Ignore `response.ok`, always return `SENT` | reports FAILED when Brevo rejects the send |
+| Pass `BREVO_FROM` straight through as the address | splits a "Name <address>" sender |
+| Let a network error escape `deliver()` | reports FAILED rather than throwing |
+| Drop the API-key scrub from the stored error | keeps the API key out of the error it stores |
+
+Two of those matter beyond this file. `fetch` resolves a 400 exactly as readily as a 201,
+so without the `ok` check every rejected send reads `SENT` to an Admin forever. And a
+`FAILED` error is written to `email_status` and rendered on screen, which makes it a log
+surface like any other, so the channel scrubs the key out of anything it stores.
+
+**One redaction path was missing.** Brevo authenticates on a header named `api-key`, which
+neither `*.headers.cookie` nor `*.headers.authorization` covers. Nothing serializes the
+outbound request today, so `req.headers["api-key"]` and its wildcard are defensive in the
+same way `req.query.pass` is: there so an http-client error carrying its own request cannot
+put a live credential into a log line.
+
+**Still unverified, and stated plainly.** Nothing in this change has sent a message to
+Brevo. Creating the account, generating the key and verifying the sender address are all
+manual steps outside the repository. What changed is that doing them no longer requires a
+domain.

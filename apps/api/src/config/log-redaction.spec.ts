@@ -22,8 +22,10 @@ describe('LOG_REDACT_PATHS', () => {
       '*.headers["x-lifecycle-sweep-secret"]',
       'req.headers["x-notification-sweep-secret"]',
       '*.headers["x-notification-sweep-secret"]',
-      'RESEND_API_KEY',
-      '*.RESEND_API_KEY',
+      'req.headers["api-key"]',
+      '*.headers["api-key"]',
+      'BREVO_API_KEY',
+      '*.BREVO_API_KEY',
     ]);
   });
 
@@ -48,11 +50,10 @@ describe('LOG_REDACT_PATHS', () => {
     expect(lines.join('')).not.toContain('SUPERSECRETVALUE');
   });
 
-  it('strips RESEND_API_KEY from a logged configuration object, at the top level and one below', () => {
-    // The Resend key never travels in a request header, so no req.headers
-    // path would ever see it. The shape that puts it in a line is an object
-    // carrying configuration: a bootstrap dump, or an error with the
-    // environment attached.
+  it('strips BREVO_API_KEY from a logged configuration object, at the top level and one below', () => {
+    // Distinct from the header paths below: the shape these two catch is an
+    // object carrying configuration, such as a bootstrap dump or an error
+    // with the environment attached, which no req.headers path would see.
     //
     // Both depths, because pino's leading `*` matches exactly ONE level
     // (verified against pino@10.3.1, not assumed): the bare path covers the
@@ -69,8 +70,8 @@ describe('LOG_REDACT_PATHS', () => {
     const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
     logger.info(
       {
-        RESEND_API_KEY: 're_SUPERSECRETVALUE',
-        env: { RESEND_API_KEY: 're_SUPERSECRETVALUE' },
+        BREVO_API_KEY: 'xkeysib-SUPERSECRETVALUE',
+        env: { BREVO_API_KEY: 'xkeysib-SUPERSECRETVALUE' },
       },
       'boot',
     );
@@ -80,6 +81,32 @@ describe('LOG_REDACT_PATHS', () => {
     expect(output).not.toContain('SUPERSECRETVALUE');
   });
 
+  it('strips an api-key header, which no cookie or authorization path covers', () => {
+    // Brevo authenticates on a header named `api-key`. Defensive today,
+    // because nothing serializes the outbound fetch: here so an http-client
+    // error carrying its own request, or a later debug log, cannot put a
+    // live credential into a line. The same reasoning as req.query.pass.
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+
+    const logger = pino({ redact: { paths: [...LOG_REDACT_PATHS], remove: true } }, sink);
+    logger.error(
+      {
+        req: { headers: { 'api-key': 'xkeysib-SUPERSECRETVALUE' } },
+        err: { headers: { 'api-key': 'xkeysib-SUPERSECRETVALUE' } },
+      },
+      'Brevo request failed',
+    );
+
+    const output = lines.join('');
+    expect(output).toContain('Brevo request failed');
+    expect(output).not.toContain('SUPERSECRETVALUE');
+  });
 
   it('strips the sweep secret from a request log line', () => {
     // Spec 11 lists the sweep secret with session secrets and signing keys as
