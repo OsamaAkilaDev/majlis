@@ -492,22 +492,35 @@ Conventions: cursor pagination on every list endpoint (**no unbounded list, anyw
 
 ### 9.1 Shells
 
+Revised 2026-09-22 by Stage 9, [`2026-09-22-stage-9-app-shell-design.md`](2026-09-22-stage-9-app-shell-design.md). There are **two** shells for people, not three: the application, and the admin dashboard.
+
 ```
 app/
-  (public)/                  /login · /signup · /clubs · /clubs/[slug] · /events · /events/[slug] · /verify/[code]
-  (student)/                 /home · /me · /me/qr · /me/registrations · /me/certificates
-                             mobile-first — bottom tabs: Home · Clubs · Events · My QR · Me
-  (club)/manage/[clubId]/    officer console — overview · members · team · events · scan · certificates
-  (admin)/admin/             desktop dashboard — metrics · users · departments · clubs · events · audit · exports
+  (public)/                  /login · /signup · /verify/[code]
+  (student)/                 the application, mobile-first — bottom tabs: Events · Clubs · QR
+                             /events · /events/discover · /events/[eventId]{,/edit,/attendees,/check-in}
+                             /clubs · /clubs/discover
+                             /clubs/[slug]{,/about,/edit,/members,/team,/reports,/events/new}
+                             /profile · /profile/qr · /profile/notifications
+                             /profile/registrations · /profile/certificates
+  (club)/manage/[clubId]/    ADMIN ONLY — overview · members · team · events · scan · certificates · reports
+  (admin)/admin/             desktop dashboard — metrics · users · departments · clubs · events · audit
 ```
 
-Route groups do not appear in the URL, so the officer console lives under `/manage/[clubId]` rather than `/clubs/[clubId]` — the latter would collide with public club discovery at `/clubs/[slug]`. Public club and event pages are addressed by slug; management pages by ID.
+A club officer works inside the application, not in a console of their own. Every officer
+capability hangs off the club or event it concerns and appears only for a viewer holding
+the permission, re-derived from the database server-side on every request. An officer who
+reaches `/manage/[clubId]` is redirected to `/clubs/[slug]`.
+
+Route groups do not appear in the URL. Officer sections live *beneath* the club page, so
+they collide with nothing and are addressed by slug; club slugs are immutable. Events are
+addressed by ID throughout, because an event's slug is patchable.
 
 `middleware.ts` gates cheaply on cookie presence, with the routing rules as pure, unit-tested functions. Each shell's `layout.tsx` then re-verifies the real user and their club-scoped roles **server-side** and redirects if they don't belong.
 
 **Never render a page and then show an "authentication required" panel inside it. Redirect instead.**
 
-`/` redirects by role: Admin → `/admin`; officer-only → their club console; otherwise → `/home`. There is no landing page — Majlis is an authenticated product. A person who is both a student and an officer gets a shell switcher.
+`/` redirects by role: Admin → `/admin`; everyone else → `/events`. There is no landing page — Majlis is an authenticated product. There is no shell switcher: an Admin reaches the dashboard from their profile, and an officer's clubs sit at the top of the Clubs tab.
 
 ### 9.2 Data fetching
 
@@ -605,6 +618,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
 | 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Brevo email, all triggers, club/event/attendance/certificate metrics, ~~CSV exports~~ (deleted 2026-09-16), audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
 | 8 | ✅ **Done**: Hardening | Whole-codebase security audit and nine fixes, six performance fixes, the em dash sweep, the README rewrite and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13. Planned in [`2026-09-13-stage-8-hardening.md`](../superpowers/plans/2026-09-13-stage-8-hardening.md) |
+| 9 | ⬜ App shell restructure | `/home` deleted; Events and Clubs lead with the viewer's own, discovery moved behind a route; the officer console withdrawn and every officer capability folded onto the club and event it concerns; `/manage/[clubId]` becomes Admin-only. Two query flags and one count are the whole API surface. Designed in [`2026-09-22-stage-9-app-shell-design.md`](2026-09-22-stage-9-app-shell-design.md) |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
 
@@ -1804,3 +1818,37 @@ put a live credential into a log line.
 Brevo. Creating the account, generating the key and verifying the sender address are all
 manual steps outside the repository. What changed is that doing them no longer requires a
 domain.
+
+### The officer console is withdrawn, and §3's "three app shells" becomes two (2026-09-22)
+
+By the product owner's decision. Recorded here because it reverses a Stage 3 decision that
+several later entries in this document still lean on, and because §9.1 has been rewritten
+in place rather than annotated.
+
+**Students use an application; Admins use a dashboard.** Those are the two shells. A club
+officer is a student who holds powers over one club, not a third kind of user with a
+console of their own. `/manage/[clubId]` survives untouched for Admins, who genuinely do
+look across every club in the university from a desk, and is closed to everyone else.
+
+**The reason a tab strip lost to a sheet** is worth keeping, because it is a fact about the
+permission matrix rather than a preference. The set of club sections an officer can reach
+is five different lists: a Lead reaches four, a Vice Lead three, Operations one, Marketing
+one, a CTO none. A tab strip is a fixed structural element and cannot be five lengths
+without reading as five different pages; a list of rows can. The club page is therefore
+identical for every viewer except that one button appears.
+
+**Certificates left the club officer surface entirely**, which was a live defect in the
+first mock. `certificate:manage` is `{ platform: ['ADMIN'] }` with no club role at all,
+deliberately, so a Lead cannot issue their own club's certificates. Anything that offered
+a Lead a Certificates section was promising a screen the API would refuse.
+
+**What this costs.** `clubDetailSchema.upcoming`, `.past` and `CLUB_EVENT_PREVIEW` are
+removed. The bounded preview was added on 2026-09-19 to spare a second query, but it
+cannot show an officer their own drafts, and the club page's server component fetches the
+club and the first page of events in one `Promise.all`, so there is no round-trip to
+spare. `eventsRun` stays.
+
+**Unchanged by this:** the permission matrix, the admin dashboard, and the carried security
+items earlier notes pencilled against "Stage 9" (`__Host-` cookie prefixes, `helmet`,
+`Cache-Control` on API responses, and authorization refusals returning HTTP 200). Those
+keep their own slot.
