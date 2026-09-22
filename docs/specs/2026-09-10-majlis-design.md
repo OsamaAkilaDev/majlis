@@ -618,7 +618,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 6 | ✅ **Done** — Attendance & certificates | Pass issuance, rotation, signed token, scanner UI, check-in, manual check-in, corrections, then idempotent issuance, lazy PDF render, storage, public verification page, revoke and reissue. Planned in [`2026-09-12-stage-6-attendance-certificates.md`](../superpowers/plans/2026-09-12-stage-6-attendance-certificates.md) |
 | 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Brevo email, all triggers, club/event/attendance/certificate metrics, ~~CSV exports~~ (deleted 2026-09-16), audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
 | 8 | ✅ **Done**: Hardening | Whole-codebase security audit and nine fixes, six performance fixes, the em dash sweep, the README rewrite and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13. Planned in [`2026-09-13-stage-8-hardening.md`](../superpowers/plans/2026-09-13-stage-8-hardening.md) |
-| 9 | ⬜ App shell restructure | `/home` deleted; Events and Clubs lead with the viewer's own, discovery moved behind a route; the officer console withdrawn and every officer capability folded onto the club and event it concerns; `/manage/[clubId]` becomes Admin-only. Two query flags and one count are the whole API surface. Designed in [`2026-09-22-stage-9-app-shell-design.md`](2026-09-22-stage-9-app-shell-design.md) |
+| 9 | ✅ **Done**: App shell restructure | `/home` deleted; Events and Clubs lead with the viewer's own, discovery moved behind a route; the officer console withdrawn and every officer capability folded onto the club and event it concerns; `/manage/[clubId]` becomes Admin-only. Two query flags and one count are the whole API surface. Designed in [`2026-09-22-stage-9-app-shell-design.md`](2026-09-22-stage-9-app-shell-design.md) |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
 
@@ -1157,6 +1157,50 @@ created by hand and nothing in the repository creates or verifies them, which ma
 environment silently 500 on its first certificate download. Setting `BREVO_API_KEY` makes
 `POST /auth/forgot-password` able to send mail to a caller-chosen address, unauthenticated
 and unlimited, so it should be limited in the same change that turns email on.
+
+### Stage 9 completion note (2026-09-23)
+
+Officer capability moved onto the club and event pages inside the student app;
+`/manage/[clubId]` is now Admin-only and otherwise untouched. Seven rulings were made during
+execution and are recorded here because they only ever lived in a gitignored scratch file.
+
+**R1: shared officer components live in `apps/web/src/components/club/` and
+`components/event/`, not inside student route folders.** `ClubProfile.tsx` was already there
+before this stage, so both the student app and the Admin console import the same component
+rather than holding two copies that can drift.
+
+**R2: `EventsManager` was not deleted. This contradicts the Stage 9 design doc.**
+[`2026-09-22-stage-9-app-shell-design.md`](2026-09-22-stage-9-app-shell-design.md) §3 said it
+was the only component that does not survive the move. It survives as the Admin console's
+Events section, unchanged, with its create panel extracted to
+`components/event/EventCreateForm.tsx` and used by both callers. The same design doc's §2.1
+says the console "stays exactly as it is", and deleting `EventsManager` would have broken
+that promise, so the stronger statement won and §3 has been corrected in place.
+
+**R3: `EventEditor` split into `components/event/EventForm.tsx`** (form, poster, publish,
+cancel, assignments) **and `EventAttendees.tsx`** (roster, corrections).
+`/manage/[clubId]/events/[eventId]` renders both stacked, so the Admin still gets one screen.
+
+**R4: `ClubDetail.tsx` moved from Task 5 to Task 4** in the stage plan. The web tree
+deliberately did not typecheck between Task 1 and Task 4.
+
+**R6: `ConsoleFrame`'s `pathname.endsWith('/scan')` forced-dark rule is unchanged**
+(`apps/web/src/components/shell/ConsoleFrame.tsx:33`), because `/manage/[clubId]/scan` still
+exists for Admins. The student check-in route carries its own dark wrapper.
+
+**R7: the club page's Events tab fetches with no `upcoming` filter and splits and orders
+Upcoming and Past on the client**, because `GET /events` paginates by `id` and has no `past`
+flag to ask for. Marked with a `ponytail:` comment at `apps/web/src/lib/event-schedule.ts:133`
+naming the ceiling: date order only holds within one loaded page, and the fix is a date
+cursor on `GET /events` and `GET /me/registrations`, both currently deferred in
+`apps/api/src/events/events.service.ts`.
+
+**The Playwright suite was never executed during this stage.** The connected database holds
+`prisma/seed-demo.ts`, not `prisma/seed.ts`, so no e2e spec in this branch could be run
+against it. Every e2e edit made during Stage 9 is mechanical, justified by reading
+`apps/api/prisma/seed.ts` rather than by watching the suite go green. This compounds the
+Stage 8 note that CI has never run: nine stages of green suites are now nine stages of green
+suites *and one stage whose e2e diffs were never run at all*.
 
 ---
 

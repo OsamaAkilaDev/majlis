@@ -159,8 +159,11 @@ branching on `platformRole` and is always `ADMIN_NAV`.
 Every gate is re-derived server-side from the database on each request. A slug or an ID in
 a URL is a claim, never a permission (spec §11).
 
-`EventsManager` is the only component that does not survive the move: its list becomes the
-club page's Events tab and its create panel becomes the `new` route.
+Corrected 2026-09-23: `EventsManager` does not leave the codebase. §2.1 already promises the
+console "stays exactly as it is", and deleting `EventsManager` would have broken that
+promise. It survives unchanged as the Admin console's Events section; only its create panel
+moves, extracted to `components/event/EventCreateForm.tsx` and shared by the console and the
+club page's `new` route.
 
 ## 4. Navigation
 

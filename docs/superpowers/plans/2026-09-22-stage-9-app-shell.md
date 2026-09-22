@@ -171,8 +171,17 @@ it('accepts a null pending count and refuses an absent one', () => {
 Add to `events/index.test.ts`, proving the query flags parse the strings a URL actually carries, which a `z.boolean()` would not:
 
 ```ts
-it('reads fromMyClubs and past out of query strings', () => {
+// Each assertion goes in the describe block for the schema it exercises,
+// and each flag is asserted for BOTH strings. The 'false' case is the whole
+// test: z.coerce.boolean() is Boolean(input), and Boolean('true') is true
+// too, so a 'true'-only assertion passes against the exact bug being guarded.
+it('reads fromMyClubs out of a query string, both ways', () => {
   expect(eventListQuerySchema.parse({ fromMyClubs: 'true' }).fromMyClubs).toBe(true);
+  expect(eventListQuerySchema.parse({ fromMyClubs: 'false' }).fromMyClubs).toBe(false);
+});
+
+it('reads past out of a query string, and leaves it undefined when absent', () => {
+  expect(myRegistrationListQuerySchema.parse({ past: 'true' }).past).toBe(true);
   expect(myRegistrationListQuerySchema.parse({ past: 'false' }).past).toBe(false);
   expect(myRegistrationListQuerySchema.parse({}).past).toBeUndefined();
 });
