@@ -273,10 +273,10 @@ export class ClubsService {
   }
 
   /**
-   * Two round trips, not six. The database is remote, so each one is real
-   * latency on the club page's first paint: the club, its department, its
-   * committee, both counts and the viewer's own membership all come back in
-   * one read.
+   * One round trip for an ordinary viewer, two for one who can decide
+   * membership: the club, its department, its committee, both counts and the
+   * viewer's own membership all come back together, and pendingMemberCount is
+   * the only part that ever costs a second query.
    *
    * Callable in parallel because nothing here runs inside a transaction any
    * more: `update` and `updateStatus` re-read AFTER theirs commits.

@@ -521,6 +521,11 @@ describe('GET /events renders the due status without writing it', () => {
     expect(list.status).toBe(200);
     expect(list.body.items).toHaveLength(1);
     expect(list.body.items[0].status).toBe('REGISTRATION_CLOSED');
+    // clubSlug and clubName are both plain strings, so a copy-paste of one for
+    // the other still typechecks. The club's name and slug differ by
+    // construction (factories.ts's aClub), so this fails if they are swapped.
+    expect(list.body.items[0].clubSlug).toBe(club.slug);
+    expect(list.body.items[0].clubSlug).not.toBe(club.name);
 
     // The other half: a list read must not write, or the hottest read in the
     // product costs a transaction per row.
