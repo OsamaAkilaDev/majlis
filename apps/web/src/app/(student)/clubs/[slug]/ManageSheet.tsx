@@ -38,10 +38,17 @@ export function ManageSheet({ club, sections }: { club: ClubDetail; sections: Cl
         <Button variant="outline" size="lg" className="h-11">
           Manage
           {pending ? (
-            <span className="ml-1 rounded-control bg-primary-soft px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular-nums text-primary-soft-fg">
-              {pending}
-              <span className="sr-only"> membership requests waiting</span>
-            </span>
+            <>
+              {/* The count and its meaning are split: the accessible name runs
+                  the two together otherwise, as "Manage9". */}
+              <span
+                aria-hidden
+                className="ml-1 rounded-control bg-primary-soft px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular-nums text-primary-soft-fg"
+              >
+                {pending}
+              </span>
+              <span className="sr-only">, {pending} membership requests waiting</span>
+            </>
           ) : null}
         </Button>
       </SheetTrigger>
