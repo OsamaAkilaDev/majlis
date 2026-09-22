@@ -90,9 +90,9 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
-    test('the student club list has no violations', async ({ page }) => {
+    test('the club directory has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/clubs');
+      await page.goto('/clubs/discover');
       await expect(page.getByRole('link', { name: /Robotics Club/ })).toBeVisible();
       await scan(page);
     });
@@ -115,16 +115,16 @@ for (const theme of ['light', 'dark'] as const) {
       await scan(page);
     });
 
-    test('the student event list has no violations', async ({ page }) => {
+    test('the event directory has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/events');
+      await page.goto('/events/discover');
       await expect(page.getByRole('link', { name: /Introduction to ROS 2/ })).toBeVisible();
       await scan(page);
     });
 
     test('an event detail with an actionable register control has no violations', async ({ page }) => {
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/events');
+      await page.goto('/events/discover');
       await page.getByRole('link', { name: /Introduction to ROS 2/ }).click();
       await expect(page.getByRole('button', { name: 'Register', exact: true })).toBeEnabled();
       await scan(page);
@@ -133,7 +133,7 @@ for (const theme of ['light', 'dark'] as const) {
     test('an event detail with a refused register control has no violations', async ({ page }) => {
       // As above: the refusal must be in the accessible name, not the layout.
       await signIn(page, 'student@uni.ac.ae');
-      await page.goto('/events');
+      await page.goto('/events/discover');
       await page.getByRole('link', { name: /Robotics Showcase/ }).click();
       await expect(
         page.getByRole('button', { name: 'This event is full and has no waitlist' }),

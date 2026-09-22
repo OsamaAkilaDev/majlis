@@ -126,7 +126,8 @@ test('an expired session is refreshed on navigation rather than bounced', async 
 
   await page.goto('/events');
   await expect(page).toHaveURL(/\/events$/);
-  // exact: true, or this also matches the "No events yet" empty-state heading.
+  // exact: true, so a section heading on the screen cannot stand in for the
+  // page's own title and hide a shell that never rendered.
   await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible();
 });
 

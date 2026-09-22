@@ -20,7 +20,10 @@ export default async function EventsPage() {
   ]);
 
   return (
-    <StudentShell title="Events" action={<SearchLink href="/events/discover" label="Discover events" />}>
+    <StudentShell
+      title="Events"
+      action={<SearchLink href="/events/discover" label="Discover events" />}
+    >
       <EventGroups
         registered={registered}
         fromClubs={fromClubs}

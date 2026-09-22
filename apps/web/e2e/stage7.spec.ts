@@ -44,7 +44,7 @@ test('a registration reaches the inbox, badges the header bell, and marking it r
   const bell = page.getByRole('link', { name: /^Notifications/ });
   await expect(bell).toHaveAccessibleName('Notifications');
 
-  await page.goto('/events');
+  await page.goto('/events/discover');
   await page.getByRole('link', { name: /Introduction to ROS 2/ }).click();
   await page.getByRole('button', { name: 'Register', exact: true }).click();
   await expect(page.getByText('Confirmed')).toBeVisible();
