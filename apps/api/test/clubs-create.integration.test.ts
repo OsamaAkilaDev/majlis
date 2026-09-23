@@ -256,6 +256,64 @@ describe('GET /clubs', () => {
         .status,
     ).toBe(400);
   });
+
+  it('joinable hides the clubs the viewer is in or waiting on, and nothing else', async () => {
+    // Discriminating: a filter keyed on "has any membership row" passes a test
+    // written with one ACTIVE member and still hides a club the viewer LEFT,
+    // which is a club they may well want to re-join. Each status is asserted on
+    // its own, and the unfiltered list is asserted too, or a filter that hid
+    // everything would pass. A stranger's ACTIVE membership on the untouched
+    // club is the other half: without scoping to actor.id, that club looks
+    // "held" to everyone, which a single-viewer fixture cannot catch.
+    const viewer = await loginAsStudent(app);
+    const stranger = await loginAsStudent(app);
+
+    const active = await makeClub({ name: uniq('Active Club') });
+    const pending = await makeClub({ name: uniq('Pending Club') });
+    const left = await makeClub({ name: uniq('Left Club') });
+    const untouched = await makeClub({ name: uniq('Untouched Club') });
+
+    await prisma.clubMembership.create({ data: { clubId: active.id, userId: viewer.userId, status: 'ACTIVE' } });
+    await prisma.clubMembership.create({ data: { clubId: pending.id, userId: viewer.userId, status: 'PENDING' } });
+    await prisma.clubMembership.create({ data: { clubId: left.id, userId: viewer.userId, status: 'LEFT' } });
+    await prisma.clubMembership.create({ data: { clubId: untouched.id, userId: stranger.userId, status: 'ACTIVE' } });
+
+    const names = (res: request.Response) => (res.body.items as { name: string }[]).map((c) => c.name);
+
+    const all = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?status=ACTIVE&limit=100`)
+      .set('Cookie', viewer.sessionCookie);
+    expect(names(all)).toEqual(
+      expect.arrayContaining([active.name, pending.name, left.name, untouched.name]),
+    );
+
+    const joinable = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?status=ACTIVE&joinable=true&limit=100`)
+      .set('Cookie', viewer.sessionCookie);
+    expect(names(joinable)).toEqual(expect.arrayContaining([left.name, untouched.name]));
+    expect(names(joinable)).not.toContain(active.name);
+    expect(names(joinable)).not.toContain(pending.name);
+  });
+
+  it('reports the viewer relationship on the summary, per viewer', async () => {
+    // Discriminating: a mapper that read the first membership row regardless of
+    // user would mark a club joined for a viewer who never joined it. Two
+    // viewers, one club, opposite answers.
+    const owner = await loginAsStudent(app);
+    const stranger = await loginAsStudent(app);
+    const club = await makeClub({ name: uniq('One Club') });
+    await prisma.clubMembership.create({ data: { clubId: club.id, userId: owner.userId, status: 'ACTIVE' } });
+
+    const mine = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?status=ACTIVE&q=${encodeURIComponent(club.name)}`)
+      .set('Cookie', owner.sessionCookie);
+    expect(mine.body.items[0].viewerJoined).toBe(true);
+
+    const theirs = await request(app.getHttpServer())
+      .get(`${CLUBS_PATH}?status=ACTIVE&q=${encodeURIComponent(club.name)}`)
+      .set('Cookie', stranger.sessionCookie);
+    expect(theirs.body.items[0].viewerJoined).toBe(false);
+  });
 });
 
 describe('GET /clubs/:clubId', () => {

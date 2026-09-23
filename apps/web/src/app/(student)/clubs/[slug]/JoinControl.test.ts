@@ -13,6 +13,7 @@ function club(overrides: Partial<ClubDetail> = {}): ClubDetail {
     membershipPolicy: 'OPEN',
     departmentName: 'Engineering',
     memberCount: 1,
+    viewerJoined: false,
     description: 'A club.',
     academicYear: '2026/2027',
     bannerUrl: null,

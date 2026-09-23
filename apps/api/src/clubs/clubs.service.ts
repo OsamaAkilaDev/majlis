@@ -32,6 +32,11 @@ import { deriveSlug, uniqueSlug } from './slug';
 
 const ACTIVE_ONLY = { status: 'ACTIVE' } as const;
 
+/** The membership statuses that count as "already in this club" for a viewer:
+ *  ACTIVE or still waiting on it. LEFT is deliberately excluded, a club left
+ *  is a club worth re-showing. */
+const HELD = ['ACTIVE', 'PENDING'] as const;
+
 /** What a club has actually run. Drives the `eventsRun` stat. */
 const RAN: Prisma.EventWhereInput = { status: { in: ['COMPLETED', 'CERTIFIED'] } };
 
@@ -68,7 +73,12 @@ interface Actor {
   platformRole: PlatformRole;
 }
 
-function toClubSummary(row: ClubRow, departmentName: string, memberCount: number): ClubSummary {
+function toClubSummary(
+  row: ClubRow,
+  departmentName: string,
+  memberCount: number,
+  viewerJoined: boolean,
+): ClubSummary {
   return {
     id: row.id,
     slug: row.slug,
@@ -79,6 +89,7 @@ function toClubSummary(row: ClubRow, departmentName: string, memberCount: number
     membershipPolicy: row.membershipPolicy,
     departmentName,
     memberCount,
+    viewerJoined,
   };
 }
 
@@ -97,7 +108,12 @@ function toClubDetail(
   extras: DetailExtras,
 ): ClubDetail {
   return {
-    ...toClubSummary(row, departmentName, memberCount),
+    ...toClubSummary(
+      row,
+      departmentName,
+      memberCount,
+      extras.viewerMembershipStatus !== null && (HELD as readonly string[]).includes(extras.viewerMembershipStatus),
+    ),
     description: row.description,
     academicYear: row.academicYear,
     bannerUrl: row.bannerUrl,
@@ -242,6 +258,11 @@ export class ClubsService {
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
       ...(status ? { status } : {}),
       ...(query.q ? { name: { contains: query.q, mode: 'insensitive' as const } } : {}),
+      // Scoped to actor.id. Without that filter this hides every club that has
+      // any member at all, which on a populated database is all of them.
+      ...(query.joinable
+        ? { memberships: { none: { userId: actor.id, status: { in: [...HELD] } } } }
+        : {}),
     };
 
     const rows = await this.host.tx.club.findMany({
@@ -250,13 +271,22 @@ export class ClubsService {
       include: {
         department: { select: { name: true } },
         _count: { select: { memberships: { where: ACTIVE_ONLY } } },
+        // Existence only: one row is enough to answer the bit, and selecting
+        // the whole membership would widen the payload for nothing.
+        memberships: {
+          where: { userId: actor.id, status: { in: [...HELD] } },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
 
     const { items, nextCursor } = cursorPage(rows, query.limit);
 
     return {
-      items: items.map((c) => toClubSummary(c, c.department.name, c._count.memberships)),
+      items: items.map((c) =>
+        toClubSummary(c, c.department.name, c._count.memberships, c.memberships.length > 0),
+      ),
       nextCursor,
     };
   }

@@ -123,6 +123,9 @@ export const clubSummarySchema = z.object({
   membershipPolicy: membershipPolicySchema,
   departmentName: z.string(),
   memberCount: z.number().int().nonnegative(),
+  /** The viewer's own relationship, reduced to the one bit a list needs: are
+   *  they in this club or waiting on it. Never another user's. */
+  viewerJoined: z.boolean(),
 });
 
 export const committeeMemberSchema = z.object({
@@ -160,6 +163,10 @@ export const clubListQuerySchema = cursorPageQuerySchema.extend({
   departmentId: z.uuid().optional(),
   status: clubStatusSchema.optional(),
   q: z.string().trim().min(1).max(120).optional(),
+  /** Hides the clubs the viewer is ACTIVE or PENDING in. Discover browses with
+   *  it on and searches with it off, so a club you belong to is findable by
+   *  name and absent from the browse list. */
+  joinable: z.stringbool().optional(),
 });
 
 export type ClubStatus = z.infer<typeof clubStatusSchema>;
