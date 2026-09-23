@@ -18,9 +18,11 @@ import { useShellSession } from './shell-session';
  * entry this tab has ever had. It is a heuristic, not a proof, since the
  * count belongs to the whole browser tab, not this application: a restored
  * tab or an opener window can hold it above 1 for reasons unrelated to this
- * product. Treating that as "there is history" and calling `back()` anyway is
- * the safe side to be wrong on, since a `back()` that goes nowhere is merely
- * a dead press, not a wrong destination.
+ * product. When that happens, `back()` is called on a length that looks
+ * sufficient but is not ours, and it lands on whatever real entry sits behind
+ * it, an opener page, a stale tab-restore entry, possibly outside this app
+ * entirely, not a dead press. The `<= 1` case above it is the one this
+ * actually fixes, and it is exact.
  */
 export function BackButton() {
   const pathname = usePathname();
