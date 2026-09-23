@@ -1,12 +1,17 @@
 import { Buildings, CalendarDots, Shield, User, Users } from '@phosphor-icons/react/ssr';
+import type { Icon } from '@phosphor-icons/react';
 import { ICON_WEIGHT } from '@/lib/icons';
+import { ADMIN_NAV_ROUTES } from './nav-routes';
 
-const icon = { size: 16, weight: ICON_WEIGHT, className: 'shrink-0', 'aria-hidden': true } as const;
+const ICONS: Record<(typeof ADMIN_NAV_ROUTES)[number]['href'], Icon> = {
+  '/admin/users': User,
+  '/admin/departments': Buildings,
+  '/admin/clubs': Users,
+  '/admin/events': CalendarDots,
+  '/admin/audit': Shield,
+};
 
-export const ADMIN_NAV = [
-  { href: '/admin/users', label: 'Users', icon: <User {...icon} /> },
-  { href: '/admin/departments', label: 'Departments', icon: <Buildings {...icon} /> },
-  { href: '/admin/clubs', label: 'Clubs', icon: <Users {...icon} /> },
-  { href: '/admin/events', label: 'Events', icon: <CalendarDots {...icon} /> },
-  { href: '/admin/audit', label: 'Audit', icon: <Shield {...icon} /> },
-] as const;
+export const ADMIN_NAV = ADMIN_NAV_ROUTES.map(({ href, label }) => {
+  const IconComponent = ICONS[href];
+  return { href, label, icon: <IconComponent size={16} weight={ICON_WEIGHT} className="shrink-0" aria-hidden /> };
+});

@@ -22,6 +22,16 @@ describe('isTabRoot', () => {
     expect(isTabRoot('/profile/qr')).toBe(true);
   });
 
+  it('names the five sections the admin sidebar can reach', () => {
+    // Same reasoning as the dock: back from a sidebar section has nowhere of
+    // its own to go, and /admin/users is also the console's landing screen.
+    expect(isTabRoot('/admin/users')).toBe(true);
+    expect(isTabRoot('/admin/departments')).toBe(true);
+    expect(isTabRoot('/admin/clubs')).toBe(true);
+    expect(isTabRoot('/admin/events')).toBe(true);
+    expect(isTabRoot('/admin/audit')).toBe(true);
+  });
+
   it('does not mistake a child for its root', () => {
     // The discriminating case. A startsWith test passes every assertion above
     // and then silently drops the back button from every detail screen in the
@@ -32,6 +42,7 @@ describe('isTabRoot', () => {
     expect(isTabRoot('/clubs/robotics-club')).toBe(false);
     expect(isTabRoot('/profile')).toBe(false);
     expect(isTabRoot('/profile/registrations')).toBe(false);
+    expect(isTabRoot('/admin/clubs/new')).toBe(false);
   });
 
   it('ignores a trailing slash', () => {
@@ -54,6 +65,17 @@ describe('backFallback', () => {
 
   it('falls back to the viewer\'s landing outside any tab', () => {
     expect(backFallback('/profile/notifications', user('STUDENT'))).toBe('/events');
-    expect(backFallback('/admin/clubs', user('ADMIN'))).toBe('/admin');
+  });
+
+  it('returns to the admin section a deep link opened under', () => {
+    expect(backFallback('/admin/clubs/new', user('ADMIN'))).toBe('/admin/clubs');
+  });
+
+  it('does not loop the console landing page back to itself', () => {
+    // The reported bug: with only STUDENT_TAB_ROUTES in the fallback set,
+    // /admin/users matched no root and this returned /admin, which redirects
+    // straight back to /admin/users, so a visible back control pressed to
+    // nowhere.
+    expect(backFallback('/admin/users', user('ADMIN'))).toBe('/admin/users');
   });
 });
