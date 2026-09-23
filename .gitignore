@@ -20,3 +20,6 @@ apps/web/next-env.d.ts
 
 # Copied out of node_modules by apps/web/scripts/copy-wasm.mjs on dev and build
 apps/web/public/zxing_reader.wasm
+
+# Playwright MCP writes snapshots and console logs here
+.playwright-mcp/
