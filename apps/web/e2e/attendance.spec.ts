@@ -64,13 +64,20 @@ async function axe(page: Page) {
   expect(results.violations).toEqual([]);
 }
 
-/** Headless Chromium has no BarcodeDetector, which is the branch that falls
- *  through to the email form. Both paths render the same verdict. The event is
- *  chosen by the route now, so there is no picker to step through. */
+/** The camera path and the email path render the same verdict, and these tests
+ *  are about the verdict, so they take the email one. It sits behind its toggle
+ *  whenever a camera did start, which since the wasm decoder landed is
+ *  everywhere, and stands on its own when one could not. The event is chosen by
+ *  the route now, so there is no picker to step through. */
 async function openScanner(page: Page, eventTitle: string) {
   await openEvent(page, eventTitle);
   await page.getByRole('link', { name: 'Check in' }).click();
-  await expect(page.getByLabel('Email')).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: 'Check in by email' });
+  const email = page.getByLabel('Email');
+  await toggle.or(email).first().waitFor();
+  if (await toggle.isVisible()) await toggle.click();
+  await expect(email).toBeVisible();
 }
 
 async function checkIn(page: Page, email: string, reason: string) {
@@ -332,9 +339,8 @@ test.describe('with a camera', () => {
   test.use({ permissions: ['camera'] });
 
   test('a scanned pass checks its holder in, and records that it was scanned', async ({ page }) => {
-    // The other branch. Headless Chromium ships no BarcodeDetector, so every
-    // other test in this file goes through the email form and none of them
-    // touch getUserMedia, the detect loop or the token path at all.
+    // The other branch: no other test in this file touches getUserMedia, the
+    // detect loop or the token path.
     await clearCheckIn(page);
 
     await signIn(page, STUDENT);
@@ -347,6 +353,13 @@ test.describe('with a camera', () => {
     await signIn(page, 'ops@uni.ac.ae');
     await page.addInitScript((raw) => {
       class FakeBarcodeDetector {
+        // Answered, and answered with qr_code, or the chooser reads this as a
+        // platform that cannot decode QR and loads the real wasm decoder over
+        // the top of it, which would then look at the fake camera's test
+        // pattern and find nothing.
+        static getSupportedFormats() {
+          return Promise.resolve(['qr_code']);
+        }
         detect() {
           return Promise.resolve([{ rawValue: raw }]);
         }

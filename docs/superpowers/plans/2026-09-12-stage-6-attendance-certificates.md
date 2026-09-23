@@ -273,8 +273,11 @@ in either response.
 
 **The scanner**, §9.4, and the one screen that must work one-handed in a noisy hall:
 
-- `BarcodeDetector` only, no zxing (decided 2026-09-12). Where it is missing, the
-  screen says so once and offers the email form, rather than pretending to scan.
+- ~~`BarcodeDetector` only, no zxing (decided 2026-09-12). Where it is missing, the
+  screen says so once and offers the email form, rather than pretending to scan.~~
+  **Withdrawn 2026-09-23.** It was missing on every iPhone and every Windows laptop,
+  which is most of a check-in desk. A wasm decoder now backs it, as §9.4 always
+  said it should. See the spec's note of that date.
 - Screen wake lock held while the session is open, released on unmount.
 - Result card is oversized and readable at arm's length, colour **plus** icon
   **plus** text, never colour alone.

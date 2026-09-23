@@ -1,34 +1,29 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { scannerReader } from '@/lib/barcode';
+import { cameraFailure, type CameraState } from '@/lib/camera';
 
-interface DetectedBarcode {
-  rawValue: string;
-}
-
-interface BarcodeReader {
-  detect(source: CanvasImageSource): Promise<DetectedBarcode[]>;
-}
-
-declare global {
-  interface Window {
-    BarcodeDetector?: new (options?: { formats?: string[] }) => BarcodeReader;
-  }
-}
+export type { CameraState };
 
 /** Roughly four looks per second. Every frame burns battery and decodes nothing new. */
 const INTERVAL_MS = 250;
 
-export type CameraState = 'starting' | 'running' | 'unsupported' | 'denied';
-
 /**
- * BarcodeDetector only, no zxing (decided 2026-09-12). Where it is missing the
- * screen says so once and offers the email form rather than pretending to scan,
- * so this reports `unsupported` instead of silently never firing.
+ * The viewfinder, spec 9.4.
+ *
+ * Decoding is `@/lib/barcode`'s problem: the platform's `BarcodeDetector` where
+ * it genuinely decodes QR, a wasm decoder everywhere else, which is what makes
+ * this work on an iPhone or a Windows laptop at all. So `unsupported` here no
+ * longer means "this browser cannot decode" — it means there is no camera API
+ * to open, which in practice is an insecure origin.
  *
  * Support is read in an effect, never during render: a value taken from the
  * runtime environment while rendering is a hydration mismatch, and React
  * answers one by throwing the whole tree away.
+ *
+ * Remounted with a new `key` to retry, so every restart runs this effect from
+ * the top rather than reasoning about which half of the last attempt survived.
  */
 export function ScanCamera({
   paused,
@@ -52,7 +47,7 @@ export function ScanCamera({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!window.BarcodeDetector || !navigator.mediaDevices?.getUserMedia) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       handlers.current.onState('unsupported');
       return;
     }
@@ -60,43 +55,67 @@ export function ScanCamera({
     const element = video.current;
     if (!element) return;
 
-    const reader = new window.BarcodeDetector({ formats: ['qr_code'] });
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
 
-    async function tick() {
-      if (stopped) return;
-      if (!pausedRef.current && element) {
-        try {
-          const found = await reader.detect(element);
-          const raw = found[0]?.rawValue;
-          if (raw && !stopped) handlers.current.onToken(raw);
-        } catch {
-          // A frame that decodes to nothing throws here on some builds. It is
-          // the ordinary case between two people, not a failure.
-        }
-      }
-      timer = setTimeout(() => void tick(), INTERVAL_MS);
-    }
-
     void (async () => {
+      // Asked for first, and on its own: a camera held open while a megabyte
+      // of wasm downloads is a lit camera light and nothing on screen.
+      let reader;
+      try {
+        reader = await scannerReader();
+      } catch {
+        // The decoder chunk or its wasm did not arrive. Nothing to scan with,
+        // but the network may be better on a second ask.
+        if (!stopped) handlers.current.onState('unavailable');
+        return;
+      }
+      if (stopped) return;
+
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
         });
-        if (stopped) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        element.srcObject = stream;
-        await element.play();
-        setReady(true);
-        handlers.current.onState('running');
-        void tick();
-      } catch {
-        if (!stopped) handlers.current.onState('denied');
+      } catch (err) {
+        // Told apart here and not below, because blocked autoplay rejects with
+        // NotAllowedError too and would otherwise send the operator hunting
+        // through permissions for a permission that was already granted.
+        if (!stopped) handlers.current.onState(cameraFailure(err));
+        return;
       }
+      if (stopped) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      element.srcObject = stream;
+      try {
+        await element.play();
+      } catch {
+        if (!stopped) handlers.current.onState('unavailable');
+        return;
+      }
+      if (stopped) return;
+
+      setReady(true);
+      handlers.current.onState('running');
+
+      const tick = async () => {
+        if (stopped) return;
+        if (!pausedRef.current) {
+          try {
+            const found = await reader.detect(element);
+            const raw = found[0]?.rawValue;
+            if (raw && !stopped) handlers.current.onToken(raw);
+          } catch {
+            // A frame that decodes to nothing throws here on some builds. It is
+            // the ordinary case between two people, not a failure.
+          }
+        }
+        timer = setTimeout(() => void tick(), INTERVAL_MS);
+      };
+      void tick();
     })();
 
     return () => {

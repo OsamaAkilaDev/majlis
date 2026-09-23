@@ -13,18 +13,14 @@ import { listAttendance, manualCheckIn, scanPass } from '@/lib/attendance';
 import { TimeRange } from '@/components/LocalTime';
 import { listEvents } from '@/lib/events';
 import { CONSOLE_PAGE } from '@/lib/page-size';
+import { CAMERA_MESSAGE, RETRYABLE, type CameraState } from '@/lib/camera';
 import { verdictOf, type Verdict } from '@/lib/scan-verdict';
 import { useAsyncError } from '@/lib/use-async-error';
-import { ScanCamera, type CameraState } from './ScanCamera';
+import { ScanCamera } from './ScanCamera';
 import { ScanVerdict } from './ScanVerdict';
 
 /** How long the same code in frame is ignored after it has been answered. */
 const REPEAT_MS = 4000;
-
-const CAMERA_MESSAGE: Partial<Record<CameraState, string>> = {
-  unsupported: 'This browser cannot scan QR codes.',
-  denied: 'The camera is not available.',
-};
 
 function ManualForm({
   disabled,
@@ -99,6 +95,9 @@ export function ScanSession({
   );
   const [eventId, setEventId] = useState<string | null>(fixed?.id ?? null);
   const [camera, setCamera] = useState<CameraState>('starting');
+  // Bumped to retry: a new key remounts the camera, which restarts it from the
+  // top rather than resuming a half-finished attempt.
+  const [attempt, setAttempt] = useState(0);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [counts, setCounts] = useState<{ checkedIn: number; expected: number } | null>(null);
   const [pending, setPending] = useState(false);
@@ -234,6 +233,7 @@ export function ScanSession({
           {scanning ? (
             <div className="relative flex-1 overflow-hidden bg-black">
               <ScanCamera
+                key={attempt}
                 paused={pending || verdict !== null}
                 onToken={onToken}
                 onState={setCamera}
@@ -260,7 +260,21 @@ export function ScanSession({
                   </span>
                 ) : null}
               </div>
-              <p className="text-sm text-ink-2">{CAMERA_MESSAGE[camera]}</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-ink-2">{CAMERA_MESSAGE[camera]}</p>
+                {RETRYABLE.has(camera) ? (
+                  <Button
+                    variant="outline"
+                    className="h-10 shrink-0"
+                    onClick={() => {
+                      setCamera('starting');
+                      setAttempt((n) => n + 1);
+                    }}
+                  >
+                    Try again
+                  </Button>
+                ) : null}
+              </div>
             </div>
           )}
 

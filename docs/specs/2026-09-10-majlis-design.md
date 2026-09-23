@@ -1896,3 +1896,48 @@ spare. `eventsRun` stays.
 items earlier notes pencilled against "Stage 9" (`__Host-` cookie prefixes, `helmet`,
 `Cache-Control` on API responses, and authorization refusals returning HTTP 200). Those
 keep their own slot.
+
+### The scanner gets the wasm decoder §9.4 always called for (2026-09-23)
+
+Reported as "some phones and laptops do not work with the QR scanner". They did not, and
+the cause was not the camera. `BarcodeDetector` is not a web API so much as a window onto
+one the operating system may or may not have, and Chromium exposes it only where the
+platform decodes barcodes itself: macOS, ChromeOS and Android. Safari has never shipped it
+and neither has Firefox. So the scanner worked on Android Chrome, macOS Chrome and
+ChromeOS, and reported `unsupported` on every iPhone, every iPad, every Windows and Linux
+laptop, and Firefox anywhere. All iOS browsers are WebKit, so "use Chrome instead" was not
+a workaround either. The majority of a check-in desk was falling to the email form by
+design.
+
+**This reverses the Stage 6 plan's ruling, not a §3 decision.** §9.4 has said
+"`BarcodeDetector` where available with a `zxing-js` fallback" since this document was
+written. The plan overrode it on 2026-09-12 with "BarcodeDetector only, no zxing", and that
+is the line being withdrawn. The library is `barcode-detector`, whose ponyfill implements
+the `BarcodeDetector` interface exactly over a zxing-cpp wasm build, so the detect loop, the
+pause, the repeat guard and the teardown are all untouched. `@zxing/browser` and
+`qr-scanner` were both considered and both want to own the camera lifecycle.
+
+**The presence of the constructor was never the question.** `if (window.BarcodeDetector)`
+is true on an Android whose Play Services barcode module never installed, and that device
+decodes nothing; the operator gets a live viewfinder that cannot fire, for the length of the
+queue, with no message. `getSupportedFormats()` decides instead, and a platform that cannot
+answer does not have the format. The wasm is loaded only where it is the decoder that will
+be used, so devices with a hardware path keep it.
+
+**Three failures that had nothing to do with support.** `play()` rejects with
+`NotAllowedError` when autoplay is blocked, exactly as a refused camera does, and both sat
+in one `try`, so blocked autoplay told the operator their camera permission was the problem.
+`NotFoundError` and `NotReadableError` (no camera; a camera Teams is holding) said the same
+thing, sending them into browser settings to grant a permission that was already granted.
+And nothing offered a retry, so a dismissed prompt meant a full page reload. `cameraFailure`
+now separates refusal from unavailability, `play()` has its own boundary, and `denied` and
+`unavailable` carry a **Try again** that remounts the camera. `unsupported` keeps no retry
+and now means only that there is no camera API at all, which in practice is an insecure
+origin.
+
+**The wasm is served from our own origin**, copied out of `node_modules` by `predev` and
+`prebuild` rather than committed, so it cannot drift from the dependency. It also had to be
+excluded from the middleware matcher: it is fetched by the decoder rather than by a
+navigation, so a redirect to `/login` arrives as a failed instantiation and breaks the
+fallback on precisely the devices it exists for. That was caught by asking the dev server
+for the file and reading a 307.

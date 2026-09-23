@@ -17,3 +17,6 @@ apps/web/CLAUDE.md
 
 # Next rewrites this between dev and build; it regenerates on demand
 apps/web/next-env.d.ts
+
+# Copied out of node_modules by apps/web/scripts/copy-wasm.mjs on dev and build
+apps/web/public/zxing_reader.wasm

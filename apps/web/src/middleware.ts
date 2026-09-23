@@ -3,7 +3,13 @@ import { API_ORIGIN } from '@/lib/api-origin';
 import { decideRedirect, mergeSessionCookie, REFRESH_COOKIE, SESSION_COOKIE } from '@/lib/routing';
 
 export const config = {
-  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js).*)'],
+  // zxing_reader.wasm is the scanner's fallback decoder, and it is fetched by
+  // the decoder rather than by a navigation, so a redirect to /login reaches it
+  // as a failed instantiation. Left in, the fallback breaks on exactly the
+  // devices it exists for.
+  matcher: [
+    '/((?!api/|_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|zxing_reader.wasm).*)',
+  ],
 };
 
 export async function middleware(req: NextRequest) {
