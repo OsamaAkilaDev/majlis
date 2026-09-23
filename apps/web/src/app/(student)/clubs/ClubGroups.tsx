@@ -1,13 +1,14 @@
 'use client';
 
-import type { MyClub, MyClubPage } from '@majlis/contracts';
-import { CaretRight, MagnifyingGlass } from '@phosphor-icons/react/ssr';
+import type { Invitation, MyClub, MyClubPage } from '@majlis/contracts';
+import { CaretRight } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { LoadMore } from '@/components/LoadMore';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { myClubs } from '@/lib/clubs';
-import { roleLabel } from '@/lib/enum-label';
+import { acceptInvitation, declineInvitation, myClubs, myInvitations } from '@/lib/clubs';
+import { enumLabel, roleLabel } from '@/lib/enum-label';
 import { ICON_WEIGHT } from '@/lib/icons';
 import { PAGE } from '@/lib/page-size';
 import { useAsyncError } from '@/lib/use-async-error';
@@ -57,14 +58,44 @@ function Section({ title, count, children }: { title: string; count: number; chi
   );
 }
 
-export function ClubGroups({ initial }: { initial: MyClubPage | null }) {
+export function ClubGroups({
+  initial,
+  initialInvitations,
+}: {
+  initial: MyClubPage | null;
+  initialInvitations: Invitation[] | null;
+}) {
   const { items, cursor, show, append } = useCursorPage(initial);
+  const [invitations, setInvitations] = useState<Invitation[] | null>(initialInvitations);
   const [busy, setBusy] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
+  const seeded = initial !== null && initialInvitations !== null;
+  // Null is "still loading", which keeps the skeleton; only a loaded, empty
+  // list drops the section.
+  const showInvitations = invitations === null || invitations.length > 0;
   const fail = useAsyncError();
 
+  const load = useCallback(async () => {
+    const [c, i] = await Promise.all([myClubs({ limit: PAGE }), myInvitations({ limit: PAGE })]);
+    show(c);
+    setInvitations(i.items);
+  }, [show]);
+
   useEffect(() => {
-    if (!initial) myClubs({ limit: PAGE }).then(show).catch(fail);
-  }, [initial, show]);
+    if (!seeded) load().catch(fail);
+  }, [seeded, load]);
+
+  async function act(id: string, fn: () => Promise<unknown>) {
+    setActing(id);
+    try {
+      await fn();
+      // Accepting moves a club from one list into the other, so both are
+      // refetched rather than patched locally.
+      await load();
+    } finally {
+      setActing(null);
+    }
+  }
 
   async function loadMore() {
     if (!cursor) return;
@@ -91,6 +122,52 @@ export function ClubGroups({ initial }: { initial: MyClubPage | null }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <Button asChild variant="outline" size="sm" className="self-start">
+        <Link href="/clubs/discover">Browse clubs</Link>
+      </Button>
+
+      {/* An invitation expires and a club membership does not, so invitations
+          lead. With none outstanding the section is gone rather than showing
+          an empty card above the list the viewer actually came for. */}
+      {showInvitations ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="font-display text-h1 text-ink">Invitations</h2>
+          {invitations === null ? (
+            <Skeleton className="h-16" />
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {invitations.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex items-center gap-3 rounded-card border border-border bg-surface p-3"
+                >
+                  <img src={inv.clubLogoUrl} alt="" className="size-10 shrink-0 rounded-control object-cover" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-ink">{inv.clubName}</span>
+                    <span className="block text-sm text-ink-2">{enumLabel(inv.role)}</span>
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={acting === inv.id}
+                    onClick={() => act(inv.id, () => acceptInvitation(inv.id))}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={acting === inv.id}
+                    onClick={() => act(inv.id, () => declineInvitation(inv.id))}
+                  >
+                    Decline
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
       <Section title="Your clubs" count={active.length}>
         {active.map((club) => (
           <li key={club.clubId}>
@@ -108,16 +185,6 @@ export function ClubGroups({ initial }: { initial: MyClubPage | null }) {
       </Section>
 
       <LoadMore cursor={cursor} onClick={loadMore} busy={busy} />
-
-      {/* Closes the list, and is the whole screen for a viewer who has joined
-          nothing yet. */}
-      <Link href="/clubs/discover" className={`${ROW} border-dashed border-border-control`}>
-        <span className="grid size-12 shrink-0 place-items-center rounded-control bg-surface-2 text-ink-2">
-          <MagnifyingGlass size={20} weight={ICON_WEIGHT} aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1 truncate font-semibold text-ink">Browse all clubs</span>
-        <CaretRight size={18} weight={ICON_WEIGHT} className="shrink-0 text-ink-3" aria-hidden />
-      </Link>
     </div>
   );
 }

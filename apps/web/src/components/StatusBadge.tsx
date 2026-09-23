@@ -75,22 +75,26 @@ const TONE_CLASS: Record<Tone, string> = {
 };
 
 /**
+ * The tone pill `StatusBadge` renders, without the enum lookup, for the rare
+ * label that is not a schema status word (a derived flag like "Joined").
  * `compact` drops the word and keeps the icon, for a row that has to hold a
  * date, a title, a venue and a state inside 320px. The label does not vanish:
  * it moves to the accessible name, so a screen reader reads "Completed" either
  * way and a pointer gets it back on hover.
  */
-export function StatusBadge({
-  status,
+export function Badge({
+  tone,
+  label,
+  icon: Icon,
   compact,
   className,
 }: {
-  status: StatusKey;
+  tone: Tone;
+  label: string;
+  icon: Icon;
   compact?: boolean;
   className?: string;
 }) {
-  const { label, tone, icon: Icon } = STATUS[status];
-
   if (compact) {
     return (
       <span
@@ -119,4 +123,20 @@ export function StatusBadge({
       {label}
     </span>
   );
+}
+
+/** Every value of every status enum, looked up by `STATUS` and handed to
+ *  `Badge`. Kept separate so `STATUS_ENUMS` in the test file stays an exact
+ *  match against the schema, not a superset padded with derived flags. */
+export function StatusBadge({
+  status,
+  compact,
+  className,
+}: {
+  status: StatusKey;
+  compact?: boolean;
+  className?: string;
+}) {
+  const { label, tone, icon } = STATUS[status];
+  return <Badge tone={tone} label={label} icon={icon} compact={compact} className={className} />;
 }

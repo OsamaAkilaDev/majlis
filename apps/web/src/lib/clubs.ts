@@ -59,6 +59,7 @@ export const listClubs = (query: ClubListQuery): Promise<ClubPage> =>
       departmentId: query.departmentId,
       status: query.status,
       q: query.q,
+      joinable: query.joinable,
       cursor: query.cursor,
       limit: query.limit,
     })}`,

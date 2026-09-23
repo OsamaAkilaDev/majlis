@@ -1,9 +1,4 @@
-import type {
-  CertificatePage,
-  InvitationPage,
-  MyClubPage,
-  MyRegistrationPage,
-} from '@majlis/contracts';
+import type { CertificatePage, MyRegistrationPage } from '@majlis/contracts';
 import type { Metadata } from 'next';
 import { ArrowSquareOut, CaretRight, Certificate, Ticket } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
@@ -15,7 +10,6 @@ import { ICON_WEIGHT } from '@/lib/icons';
 import { shellDestinations } from '@/lib/routing';
 import { serverFetch } from '@/lib/server-api';
 import { requireUser } from '@/lib/session';
-import { ProfileManager } from './ProfileManager';
 import { SignOutButton, ThemeChoice } from './ProfileSettings';
 
 export const metadata: Metadata = { title: 'Profile' };
@@ -65,10 +59,8 @@ function Tile({
 export default async function ProfilePage() {
   // One round trip each, in parallel: the shell's own /auth/me is memoised by
   // getSessionUser, so requireUser here costs nothing extra.
-  const [user, clubs, invitations, registrations, certificates] = await Promise.all([
+  const [user, registrations, certificates] = await Promise.all([
     requireUser(),
-    serverFetch<MyClubPage>(`/me/clubs?limit=${PAGE}`),
-    serverFetch<InvitationPage>(`/me/invitations?limit=${PAGE}`),
     serverFetch<MyRegistrationPage>(`/me/registrations?limit=${PAGE}`),
     serverFetch<CertificatePage>(`/me/certificates?limit=${PAGE}`),
   ]);
@@ -116,11 +108,6 @@ export default async function ProfilePage() {
             icon={<Certificate size={22} weight={ICON_WEIGHT} aria-hidden />}
           />
         </div>
-
-        <ProfileManager
-          initialClubs={clubs?.items ?? null}
-          initialInvitations={invitations?.items ?? null}
-        />
 
         <Section title="Appearance">
           <ThemeChoice />

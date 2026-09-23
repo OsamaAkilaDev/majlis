@@ -17,8 +17,10 @@ export default async function ClubsPage({
   const { department } = await searchParams;
   const filter = department ? `&departmentId=${encodeURIComponent(department)}` : '';
 
+  // The first render has no search term, so it is the "browsing" case: hide
+  // clubs the viewer already belongs to, same as the client-side refetch.
   const [clubs, departments] = await Promise.all([
-    serverFetch<ClubPage>(`/clubs?status=ACTIVE&limit=${PAGE}${filter}`),
+    serverFetch<ClubPage>(`/clubs?status=ACTIVE&joinable=true&limit=${PAGE}${filter}`),
     serverFetch<DepartmentPage>('/departments?limit=100'),
   ]);
 

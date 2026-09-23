@@ -1,10 +1,12 @@
 'use client';
 
 import type { ClubPage, ClubSummary, Department } from '@majlis/contracts';
+import { Check } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { LoadMore } from '@/components/LoadMore';
+import { Badge } from '@/components/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,6 +28,7 @@ function ClubCard({ club }: { club: ClubSummary }) {
         <span className="block truncate font-semibold text-ink">{club.name}</span>
         <span className="block truncate text-sm text-ink-2">{club.category}</span>
       </span>
+      {club.viewerJoined ? <Badge tone="ok" label="Joined" icon={Check} /> : null}
       <span className="shrink-0 text-sm tabular-nums text-ink-2">{club.memberCount}</span>
     </Link>
   );
@@ -72,7 +75,10 @@ export function ClubBrowser({
       limit: PAGE,
       status: 'ACTIVE',
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
-      ...(q.trim() ? { q: q.trim() } : {}),
+      // Browsing shows what you could join; searching shows everything,
+      // because a club you are in is exactly the thing you would search by
+      // name for.
+      ...(q.trim() ? { q: q.trim() } : { joinable: true }),
     })
       .then((page) => {
         if (!cancelled) show(page);
@@ -91,7 +97,7 @@ export function ClubBrowser({
       status: 'ACTIVE',
       cursor,
       ...(departmentId === ANY_DEPARTMENT ? {} : { departmentId }),
-      ...(q.trim() ? { q: q.trim() } : {}),
+      ...(q.trim() ? { q: q.trim() } : { joinable: true }),
     });
     append(page);
     setLoadingMore(false);
