@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { BackButton } from './BackButton';
 import { NotificationBell } from './NotificationBell';
 import { ProfileButton } from './ProfileButton';
 import { useShellSession } from './shell-session';
@@ -26,6 +27,7 @@ export function StudentShell({
   return (
     <>
       <header className="flex items-center gap-1 border-b border-border px-4 pb-3 pt-[calc(0.75rem+var(--safe-t))] lg:px-8">
+        <BackButton />
         {/* Smaller below sm: at the full title ramp a club's name and the two
             44px controls beside it do not fit across 320px, and the name is
             the half that loses. */}

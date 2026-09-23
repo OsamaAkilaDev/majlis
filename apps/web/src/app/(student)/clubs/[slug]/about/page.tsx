@@ -1,10 +1,7 @@
 import type { ClubDetail } from '@majlis/contracts';
-import { CaretLeft } from '@phosphor-icons/react/ssr';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { EmptyState } from '@/components/EmptyState';
 import { StudentShell } from '@/components/shell/StudentShell';
-import { ICON_WEIGHT } from '@/lib/icons';
 import { serverFetch } from '@/lib/server-api';
 import { ClubAboutSections } from '../ClubAbout';
 
@@ -22,18 +19,8 @@ export default async function ClubAboutPage({ params }: { params: Promise<{ slug
   return (
     <StudentShell title="About">
       {club ? (
-        <div className="flex flex-col gap-5">
-          <Link
-            href={`/clubs/${slug}`}
-            className="flex items-center gap-1.5 self-start text-sm font-semibold text-ink-2 hover:text-ink"
-          >
-            <CaretLeft size={16} weight={ICON_WEIGHT} aria-hidden />
-            {club.name}
-          </Link>
-
-          <div className="flex flex-col gap-6 lg:max-w-2xl">
-            <ClubAboutSections club={club} />
-          </div>
+        <div className="flex flex-col gap-6 lg:max-w-2xl">
+          <ClubAboutSections club={club} />
         </div>
       ) : (
         <EmptyState title="No such club" />
