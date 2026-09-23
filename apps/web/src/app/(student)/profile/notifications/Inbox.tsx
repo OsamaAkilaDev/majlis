@@ -134,7 +134,16 @@ export function Inbox({ initial }: { initial: NotificationPage | null }) {
                     >
                       {unread ? <span className="sr-only">Unread. </span> : null}
                       {href ? (
-                        <Link href={href} className="hover:underline">
+                        <Link
+                          href={href}
+                          className="hover:underline"
+                          // Not awaited: the navigation is the point, and the
+                          // read is optimistic anyway. Only for an unread row,
+                          // or every revisit writes again.
+                          onClick={() => {
+                            if (unread) void markRead(notification);
+                          }}
+                        >
                           {title}
                         </Link>
                       ) : (
