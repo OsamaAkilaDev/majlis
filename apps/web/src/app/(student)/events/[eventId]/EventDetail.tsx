@@ -160,7 +160,7 @@ export function EventDetail({
         </div>
       ) : null}
 
-      <dl className="grid grid-cols-2 gap-3">
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Fact term="When" span>
           <TimeRange startsAt={event.startsAt} endsAt={event.endsAt} className="block tabular" />
         </Fact>
@@ -185,7 +185,7 @@ export function EventDetail({
 
       <p className="whitespace-pre-line text-ink">{event.description}</p>
 
-      <dl className="grid grid-cols-2 gap-3 text-sm">
+      <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <Fact term="Type">{event.eventType}</Fact>
         <Fact term="Audience">{event.audience}</Fact>
       </dl>

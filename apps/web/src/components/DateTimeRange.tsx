@@ -125,12 +125,14 @@ export function DateTimeRange({
           {label}
         </Label>
 
-        <Group className="flex min-h-10 items-center gap-2 rounded-control border border-border-control bg-surface px-2.5 py-1.5 focus-within:border-primary focus-within:ring-3 focus-within:ring-primary-soft data-[invalid]:border-bad data-[invalid]:focus-within:ring-bad-soft data-disabled:opacity-50">
+        <Group className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 rounded-control border border-border-control bg-surface px-2.5 py-1.5 focus-within:border-primary focus-within:ring-3 focus-within:ring-primary-soft data-[invalid]:border-bad data-[invalid]:focus-within:ring-bad-soft data-disabled:opacity-50">
           <DateInput slot="start" className="flex items-center text-sm tabular-nums text-ink">
             {(segment) => <Segment segment={segment} />}
           </DateInput>
 
-          <span aria-hidden className="shrink-0 text-ink-3">
+          {/* A dash between two stacked rows reads as a minus sign, so it only
+              shows once the row is wide enough to keep both dates on one line. */}
+          <span aria-hidden className="hidden shrink-0 text-ink-3 sm:inline">
             →
           </span>
 
@@ -155,7 +157,7 @@ export function DateTimeRange({
           <p className="text-sm text-ink-2">{hint}</p>
         ) : null}
 
-        <Popover className="rounded-card border border-border bg-surface p-3 shadow-[var(--shadow-md)]">
+        <Popover className="w-[min(20rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-card border border-border bg-surface p-3 shadow-[var(--shadow-md)]">
           <Dialog className="flex flex-col gap-3 outline-none">
             <RangeCalendar className="flex flex-col gap-2">
               <header className="flex items-center gap-2">
@@ -196,7 +198,7 @@ export function DateTimeRange({
 
             <SeedTimes timeZone={zone} />
 
-            <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
+            <div className="grid grid-cols-1 gap-2 border-t border-border pt-3 sm:grid-cols-2">
               <Clock part="start" label="Starts" timeZone={zone} />
               <Clock part="end" label="Ends" timeZone={zone} />
             </div>

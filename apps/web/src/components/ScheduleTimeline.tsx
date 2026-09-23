@@ -52,9 +52,9 @@ export function ScheduleTimeline({
 
   return (
     <div className="flex flex-col gap-2 rounded-card border border-border bg-surface p-4">
-      <div className="flex justify-between text-label font-semibold tracking-[0.06em] text-ink-3 uppercase">
-        <span className="tabular-nums">{edge(laid.from, timeZone)}</span>
-        <span className="tabular-nums">{edge(laid.to, timeZone)}</span>
+      <div className="flex justify-between gap-2 text-label font-semibold tracking-[0.06em] text-ink-3 uppercase">
+        <span className="min-w-0 truncate tabular-nums">{edge(laid.from, timeZone)}</span>
+        <span className="min-w-0 truncate text-right tabular-nums">{edge(laid.to, timeZone)}</span>
       </div>
 
       <ul className="flex flex-col gap-1.5">
