@@ -619,6 +619,7 @@ Each stage ships complete — migrations applied, endpoints tested, screens work
 | 7 | ✅ **Done** — Notifications & reporting | Notification records, in-app inbox, channel abstraction, Brevo email, all triggers, club/event/attendance/certificate metrics, ~~CSV exports~~ (deleted 2026-09-16), audit log viewer. Password reset added here. Planned in [`2026-09-13-stage-7-notifications-reporting.md`](../superpowers/plans/2026-09-13-stage-7-notifications-reporting.md) |
 | 8 | ✅ **Done**: Hardening | Whole-codebase security audit and nine fixes, six performance fixes, the em dash sweep, the README rewrite and the operator handbook. **No rate limiting and no deployment**, both decided 2026-09-13. Planned in [`2026-09-13-stage-8-hardening.md`](../superpowers/plans/2026-09-13-stage-8-hardening.md) |
 | 9 | ✅ **Done**: App shell restructure | `/home` deleted; Events and Clubs lead with the viewer's own, discovery moved behind a route; the officer console withdrawn and every officer capability folded onto the club and event it concerns; `/manage/[clubId]` becomes Admin-only. Two query flags and one count are the whole API surface. Designed in [`2026-09-22-stage-9-app-shell-design.md`](2026-09-22-stage-9-app-shell-design.md) |
+| 10 | ✅ **Done**: UI polish | Nine phone-walk corrections: profile loses its clubs list and invitations to `/clubs`, a back button on every header but the three tab roots, discovery hides clubs the viewer already holds, text selection off application-wide bar exceptions, cancel dialogs removed from registration, opened notifications mark themselves read, the date picker and schedule timeline fit a phone, and certificate title/signatory become mandatory once certificates are enabled. Planned in [`2026-09-23-stage-10-ui-polish.md`](../superpowers/plans/2026-09-23-stage-10-ui-polish.md) |
 
 ### How a stage is built, revised 2026-09-12 after Stage 4
 
@@ -1201,6 +1202,133 @@ against it. Every e2e edit made during Stage 9 is mechanical, justified by readi
 `apps/api/prisma/seed.ts` rather than by watching the suite go green. This compounds the
 Stage 8 note that CI has never run: nine stages of green suites are now nine stages of green
 suites *and one stage whose e2e diffs were never run at all*.
+
+### Stage 10 completion note (2026-09-23)
+
+Nine corrections reported by the product owner after walking the student shell on a phone,
+closed on branch `stage-10-ui-polish`. No design document: the seven decisions below were
+taken during brainstorming and are recorded here because this stage has none of its own.
+
+1. **The profile screen lost its clubs list and its invitations; both moved to `/clubs`.**
+   `/clubs` already listed the viewer's clubs, so the profile copy was duplication, and
+   invitations belong next to the list you act on them from.
+2. **A back button appears on every screen except the three tab roots** (`/events`, `/clubs`,
+   `/profile/qr`). A tab root has nowhere to go back to. The one hand-rolled back link, on
+   the club about page, was removed rather than left to double up with the new control.
+3. **Club discovery hides clubs the viewer is `ACTIVE` or `PENDING` in, until they search.**
+   Searching shows them again, marked `Joined`. `REJECTED`, `LEFT` and `REMOVED` clubs are
+   never hidden, since those are clubs a viewer may legitimately want to join.
+4. **Text selection is off application-wide, on again for form fields and for values people
+   copy**: certificate codes, the public verification code, and email addresses.
+5. **Cancelling a registration lost its confirmation dialog**, at both call sites.
+   Registering again costs one tap, so the dialog protected nothing worth the friction.
+6. **Opening a linked notification marks it read**, and the `Mark read` button stays on
+   every unread row regardless.
+7. **Certificate fields become mandatory once certificates are enabled**, enforced by Zod on
+   create and by the service on the merged row for patch. No migration and no `CHECK`
+   constraint; see below.
+
+Twelve rulings were made on the owner's behalf during execution, most only ever recorded in
+a gitignored scratch file, and are kept here so they survive it.
+
+**R1: leaving a club has no new affordance in `ClubGroups`.** The list-level Leave control
+that `ProfileManager.tsx` carried was not moved when the clubs half of that screen was
+deleted, because `JoinControl.tsx` already exposes Leave on the club's own page, next to
+Join. Nothing became unreachable; a second Leave control would have been scope nobody asked
+for.
+
+**R2: `certificateFieldsComplete` lives in `packages/contracts`, imported by both the web
+form and the API service**, rather than being written once in each. `packages/contracts`
+already exports plain functions beside its schemas, and duplicating one rule across two
+packages is exactly the defect the review rubric flags.
+
+**R3: `back.ts` derives its tab roots from a plain array, not from the icon-bearing
+`STUDENT_TABS` module.** Importing `STUDENT_TABS` into the node-environment unit test would
+have pulled in `@phosphor-icons/react/ssr`. The hrefs were extracted into
+`student-tab-routes.ts` instead, and both `STUDENT_TABS` and `back.ts` read from it, so
+deriving beats restating without the icon import reaching the test.
+
+**R4: Task 1's integration-test helper names in the plan were illustrative, not verified.**
+The implementer read the real suite and used its actual sign-in and seeding helpers,
+preserving the assertions rather than the invented spellings.
+
+**R5: the plan's own discrimination test for the `joinable` filter was inadequate, and the
+implementer strengthened it rather than porting it as written.** With one user's memberships
+in the fixture, a mutation that dropped the user-scoping filter stayed green, because scoped
+and unscoped queries returned the same rows. A second user's membership was added to the
+fixture and the mutation then went red, which is what the test was supposed to prove in the
+first place.
+
+**R6: Task 2 widened beyond its named files to `discover/page.tsx` and `lib/clubs.ts`.**
+`listClubs` never forwarded the new `joinable` flag and the discover page's server-rendered
+first page never sent it, so the server-rendered list would still have shown clubs the
+viewer had already joined, and the plan's own verification step would have failed on first
+load without anyone noticing why.
+
+**R7: `StatusBadge` did not gain a `JOINED` key.** Its map is pinned exact-match to the six
+Prisma membership statuses by a discriminating test. A UI-only `Joined` label was rendered
+instead through a new shared `Badge` primitive, leaving `StatusBadge` and its test
+untouched.
+
+**R8: the console shell's left padding grew from `pl-14` to `pl-16` instead of shrinking**,
+the opposite of what the brief guessed. The hamburger trigger sits at `absolute left-4
+size-11`, ending at 60px, and 56px of padding would have put the new back button 4px under a
+higher-stacked control on mobile. Measured from source; confirmed live in the controller's
+visual sweep below.
+
+**R9: `BackButton` falls back to an in-app destination when there is no browser history**,
+rather than calling `router.back()` unconditionally as planned. A cold deep link into the
+installed PWA, which is exactly what a notification produces, leaves no history to go back
+to, and a back button that visibly does nothing does not satisfy "a back button on every
+screen".
+
+**R10: no guard was added against `router.back()`'s rare false positive**, where
+`history.length` reads more than 1 on a restored browser tab or an opener window and the
+press leaves the app entirely. The proposed guard, a module-scoped in-app-navigation flag,
+would itself be wrong after a full page reload, trading a rare but browser-correct outcome
+for state that lies. Before this stage there was no back control at all, so the screen is
+strictly better off even with the edge case unhandled.
+
+**R11: the discover filter's apparent breakage during the controller's live sweep was a
+stale dev server, not a code defect.** The API's `node --watch --watch-path=./src` never
+reloads when `packages/contracts/dist` is rebuilt, so the running process kept validating
+requests against the old Zod schema, silently stripping `joinable` from the query and
+`viewerJoined` from the response. Restarting the API fixed it with no code change. Recorded
+in full in CLAUDE.md's toolchain traps, so it costs the next session minutes rather than an
+hour.
+
+**R12: the certificate cross-field rule uses Zod's `.check()`, not the file's usual
+`.refine()`.** A single `.refine()` cannot attach an issue to two separate field paths, and
+this rule must mark both `certificateTitle` and `certificateSignatory` so the form can show
+each inline. The deviation from convention is correct on the merits; the defect was not
+disclosing it in the original report, which this entry now closes.
+
+**No `CHECK` constraint backs the certificate-fields rule, and this is deliberate, not an
+oversight.** One event seeded before this stage has certificates enabled with no title and
+no signatory. Adding a constraint now would either fail the migration against that row or
+force a silent backfill inventing values nobody supplied. The rule is enforced in
+application code at every write path instead, Zod on create and a service assertion on the
+merged row for patch, and the one pre-existing violation stays editable, visibly incomplete,
+until someone next saves that event. This is the one place in Stage 10 where CLAUDE.md's
+"invariants live in the database" rule was knowingly not followed, recorded here rather than
+left for a reader to assume was forgotten.
+
+**Live sweep, signed in with the owner's credentials.** Zero horizontal overflow across nine
+screens at 320/390/1280px; the back button present and absent on exactly the right screens;
+`/clubs` showing the small Browse control with no dashed row; discovery excluding the
+viewer's own clubs by default and marking them `Joined` on search; the certificate toggle's
+three states (off, on-and-blank, on-and-filled) all behaving correctly. Playwright MCP was
+unreachable for the whole session, so this sweep drove the installed Playwright package
+directly rather than through the MCP tool.
+
+**The Playwright suite was not run during this stage**, for the same reason recorded in the
+Stage 9 note: the development database holds seed personas the specs no longer find
+(`ops@uni.ac.ae`, `lead@uni.ac.ae`, `student@uni.ac.ae` are absent), so every spec fails at
+sign-in before reaching any assertion. `apps/web/e2e/a11y.spec.ts` and
+`apps/web/e2e/auth.spec.ts` were updated to match the removed `/profile` "My clubs" heading,
+by reading `ProfilePage` and `ClubGroups` rather than by watching the suite go green. The
+owner declined reseeding the personas to make the suite runnable; the diffs are unexercised
+and stated as such in the commit.
 
 ---
 

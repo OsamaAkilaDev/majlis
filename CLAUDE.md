@@ -154,6 +154,13 @@ Each of these is verified behaviour that cost a session to discover.
 - **`user` is a reserved word in Postgres.** Quote it in raw SQL.
 - Hand-written SQL appended to a generated migration is **not** treated as drift by a
   later `migrate dev`. Verified. Keep using `--create-only` then appending.
+- **The API dev script (`node --watch --watch-path=./src`) watches only
+  `apps/api/src`.** It does not restart when `packages/contracts/dist` is rebuilt, so
+  after changing a contract the running API keeps the old Zod schema in memory, which
+  silently strips unknown query keys and unknown response fields. This made a correct
+  Stage 10 feature look completely broken: club discovery kept listing joined clubs
+  and every row reported `viewerJoined: undefined`, with no code defect at all.
+  **Restart the API after rebuilding contracts.**
 
 ## Decisions already made — do not re-litigate without asking
 

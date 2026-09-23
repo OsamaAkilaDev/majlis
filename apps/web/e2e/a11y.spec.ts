@@ -192,9 +192,11 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     test('the student profile page has no violations', async ({ page }) => {
+      // Clubs and invitations moved to /clubs this stage; the profile screen
+      // is now identity, the Registrations/Certificates tiles and settings.
       await signIn(page, 'student@uni.ac.ae');
       await page.goto('/profile');
-      await expect(page.getByRole('heading', { name: 'My clubs' })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Registrations$/ })).toBeVisible();
       // The identity banner puts text on a tinted ground nothing else uses,
       // and the theme control is three toggle buttons labelled by their text.
       await expect(page.getByRole('group', { name: 'Theme' })).toBeVisible();

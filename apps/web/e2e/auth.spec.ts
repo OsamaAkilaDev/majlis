@@ -202,8 +202,9 @@ test('an officer lands in the student shell and is offered no console', async ({
 
   await page.goto('/profile');
   // Waited for first, or the absence below passes on a page that rendered
-  // nothing at all.
-  await expect(page.getByRole('heading', { name: 'My clubs' })).toBeVisible();
+  // nothing at all. Clubs moved off /profile this stage; Appearance is the
+  // section every profile renders regardless of role.
+  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Switch to', exact: true })).toHaveCount(0);
 });
 
