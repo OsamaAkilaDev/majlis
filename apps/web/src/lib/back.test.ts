@@ -1,5 +1,17 @@
+import type { SessionUser } from '@majlis/contracts';
 import { describe, expect, it } from 'vitest';
-import { isTabRoot } from './back';
+import { backFallback, isTabRoot } from './back';
+
+function user(platformRole: SessionUser['platformRole']): SessionUser {
+  return {
+    id: 'u1',
+    email: 'a@b.com',
+    fullName: 'A',
+    avatarUrl: null,
+    platformRole,
+    clubRoles: [],
+  };
+}
 
 describe('isTabRoot', () => {
   it('names the three roots the dock can reach', () => {
@@ -26,5 +38,22 @@ describe('isTabRoot', () => {
     // Next does not produce one, but a pathname arriving with it must not turn
     // a tab root into a screen with a back button that exits the app.
     expect(isTabRoot('/clubs/')).toBe(true);
+  });
+});
+
+describe('backFallback', () => {
+  it('returns to the tab a deep link opened under', () => {
+    // The reported case: a notification opens straight to an event or a
+    // club, with nothing behind it. A broken implementation that always
+    // falls back to landingFor would pass a test that only checked the
+    // default, and send an event deep link to /events/discover's neighbour
+    // tab instead of back to its own.
+    expect(backFallback('/events/abc-123', user('STUDENT'))).toBe('/events');
+    expect(backFallback('/clubs/robotics-club', user('STUDENT'))).toBe('/clubs');
+  });
+
+  it('falls back to the viewer\'s landing outside any tab', () => {
+    expect(backFallback('/profile/notifications', user('STUDENT'))).toBe('/events');
+    expect(backFallback('/admin/clubs', user('ADMIN'))).toBe('/admin');
   });
 });
