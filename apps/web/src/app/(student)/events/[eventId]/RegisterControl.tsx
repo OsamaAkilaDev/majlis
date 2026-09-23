@@ -2,7 +2,6 @@
 
 import type { EventDetail } from '@majlis/contracts';
 import { useState } from 'react';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { ProblemError } from '@/lib/api';
@@ -97,17 +96,13 @@ export function RegisterControl({
       ) : null}
 
       {action.kind === 'cancel' ? (
-        <ConfirmDialog
-          title={`Cancel your place at ${event.title}?`}
-          confirmLabel="Cancel registration"
-          destructive
-          trigger={
-            <Button variant="outline" disabled={busy}>
-              Cancel registration
-            </Button>
-          }
-          onConfirm={() => run(() => cancelRegistration(event.id))}
-        />
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => run(() => cancelRegistration(event.id))}
+        >
+          Cancel registration
+        </Button>
       ) : null}
 
       {/* A disabled control needs an accessible name carrying the reason, or

@@ -3,7 +3,6 @@
 import type { MyRegistration, MyRegistrationPage } from '@majlis/contracts';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { LoadMore } from '@/components/LoadMore';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -96,17 +95,14 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
                     : `Position ${registration.waitlistPosition}`}
                 </span>
                 {CHANGEABLE.includes(event.status) ? (
-                  <ConfirmDialog
-                    title={`Cancel your place at ${event.title}?`}
-                    confirmLabel="Cancel registration"
-                    destructive
-                    trigger={
-                      <Button size="sm" variant="outline" disabled={busy === registration.id}>
-                        Cancel
-                      </Button>
-                    }
-                    onConfirm={() => cancel(registration)}
-                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy === registration.id}
+                    onClick={() => cancel(registration)}
+                  >
+                    Cancel
+                  </Button>
                 ) : null}
               </div>
             </li>
