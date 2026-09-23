@@ -147,6 +147,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     waitlistEnabled: true,
     certificateEnabled: true,
     certificateTitle: 'Certificate of Attendance: Introduction to ROS 2',
+    certificateSignatory: 'Head of Engineering',
     status: 'PUBLISHED',
   } as const;
 
