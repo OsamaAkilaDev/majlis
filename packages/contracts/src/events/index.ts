@@ -3,8 +3,10 @@ import { clubRoleSchema, eventStatusSchema } from '../common/enums';
 import { cursorPageQuerySchema, cursorPageSchema } from '../common/pagination';
 import { overrideBodySchema, overrideReasonSchema } from '../common/override';
 import { httpsUrlSchema, signedUploadSchema } from '../clubs';
+import { certificateFieldsComplete } from './certificate-fields';
 
 export { eventStatusSchema };
+export * from './certificate-fields';
 
 export const eventResponsibilitySchema = z.enum(['EVENT_LEAD', 'OPERATIONS', 'MARKETING']);
 
@@ -67,6 +69,29 @@ export const createEventBodySchema = z.object({
   posterUploaded: z.boolean().default(false),
   /** Required when an Admin holding no club role creates. Spec 6.1. */
   overrideReason: overrideReasonSchema.optional(),
+}).check((ctx) => {
+  // certificateFieldsComplete decides whether this is a problem at all; the
+  // loop only exists to attach the message to each blank field's own path,
+  // which a single boolean cannot carry.
+  if (
+    certificateFieldsComplete({
+      certificateEnabled: ctx.value.certificateEnabled,
+      certificateTitle: ctx.value.certificateTitle ?? null,
+      certificateSignatory: ctx.value.certificateSignatory ?? null,
+    })
+  ) {
+    return;
+  }
+  for (const key of ['certificateTitle', 'certificateSignatory'] as const) {
+    if (!ctx.value[key]?.trim()) {
+      ctx.issues.push({
+        code: 'custom',
+        path: [key],
+        input: ctx.value[key],
+        message: 'Required when certificates are enabled.',
+      });
+    }
+  }
 });
 
 /**

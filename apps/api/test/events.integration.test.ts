@@ -746,6 +746,47 @@ describe('GET /events?q=', () => {
   });
 });
 
+describe('a certificate cannot be enabled with nothing behind it', () => {
+  it('refuses to enable certificates on an event that has no certificate fields', async () => {
+    // The case Zod cannot reach: the patch body is valid on its own and only
+    // becomes wrong when merged with the stored row. A rule living only in the
+    // contract passes every schema test and lets this through.
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId, {
+      certificateEnabled: false,
+      certificateTitle: null,
+      certificateSignatory: null,
+    });
+
+    const refused = await patch(lead.sessionCookie, event.id, { certificateEnabled: true });
+    expect(refused.status).toBe(422);
+    expect(refused.body.detail).toContain('certificate');
+
+    const accepted = await patch(lead.sessionCookie, event.id, {
+      certificateEnabled: true,
+      certificateTitle: 'Certificate of Attendance',
+      certificateSignatory: 'Head of Engineering',
+    });
+    expect(accepted.status).toBe(200);
+  });
+
+  it('lets a patch flip the toggle when the stored row already carries both fields', async () => {
+    // The other half. A rule reading the patch alone rejects this, which would
+    // make certificates impossible to re-enable without retyping both fields.
+    const club = await makeClub();
+    const lead = await makeActiveLead(app, club.id);
+    const event = await mkEvent(club.id, lead.userId, {
+      certificateEnabled: false,
+      certificateTitle: 'Certificate of Attendance',
+      certificateSignatory: 'Head of Engineering',
+    });
+
+    const res = await patch(lead.sessionCookie, event.id, { certificateEnabled: true });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('GET /events?fromMyClubs=true', () => {
   function fromMyClubs(cookie: string) {
     return request(app.getHttpServer())

@@ -14,6 +14,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { ProblemError } from '@/lib/api';
+import { certificateFieldsComplete } from '@majlis/contracts';
 import type { CreateEventBody, EventDetail, PatchEventBody } from '@majlis/contracts';
 import type { EventField } from '@/lib/event-fields';
 import { useViewerZone } from '@/lib/use-viewer-zone';
@@ -133,6 +134,15 @@ export function EventFields({
   const schedule = values as unknown as Schedule;
   const scheduleErrors = validateSchedule(schedule);
 
+  // Blank once certificates are on would fail certificateFieldsComplete with
+  // both fields empty, so this reduces to the toggle without restating it as
+  // a second, hand-written condition.
+  const certificateRequired = !certificateFieldsComplete({
+    certificateEnabled: values.certificateEnabled,
+    certificateTitle: null,
+    certificateSignatory: null,
+  });
+
   // Both ends of every window sit in the same EVENT_FIELDS bucket, so one
   // control cannot be half-writable.
   const range = (
@@ -246,8 +256,18 @@ export function EventFields({
       <Group legend="Certificate">
         {toggle('certificateEnabled', 'Issue certificates')}
         <div className="grid gap-4 sm:grid-cols-2">
-          {text('certificateTitle', 'Certificate title', 'Certificate of Participation')}
-          {text('certificateSignatory', 'Signatory', 'Dr Layla Haddad, Dean of Student Affairs')}
+          {text(
+            'certificateTitle',
+            'Certificate title',
+            'Certificate of Participation',
+            certificateRequired,
+          )}
+          {text(
+            'certificateSignatory',
+            'Signatory',
+            'Dr Layla Haddad, Dean of Student Affairs',
+            certificateRequired,
+          )}
         </div>
       </Group>
     </div>

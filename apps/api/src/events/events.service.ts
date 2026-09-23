@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { certificateFieldsComplete } from '@majlis/contracts';
 import type {
   CancelEventBody,
   CreateEventBody,
@@ -115,6 +116,27 @@ function assertWindows(w: Windows): void {
   }
 }
 
+/**
+ * Applied to the merged row for the same reason as assertWindows: a patch
+ * carrying one half of the pair is checked against the stored other half. A
+ * certificate with no title or no signatory renders a document signed by
+ * nobody, and Certificate's snapshot columns mean that document then outlives
+ * any later correction.
+ */
+function assertCertificateFields(row: {
+  certificateEnabled: boolean;
+  certificateTitle: string | null;
+  certificateSignatory: string | null;
+}): void {
+  // The rule itself lives in @majlis/contracts so the form and this service
+  // cannot drift. This only turns a false into a message, exactly as
+  // assertWindows turns a comparison into one.
+  if (certificateFieldsComplete(row)) return;
+  throw new UnprocessableError(
+    'A certificate needs a title and a signatory before it can be enabled.',
+  );
+}
+
 // `status` is rendered as `dueStatus`, not as stored: a list read must not
 // write, and a row nobody has opened since its window closed is still stored
 // PUBLISHED, so the badge would disagree with what the API accepts.
@@ -222,6 +244,11 @@ export class EventsService {
         registrationClosesAt: new Date(body.registrationClosesAt),
       };
       assertWindows(windows);
+      assertCertificateFields({
+        certificateEnabled: body.certificateEnabled,
+        certificateTitle: body.certificateTitle ?? null,
+        certificateSignatory: body.certificateSignatory ?? null,
+      });
 
       const bannerUrl = body.posterUploaded
         ? await this.clubs.verifyUpload('event-poster', body.eventId)
@@ -457,6 +484,16 @@ export class EventsService {
         endsAt: at('endsAt'),
         registrationOpensAt: at('registrationOpensAt'),
         registrationClosesAt: at('registrationClosesAt'),
+      });
+
+      const merged = <K extends 'certificateEnabled' | 'certificateTitle' | 'certificateSignatory'>(
+        key: K,
+      ) => (data[key] === undefined ? event[key] : (data[key] as (typeof event)[K]));
+
+      assertCertificateFields({
+        certificateEnabled: merged('certificateEnabled'),
+        certificateTitle: merged('certificateTitle'),
+        certificateSignatory: merged('certificateSignatory'),
       });
 
       // The lifecycle walks forward only, so a close time moved into the future
