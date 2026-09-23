@@ -29,7 +29,7 @@ function Fact({
   children: React.ReactNode;
 }) {
   return (
-    <div className={span ? 'col-span-2' : undefined}>
+    <div className={span ? 'sm:col-span-2' : undefined}>
       <dt className="text-sm text-ink-2">{term}</dt>
       <dd className="text-ink">{children}</dd>
     </div>
