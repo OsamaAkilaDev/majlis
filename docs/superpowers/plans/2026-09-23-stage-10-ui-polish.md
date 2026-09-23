@@ -47,8 +47,8 @@ Recorded here because this stage has no design document of its own.
 | `apps/web/src/components/shell/BackButton.tsx` | The header back control. Client component; decides from the pathname whether it renders at all. |
 | `apps/web/src/lib/back.ts` | `isTabRoot(pathname)`, the pure rule behind that decision. Unit tested. |
 | `apps/web/src/lib/back.test.ts` | Tests for the above. |
-| `apps/web/src/lib/certificate-fields.ts` | `certificateFieldsComplete(row)`, the merged-row rule shared by create and patch. |
-| `apps/web/src/lib/certificate-fields.test.ts` | Tests for the above. |
+| `packages/contracts/src/events/certificate-fields.ts` | `certificateFieldsComplete(row)`, the merged-row rule, imported by BOTH the web form and the API service. See ledger Ruling R2. |
+| `packages/contracts/src/events/certificate-fields.test.ts` | Tests for the above. |
 
 **Modified**
 
@@ -701,7 +701,7 @@ git commit -m "feat(web): text is not selectable outside fields and copyable cod
 ### Task 8: A certificate cannot be enabled with nothing behind it
 
 **Files:**
-- Create: `apps/web/src/lib/certificate-fields.ts`, `apps/web/src/lib/certificate-fields.test.ts`
+- Create: `packages/contracts/src/events/certificate-fields.ts`, `packages/contracts/src/events/certificate-fields.test.ts`
 - Modify: `packages/contracts/src/events/index.ts:63-65`
 - Modify: `apps/api/src/events/events.service.ts:108-116` (beside `assertWindows`), `:455-460` (the merge in `update`)
 - Modify: `apps/web/src/components/event/EventFields.tsx`
@@ -713,7 +713,7 @@ git commit -m "feat(web): text is not selectable outside fields and copyable cod
 
 - [ ] **Step 1: Write the failing web test**
 
-Create `apps/web/src/lib/certificate-fields.test.ts`:
+Create `packages/contracts/src/events/certificate-fields.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -752,13 +752,13 @@ describe('certificateFieldsComplete', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd apps/web && pnpm vitest run --config vitest.config.ts src/lib/certificate-fields.test.ts`
+Run: `cd packages/contracts && pnpm test`
 
 Expected: FAIL, module not found. Stub it returning `true`, re-run, and confirm the second and third tests fail on assertions before implementing.
 
 - [ ] **Step 3: Implement**
 
-Create `apps/web/src/lib/certificate-fields.ts`:
+Create `packages/contracts/src/events/certificate-fields.ts`, exported from the package index beside the event schemas:
 
 ```ts
 /**
@@ -779,7 +779,7 @@ export function certificateFieldsComplete(row: {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Run: `cd apps/web && pnpm vitest run --config vitest.config.ts src/lib/certificate-fields.test.ts`
+Run: `cd packages/contracts && pnpm test`
 
 Expected: PASS, three tests.
 
@@ -867,12 +867,13 @@ function assertCertificateFields(row: {
   certificateTitle: string | null;
   certificateSignatory: string | null;
 }): void {
-  if (!row.certificateEnabled) return;
-  if (!row.certificateTitle?.trim() || !row.certificateSignatory?.trim()) {
-    throw new UnprocessableError(
-      'A certificate needs a title and a signatory before it can be enabled.',
-    );
-  }
+  // The rule itself lives in @majlis/contracts so the form and this service
+  // cannot drift. This only turns a false into a message, exactly as
+  // assertWindows turns a comparison into one.
+  if (certificateFieldsComplete(row)) return;
+  throw new UnprocessableError(
+    'A certificate needs a title and a signatory before it can be enabled.',
+  );
 }
 ```
 
@@ -900,7 +901,7 @@ Expected: PASS, both.
 
 - [ ] **Step 10: Make the form say so before the round trip**
 
-In `EventFields.tsx`, the two certificate inputs become required while the toggle is on. Mark them required for assistive technology as well as visually, and disable the submit button, or surface the inline error, in whichever way the form already handles a blocked save; grep the file for its existing `disabled` and error wiring and follow it rather than adding a second mechanism. Import `certificateFieldsComplete` from `@/lib/certificate-fields` and use it as the condition. Add no helper text: per the project's copy rule, the required marker and the field label carry it.
+In `EventFields.tsx`, the two certificate inputs become required while the toggle is on. Mark them required for assistive technology as well as visually, and disable the submit button, or surface the inline error, in whichever way the form already handles a blocked save; grep the file for its existing `disabled` and error wiring and follow it rather than adding a second mechanism. Import `certificateFieldsComplete` from `@majlis/contracts` and use it as the condition. Add no helper text: per the project's copy rule, the required marker and the field label carry it.
 
 - [ ] **Step 11: Verify by hand**
 
