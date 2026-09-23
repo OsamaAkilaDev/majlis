@@ -170,7 +170,10 @@ export function AuditTable({
                   <TableCell className="font-medium text-ink">{entry.action}</TableCell>
                   <TableCell className="text-ink-2">
                     {entry.entityType}
-                    <span className="tabular block text-label text-ink-3" title={entry.entityId}>
+                    <span
+                      className="tabular selectable block text-label text-ink-3"
+                      title={entry.entityId}
+                    >
                       {shortId(entry.entityId)}
                     </span>
                   </TableCell>
@@ -181,7 +184,9 @@ export function AuditTable({
                     {/* AuditLog has no foreign keys by design, so an actor is
                         an id that outlives the account, not a join. */}
                     {entry.actorUserId ? (
-                      <span title={entry.actorUserId}>{shortId(entry.actorUserId)}</span>
+                      <span className="selectable" title={entry.actorUserId}>
+                        {shortId(entry.actorUserId)}
+                      </span>
                     ) : (
                       'System'
                     )}
@@ -192,7 +197,7 @@ export function AuditTable({
                       {entry.reason ? (
                         <p className="mt-1 text-sm text-ink-2">{entry.reason}</p>
                       ) : null}
-                      <pre className="mt-1 overflow-x-auto rounded-control bg-surface-2 p-2 text-label text-ink-2">
+                      <pre className="selectable mt-1 overflow-x-auto rounded-control bg-surface-2 p-2 text-label text-ink-2">
                         {JSON.stringify(
                           {
                             before: entry.before,

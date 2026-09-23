@@ -50,7 +50,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ code: s
         <h1 className="font-display text-title text-balance text-ink">
           No certificate matches this code
         </h1>
-        <p className="tabular break-all text-sm text-ink-2">{code}</p>
+        <p className="tabular selectable break-all text-sm text-ink-2">{code}</p>
       </section>
     );
   }

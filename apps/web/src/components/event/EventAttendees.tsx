@@ -251,7 +251,7 @@ export function EventAttendees({
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-medium text-ink">{row.fullName}</span>
-                          <span className="text-label text-ink-2">{row.email}</span>
+                          <span className="selectable text-label text-ink-2">{row.email}</span>
                         </div>
                       </TableCell>
                       <TableCell>

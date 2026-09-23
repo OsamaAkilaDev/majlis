@@ -60,7 +60,7 @@ export function ErrorPanel({
         ) : null}
       </div>
 
-      {trace ? <p className="tabular text-label text-ink-3">{trace}</p> : null}
+      {trace ? <p className="tabular selectable text-label text-ink-3">{trace}</p> : null}
     </div>
   );
 

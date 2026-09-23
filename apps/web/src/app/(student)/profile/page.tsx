@@ -85,7 +85,7 @@ export default async function ProfilePage() {
             <span className="truncate font-display text-h1 text-primary-soft-fg">
               {user.fullName}
             </span>
-            <span className="truncate text-sm opacity-85">{user.email}</span>
+            <span className="selectable truncate text-sm opacity-85">{user.email}</span>
             <span className="mt-1 flex flex-wrap gap-1.5">
               <span className="rounded-full bg-primary/12 px-2 py-0.5 text-label font-semibold uppercase">
                 {user.platformRole === 'ADMIN' ? 'Admin' : 'Student'}

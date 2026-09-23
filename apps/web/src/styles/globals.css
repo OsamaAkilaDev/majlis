@@ -191,6 +191,21 @@
     font-size: var(--text-body);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    /* A long press on a label or a heading should not raise a selection
+       handle: the shells read as applications, not pages. Fields are exempt
+       because selecting inside one is how it is edited, and `.selectable`
+       marks the values a viewer has a real reason to copy: an id, a code, an
+       email address. */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable='true'],
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   /* Browser surfaces take the palette instead of shipping defaults. */

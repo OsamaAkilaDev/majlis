@@ -153,7 +153,9 @@ export function CertificatesManager({
               {items.map((certificate) => (
                 <TableRow key={certificate.id}>
                   <TableCell className="font-medium text-ink">{certificate.holderName}</TableCell>
-                  <TableCell className="tabular text-ink-2">{certificate.serialNumber}</TableCell>
+                  <TableCell className="tabular selectable text-ink-2">
+                    {certificate.serialNumber}
+                  </TableCell>
                   <TableCell className="tabular text-ink-2">
                     {formatDay(certificate.issuedAt)}
                   </TableCell>

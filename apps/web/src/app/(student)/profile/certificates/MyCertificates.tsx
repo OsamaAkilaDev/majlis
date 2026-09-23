@@ -108,7 +108,9 @@ export function MyCertificates({ initial }: { initial: CertificatePage | null })
             <p className="tabular text-sm text-ink-2">{formatDay(certificate.issuedAt)}</p>
 
             <div className="mt-auto flex items-center justify-between gap-3">
-              <span className="tabular text-label text-ink-3">{certificate.serialNumber}</span>
+              <span className="tabular selectable text-label text-ink-3">
+                {certificate.serialNumber}
+              </span>
               <Button
                 size="sm"
                 variant="outline"

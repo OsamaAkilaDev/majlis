@@ -340,7 +340,7 @@ export function UsersManager({
                   <TableCell>
                     <span className="flex flex-col">
                       <span className="font-medium text-ink">{u.fullName}</span>
-                      <span className="text-label text-ink-2">{u.email}</span>
+                      <span className="selectable text-label text-ink-2">{u.email}</span>
                     </span>
                   </TableCell>
                   <TableCell>{enumLabel(u.platformRole)}</TableCell>

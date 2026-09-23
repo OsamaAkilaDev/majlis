@@ -34,7 +34,7 @@ export default async function MyQrPage() {
             </span>
             <span className="flex min-w-0 flex-col">
               <span className="truncate font-display text-h2 text-ink">{user.fullName}</span>
-              <span className="truncate text-sm text-ink-2">{user.email}</span>
+              <span className="selectable truncate text-sm text-ink-2">{user.email}</span>
             </span>
           </div>
 
