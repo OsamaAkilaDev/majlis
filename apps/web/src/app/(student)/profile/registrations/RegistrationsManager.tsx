@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TimeRange } from '@/components/LocalTime';
+import { ProblemError } from '@/lib/api';
 import { cancelRegistration, myRegistrations } from '@/lib/events';
 import { useCursorPage } from '@/lib/use-cursor-page';
 import { PAGE } from '@/lib/page-size';
@@ -19,6 +20,7 @@ const CHANGEABLE = ['PUBLISHED', 'REGISTRATION_CLOSED', 'CANCELLED'];
 export function RegistrationsManager({ initial }: { initial: MyRegistrationPage | null }) {
   const { items, cursor, show, append } = useCursorPage(initial);
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     show(await myRegistrations({ limit: PAGE }));
@@ -35,9 +37,12 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
 
   async function cancel(registration: MyRegistration) {
     setBusy(registration.id);
+    setError(null);
     try {
       await cancelRegistration(registration.event.id);
       await load();
+    } catch (err) {
+      setError(err instanceof ProblemError ? (err.detail ?? err.title) : 'Something went wrong');
     } finally {
       setBusy(null);
     }
@@ -67,6 +72,12 @@ export function RegistrationsManager({ initial }: { initial: MyRegistrationPage 
 
   return (
     <div className="flex flex-col gap-4">
+      {error ? (
+        <p role="alert" className="text-sm text-bad-fg">
+          {error}
+        </p>
+      ) : null}
+
       <ul className="grid gap-2 lg:grid-cols-2">
         {items.map((registration) => {
           const event = registration.event;
