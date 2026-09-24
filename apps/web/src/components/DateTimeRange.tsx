@@ -157,7 +157,10 @@ export function DateTimeRange({
           <p className="text-sm text-ink-2">{hint}</p>
         ) : null}
 
-        <Popover className="w-[min(20rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-card border border-border bg-surface p-3 shadow-[var(--shadow-md)]">
+        {/* React Aria caps the popover's height at the space left, which a
+            phone keyboard shrinks to a sliver. Without the scroll the grid and
+            clocks spill out over the field underneath. */}
+        <Popover className="w-[min(20rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-card border border-border bg-surface p-3 shadow-[var(--shadow-md)]">
           <Dialog className="flex flex-col gap-3 outline-none">
             <RangeCalendar className="flex flex-col gap-2">
               <header className="flex items-center gap-2">
