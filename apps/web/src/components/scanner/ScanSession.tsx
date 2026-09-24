@@ -99,6 +99,9 @@ export function ScanSession({
   // top rather than resuming a half-finished attempt.
   const [attempt, setAttempt] = useState(0);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  // Remounts the verdict per answer, so two identical ones in a row still
+  // replay its entrance and restart its countdown.
+  const [verdictSeq, setVerdictSeq] = useState(0);
   const [counts, setCounts] = useState<{ checkedIn: number; expected: number } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +161,7 @@ export function ScanSession({
         const result = await run();
         const next = verdictOf(result);
         setVerdict(next);
+        setVerdictSeq((n) => n + 1);
         navigator.vibrate?.(next.pattern);
         if (result.result === 'CHECKED_IN') void refreshCounts(id);
         return result.result === 'CHECKED_IN';
@@ -190,6 +194,10 @@ export function ScanSession({
     [eventId, record],
   );
 
+  // Stable, because the verdict's countdown restarts whenever this changes: an
+  // inline arrow would reset it on every render the session makes meanwhile.
+  const clearVerdict = useCallback(() => setVerdict(null), []);
+
   if (events === null) return <Skeleton className="h-96 w-full" />;
 
   const event = events.find((e) => e.id === eventId) ?? null;
@@ -199,7 +207,7 @@ export function ScanSession({
   return (
     // Full bleed over the console's padding. The dark palette comes from the
     // shell, which carries it across the header too.
-    <section className="-mx-4 -my-5 flex min-h-[calc(100dvh-3.75rem)] flex-col bg-bg text-ink lg:-mx-8 lg:-my-6">
+    <section className="relative -mx-4 -my-5 flex min-h-[calc(100dvh-3.75rem)] flex-col bg-bg text-ink lg:-mx-8 lg:-my-6">
       {event === null ? (
         <div className="flex flex-col gap-2 p-4">
           <h2 className="font-display text-h1 text-ink">Pick an event</h2>
@@ -279,9 +287,10 @@ export function ScanSession({
           )}
 
           {verdict ? (
-            <ScanVerdict verdict={verdict} onClear={() => setVerdict(null)} />
-          ) : (
-            <div className="mt-auto flex flex-col gap-3 border-t border-border p-4 pb-[calc(1rem+var(--safe-b))]">
+            <ScanVerdict key={verdictSeq} verdict={verdict} onClear={clearVerdict} />
+          ) : null}
+
+          <div className="mt-auto flex flex-col gap-3 border-t border-border p-4 pb-[calc(1rem+var(--safe-b))]">
               {error ? (
                 <p role="alert" className="text-sm text-bad-fg">
                   {error}
@@ -324,7 +333,6 @@ export function ScanSession({
                 )}
               </div>
             </div>
-          )}
         </>
       )}
     </section>
