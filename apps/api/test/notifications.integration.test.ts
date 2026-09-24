@@ -15,7 +15,7 @@ let app: INestApplication;
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
-/** Matches ATTENDANCE_CORRECTION_WINDOW_HOURS' default. */
+/** Any age past the event: issuance no longer waits on a window. */
 const WINDOW_HOURS = 48;
 
 /** Certificates need storage; nothing here exercises it. */

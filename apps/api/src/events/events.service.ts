@@ -21,7 +21,6 @@ import { resolveClubFacts, resolveEventFacts } from '../auth/permissions.guard';
 import { assertAcceptsNewActivity } from '../clubs/club-status';
 import { loadClub } from '../clubs/load-club';
 import { ClubsService } from '../clubs/clubs.service';
-import { CertificatesService } from '../certificates/certificates.service';
 import { deriveSlug, uniqueSlug } from '../clubs/slug';
 import { cursorArgs, cursorPage } from '../common/cursor-page';
 import { NotFoundError, UnprocessableError } from '../common/problem/domain-error';
@@ -186,7 +185,6 @@ export class EventsService {
     private readonly audit: AuditService,
     private readonly lifecycle: EventLifecycleService,
     private readonly clubs: ClubsService,
-    private readonly certificates: CertificatesService,
     private readonly notifications: NotificationService,
   ) {}
 
@@ -354,10 +352,7 @@ export class EventsService {
 
   // Advances first, so nobody reads a stale status.
   async detail(actor: Actor, eventId: string): Promise<EventDetail> {
-    const status = await this.lifecycle.advance(eventId);
-    // Spec 7.6's opportunistic issuance, gated on the status the advance left
-    // behind so an ordinary read costs nothing extra.
-    if (status === 'COMPLETED') await this.certificates.issueForEvent(eventId);
+    await this.lifecycle.advance(eventId);
     return this.readDetail(actor, eventId);
   }
 

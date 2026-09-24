@@ -90,6 +90,9 @@ async function pickCertificateEvent(page: Page, clubId: string) {
   await page.goto(`/manage/${clubId}/certificates`);
   await page.getByLabel('Event').click();
   await page.getByRole('option', { name: 'Line Follower Sprint' }).click();
+  // Nothing issues on its own any more, so the rows exist only once somebody
+  // has pressed. Idempotent, so pressing on a run that already issued is safe.
+  await page.getByRole('button', { name: 'Issue certificates' }).click();
   await expect(page.getByRole('cell', { name: 'Layla Hassan' }).first()).toBeVisible();
 }
 
@@ -155,7 +158,7 @@ test('an operator checks a student in and the verdict names them', async ({ page
 
   // Carries the ORIGINAL time: a rewritten timestamp answers the operator's
   // actual question wrongly.
-  await verdict.getByRole('button', { name: 'Next' }).click();
+  await verdict.getByRole('button', { name: 'Scan next' }).click();
   await checkIn(page, STUDENT, 'Camera would not focus');
   await expect(page.getByRole('status')).toContainText('Already checked in');
 });
@@ -242,23 +245,16 @@ test('a correction past the window is refused in the API words, inside the dialo
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
-test('an officer is offered no certificate screen, and refused the one that exists', async ({
-  page,
-}) => {
-  // certificate:manage ticks no club role at all (spec 6.1), so the Manage
-  // sheet offers a Lead no such row. Both halves matter: the absent row is
-  // presentation, and the refusal below is the protection.
-  await signIn(page, 'lead@uni.ac.ae');
-  await page.goto(`/clubs/${CLUB}`);
-  await page.getByRole('button', { name: /^Manage/ }).click();
-  const sheet = page.getByRole('dialog');
-  await expect(sheet.getByRole('link', { name: 'Members' })).toBeVisible();
-  await expect(sheet.getByRole('link', { name: 'Certificates' })).toHaveCount(0);
-
-  // Any club id at all: the console answers a non-Admin the same way whether
-  // the club resolves or not, so this needs no id the officer cannot get.
-  await page.goto('/manage/00000000-0000-7000-8000-000000000000/certificates');
-  await expect(page).toHaveURL(/\/clubs(\/|$)/);
+test("an officer reaches certificates from a finished event's own page", async ({ page }) => {
+  // certificate:manage ticks every core-team role (ruled 2026-09-24), and the
+  // way in is the event, the unit certificates are issued in. Operations,
+  // because it holds neither roster nor publish: only the new key opens this.
+  await signIn(page, 'ops@uni.ac.ae');
+  await openEvent(page, 'Line Follower Sprint');
+  await page.getByRole('link', { name: 'Certificates' }).click();
+  await page.getByRole('button', { name: 'Issue certificates' }).click();
+  await expect(page.getByText(/^Issued \d+\. \d+ active\.$/)).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Layla Hassan' }).first()).toBeVisible();
 });
 
 test('an admin issues, and the student reaches the document', async ({ page }) => {

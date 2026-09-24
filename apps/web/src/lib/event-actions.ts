@@ -7,7 +7,7 @@ import type { ClubRole, EventDetail, EventResponsibility, SessionUser } from '@m
  * Presentation only: it decides which controls the event page draws. The guard
  * re-derives every one of them per request and is the protection.
  */
-export type EventActionKey = 'publish' | 'edit' | 'attendees' | 'checkIn' | 'cancel';
+export type EventActionKey = 'publish' | 'edit' | 'attendees' | 'checkIn' | 'certificates' | 'cancel';
 
 interface Rule {
   club: readonly ClubRole[];
@@ -22,6 +22,7 @@ export const EVENT_ACTION_ROLES = {
   edit: { club: ['LEAD', 'VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'], event: [] },
   attendees: { club: ['LEAD', 'VICE_LEAD'], event: ['EVENT_LEAD', 'OPERATIONS'] },
   checkIn: { club: ['LEAD', 'OPERATIONS'], event: ['EVENT_LEAD', 'OPERATIONS'] },
+  certificates: { club: ['LEAD', 'VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'], event: [] },
   cancel: { club: ['LEAD'], event: [] },
 } as const satisfies Record<EventActionKey, Rule>;
 
@@ -37,6 +38,7 @@ const ACTIONS: EventAction[] = [
   { key: 'edit', label: 'Edit', path: 'edit' },
   { key: 'attendees', label: 'Attendees', path: 'attendees' },
   { key: 'checkIn', label: 'Check in', path: 'check-in' },
+  { key: 'certificates', label: 'Certificates', path: 'certificates' },
   { key: 'cancel', label: 'Cancel event', path: null },
 ];
 
@@ -71,6 +73,9 @@ function applies(key: EventActionKey, event: EventDetail, now: Date): boolean {
       return isLive(event, now);
     case 'attendees':
       return true;
+    // Only once issuing could succeed: the API refuses an unfinished event.
+    case 'certificates':
+      return event.certificateEnabled && (event.status === 'COMPLETED' || event.status === 'CERTIFIED');
   }
 }
 

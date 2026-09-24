@@ -284,12 +284,6 @@ export const myRegistrationListQuerySchema = cursorPageQuerySchema.extend({
 export const sweepResultSchema = z.object({
   scanned: z.number().int(),
   advanced: z.number().int(),
-  /**
-   * The sweep is the only reliable issuance path: an event completes when
-   * check-in shuts but cannot issue until the correction window closes 48
-   * hours later, so nothing that advanced a status can also issue for it.
-   */
-  certificatesIssued: z.number().int(),
 });
 
 export type EventResponsibility = z.infer<typeof eventResponsibilitySchema>;

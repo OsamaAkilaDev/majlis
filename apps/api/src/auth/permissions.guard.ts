@@ -57,6 +57,29 @@ export async function resolveEventClubFacts(
 }
 
 /**
+ * The same ACTIVE-only club appointments, for the club that issued
+ * `certificateId`. A certificate carries its event, and the event its club,
+ * so the id in the URL is never trusted for anything but finding the row. No
+ * event assignments: certificates belong to the core team, not to whoever was
+ * assigned to run the door.
+ */
+export async function resolveCertificateClubFacts(
+  host: TransactionHost,
+  userId: string,
+  certificateId: string,
+): Promise<Pick<ActorFacts, 'clubRoles'>> {
+  const appointments = await host.tx.clubTeamAppointment.findMany({
+    where: {
+      userId,
+      status: 'ACTIVE',
+      club: { events: { some: { certificates: { some: { id: certificateId } } } } },
+    },
+    select: { role: true },
+  });
+  return { clubRoles: appointments.map((a) => a.role) };
+}
+
+/**
  * Event assignments for `userId` on `eventId`. `EventAssignment` carries no
  * status column (an assignment row is authority the moment it exists), so,
  * unlike the club resolver, there is no status filter to apply here.
@@ -92,6 +115,13 @@ function readScopeId(req: Request, scope: ScopeSpec | undefined): string | undef
   const value = readAt(req, scope.from);
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
+
+const ENTITY_TYPE = {
+  club: 'Club',
+  event: 'Event',
+  certificate: 'Certificate',
+  none: 'User',
+} as const;
 
 /** Best-effort target id for the audit row on a denial with no scope (e.g. `user:suspend`). */
 function readTargetId(req: Request): string | undefined {
@@ -138,7 +168,7 @@ export class PermissionsGuard implements CanActivate {
     await this.host.run(() =>
       this.audit.record({
         action: 'permission.denied',
-        entityType: required.scope?.scope === 'club' ? 'Club' : required.scope?.scope === 'event' ? 'Event' : 'User',
+        entityType: ENTITY_TYPE[required.scope?.scope ?? 'none'],
         entityId: scopeId ?? readTargetId(req) ?? actor.id,
         outcome: 'DENIED',
         reason: required.permission,
@@ -176,6 +206,11 @@ export class PermissionsGuard implements CanActivate {
 
     if (scope.scope === 'club') {
       const { clubRoles } = await resolveClubFacts(this.host, actor.id, scopeId);
+      return { ...base, clubRoles };
+    }
+
+    if (scope.scope === 'certificate') {
+      const { clubRoles } = await resolveCertificateClubFacts(this.host, actor.id, scopeId);
       return { ...base, clubRoles };
     }
 

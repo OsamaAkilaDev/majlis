@@ -8,7 +8,6 @@ import { Public } from '../auth/public.decorator';
 import { UnauthorizedError } from '../common/problem/domain-error';
 import { ProblemDetailsDto } from '../common/problem/problem-details.dto';
 import type { Env } from '../config/env.schema';
-import { CertificatesService } from '../certificates/certificates.service';
 import { EventLifecycleService } from './event-lifecycle.service';
 
 export { SWEEP_SECRET_HEADER } from '../config/sweep-header';
@@ -31,7 +30,6 @@ export class LifecycleSweepController {
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly lifecycle: EventLifecycleService,
-    private readonly certificates: CertificatesService,
   ) {}
 
   @Public()
@@ -40,9 +38,6 @@ export class LifecycleSweepController {
   @ApiResponse({ status: 401, description: 'That sweep secret is not valid.', type: ProblemDetailsDto })
   async sweep(@Headers(SWEEP_SECRET_HEADER) presented: string | undefined): Promise<SweepResult> {
     assertSweepSecret(presented, this.config.get('LIFECYCLE_SWEEP_SECRET', { infer: true }));
-    const swept = await this.lifecycle.sweep();
-    // After the advances, not before: an event that completed two days ago is
-    // due for issuance now, and this is the only path that will notice.
-    return { ...swept, certificatesIssued: await this.certificates.issueDue() };
+    return this.lifecycle.sweep();
   }
 }

@@ -10,6 +10,7 @@ const NEEDED = {
   edit: 'event:edit',
   attendees: 'registration:read',
   checkIn: 'attendance:scan',
+  certificates: 'certificate:manage',
   cancel: 'event:cancel',
 } as const satisfies Record<EventActionKey, string>;
 
@@ -169,5 +170,26 @@ describe('eventActionsFor', () => {
     ]);
     expect(keys(event({ ...lead, status: 'CANCELLED' }), 'STUDENT', after)).toEqual(['attendees']);
     expect(keys(event({ ...lead, status: 'CERTIFIED' }), 'STUDENT', after)).toEqual(['attendees']);
+  });
+
+  it('offers certificates to any core-team role once a certifying event has finished', () => {
+    const after = new Date('2026-09-20T22:00:00.000Z');
+    const done = { status: 'COMPLETED', certificateEnabled: true } satisfies Partial<EventDetail>;
+    // Marketing holds no roster or scan permission, so this is the new key alone.
+    expect(keys(event({ ...done, viewerClubRoles: ['MARKETING'] }), 'STUDENT', after)).toEqual([
+      'certificates',
+    ]);
+    expect(keys(event({ ...done, status: 'CERTIFIED', viewerClubRoles: ['CTO'] }), 'STUDENT', after)).toEqual([
+      'certificates',
+    ]);
+    // Not before it finishes, not for an event that issues none, not for an
+    // assignee with no club role.
+    expect(keys(event({ certificateEnabled: true, viewerClubRoles: ['LEAD'] }))).not.toContain('certificates');
+    expect(keys(event({ status: 'COMPLETED', viewerClubRoles: ['LEAD'] }), 'STUDENT', after)).not.toContain(
+      'certificates',
+    );
+    expect(keys(event({ ...done, viewerResponsibilities: ['EVENT_LEAD'] }), 'STUDENT', after)).not.toContain(
+      'certificates',
+    );
   });
 });

@@ -77,7 +77,6 @@ export const envSchema = z
      * after an event ends. It is also what gates COMPLETED to CERTIFIED:
      * issuing the moment an event completes would make this window zero.
      */
-    ATTENDANCE_CORRECTION_WINDOW_HOURS: z.coerce.number().int().positive().max(8760).default(48),
     /**
      * Where the QR printed on a certificate points. The API is reached
      * through the web app's rewrite rather than directly, so it has no other

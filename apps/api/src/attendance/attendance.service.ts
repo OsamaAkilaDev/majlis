@@ -20,7 +20,6 @@ import { Prisma, type AttendanceMethod } from '../generated/prisma/client';
 import { TransactionHost } from '../prisma/transaction.host';
 import { verifyPass } from './qr-token';
 
-const HOUR_MS = 60 * 60 * 1000;
 
 /** Registrations that held a confirmed place, whatever became of them: a
  *  waitlisted student was never expected in the room. */
@@ -86,7 +85,6 @@ interface Recording {
 @Injectable()
 export class AttendanceService {
   private readonly secret: string;
-  private readonly correctionWindowMs: number;
 
   constructor(
     private readonly host: TransactionHost,
@@ -96,7 +94,6 @@ export class AttendanceService {
     config: ConfigService<Env, true>,
   ) {
     this.secret = config.get('QR_SIGNING_SECRET', { infer: true });
-    this.correctionWindowMs = config.get('ATTENDANCE_CORRECTION_WINDOW_HOURS', { infer: true }) * HOUR_MS;
   }
 
   /** Six of spec 7.5's seven outcomes are a 200 with a `result`
@@ -429,30 +426,24 @@ export class AttendanceService {
   }
 
   /**
-   * The window of spec 7.5, and the two ways past it. Returns the Admin's
-   * override reason when one was needed, so the audit row records that the
-   * correction was an override rather than an ordinary one.
+   * Open until certificates issue (ruled 2026-09-24; it used to be a 48-hour
+   * window), then an Admin override only. Returns the Admin's override reason
+   * when one was needed, so the audit row records that the correction was an
+   * override rather than an ordinary one.
    */
   private assertCorrectable(
     actor: Actor,
     event: CheckInEvent,
     body: CorrectAttendanceBody,
   ): string | undefined {
-    const admin = actor.platformRole === 'ADMIN';
-    const closed = Date.now() > event.endsAt.getTime() + this.correctionWindowMs;
-    const locked = event.status === 'CERTIFIED';
-    if (!closed && !locked) return undefined;
+    if (event.status !== 'CERTIFIED') return undefined;
 
-    if (!admin) {
-      throw new UnprocessableError(
-        locked
-          ? 'That event has issued certificates and its attendance is locked.'
-          : 'The window for correcting attendance on that event has closed.',
-      );
+    if (actor.platformRole !== 'ADMIN') {
+      throw new UnprocessableError('That event has issued certificates and its attendance is locked.');
     }
     if (!body.override?.reason) {
       throw new UnprocessableError(
-        'Correcting attendance after the window has closed requires an override reason.',
+        'Correcting attendance after certificates have issued requires an override reason.',
       );
     }
     return body.override.reason;

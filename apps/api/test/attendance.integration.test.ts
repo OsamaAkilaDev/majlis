@@ -359,13 +359,13 @@ describe('GET /events/:eventId/attendance', () => {
 
 describe('PATCH /events/:eventId/attendance/:registrationId', () => {
   /** An event that ended `hoursAgo` hours ago, with one checked-in student. */
-  async function aFinishedEvent(hoursAgo: number) {
+  async function aFinishedEvent(hoursAgo: number, status: 'COMPLETED' | 'CERTIFIED' = 'COMPLETED') {
     const now = Date.now();
     const club = await makeClub();
     const lead = await makeActiveLead(app, club.id);
     const ops = await makeActiveOfficer(app, club.id, 'OPERATIONS');
     const event = await mkEvent(club.id, lead.userId, {
-      status: 'COMPLETED',
+      status,
       startsAt: new Date(now - (hoursAgo + 2) * HOUR),
       endsAt: new Date(now - hoursAgo * HOUR),
       registrationOpensAt: new Date(now - 30 * DAY),
@@ -387,7 +387,7 @@ describe('PATCH /events/:eventId/attendance/:registrationId', () => {
     return { club, lead, ops, event, student, registration };
   }
 
-  it('lets Operations correct inside the window', async () => {
+  it('lets Operations correct a finished event', async () => {
     const { ops, event, registration } = await aFinishedEvent(1);
 
     const res = await correct(ops.sessionCookie, event.id, registration.id, {
@@ -405,9 +405,22 @@ describe('PATCH /events/:eventId/attendance/:registrationId', () => {
     expect(audit[0]?.after).toMatchObject({ status: 'NO_SHOW', present: false });
   });
 
-  it('refuses Operations once the window has closed', async () => {
-    // One hour past the 48-hour boundary, so this tests the boundary itself.
-    const { ops, event, registration } = await aFinishedEvent(49);
+  it('lets Operations correct weeks after the event, because no certificate has issued', async () => {
+    // Catches a surviving clock gate: attendance locks on issuance, not on time.
+    const { ops, event, registration } = await aFinishedEvent(20 * 24);
+
+    const res = await correct(ops.sessionCookie, event.id, registration.id, {
+      present: false,
+      reason: 'Found on review of the paper sheet',
+    });
+
+    expect(res.status).toBe(204);
+    expect(await prisma.attendanceRecord.count({ where: { registrationId: registration.id } })).toBe(0);
+  });
+
+  it('refuses Operations once certificates have issued', async () => {
+    // One hour after the event, so only the CERTIFIED lock can be refusing it.
+    const { ops, event, registration } = await aFinishedEvent(1, 'CERTIFIED');
 
     const res = await correct(ops.sessionCookie, event.id, registration.id, {
       present: false,
@@ -415,12 +428,12 @@ describe('PATCH /events/:eventId/attendance/:registrationId', () => {
     });
 
     expect(res.status).toBe(422);
-    expect(res.body.detail).toBe('The window for correcting attendance on that event has closed.');
+    expect(res.body.detail).toBe('That event has issued certificates and its attendance is locked.');
     expect(await prisma.attendanceRecord.count({ where: { registrationId: registration.id } })).toBe(1);
   });
 
-  it('lets an Admin cross the closed window with a recorded override reason', async () => {
-    const { event, registration } = await aFinishedEvent(49);
+  it('lets an Admin cross the certificate lock with a recorded override reason', async () => {
+    const { event, registration } = await aFinishedEvent(1, 'CERTIFIED');
     const admin = await loginAsAdmin(app);
 
     const refused = await correct(admin.sessionCookie, event.id, registration.id, {
@@ -431,7 +444,7 @@ describe('PATCH /events/:eventId/attendance/:registrationId', () => {
     // log, so it is refused even for an Admin.
     expect(refused.status).toBe(422);
     expect(refused.body.detail).toBe(
-      'Correcting attendance after the window has closed requires an override reason.',
+      'Correcting attendance after certificates have issued requires an override reason.',
     );
 
     const res = await correct(admin.sessionCookie, event.id, registration.id, {

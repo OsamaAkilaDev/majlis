@@ -113,9 +113,9 @@ export const PERMISSIONS = {
   // rewrite the record. The 48-hour window is enforced in the service, being
   // a property of the event's clock rather than of the actor.
   'attendance:correct': { platform: ['ADMIN'], club: ['LEAD', 'OPERATIONS'] },
-  // No club role at all: a Lead cannot issue their own club's certificates,
-  // which is what keeps one an institutional record.
-  'certificate:manage': { platform: ['ADMIN'] },
+  // The whole core team (ruled 2026-09-24, reversing Admin-only). Always
+  // scoped, to an event or a certificate, so a role elsewhere reaches nothing.
+  'certificate:manage': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'] },
   // Club-scoped: a club's own numbers are what its Lead and Vice already read
   // one screen at a time. /reports/overview is unscoped, so Admin alone.
   'report:read': { platform: ['ADMIN'], club: ['LEAD', 'VICE_LEAD'] },

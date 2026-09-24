@@ -16,8 +16,8 @@ let app: INestApplication;
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
-/** Matches ATTENDANCE_CORRECTION_WINDOW_HOURS' default. */
-const WINDOW_HOURS = 48;
+/** Every club core-team role, which is exactly who may issue (2026-09-24). */
+const CORE_TEAM = ['LEAD', 'VICE_LEAD', 'MARKETING', 'CTO', 'OPERATIONS'] as const;
 
 /** Bytes the API produced, by object path. The bucket is recorded because it is
  * a security property: a certificate in the public bucket is readable at
@@ -67,11 +67,11 @@ function verify(code: string) {
   return request(app.getHttpServer()).get(`${API_PREFIX}/verify/${code}`);
 }
 
-/** An event whose correction window has closed, with one student checked in and
- * one not. */
-async function aCertifiableEvent(overrides: Record<string, unknown> = {}) {
+/** An event that finished an hour ago, with one student checked in and one
+ * not. An hour, not days: issuance waits for nothing but the event ending. */
+async function aCertifiableEvent(overrides: Record<string, unknown> = {}, endedAgo = HOUR) {
   const now = Date.now();
-  const endedAt = now - (WINDOW_HOURS + 1) * HOUR;
+  const endedAt = now - endedAgo;
   const club = await makeClub();
   const lead = await makeActiveLead(app, club.id);
   const ops = await makeActiveOfficer(app, club.id, 'OPERATIONS');
@@ -157,52 +157,81 @@ describe('POST /events/:eventId/certificates/issue', () => {
     expect(await prisma.certificate.count({ where: { userId: absentee.userId } })).toBe(0);
   });
 
-  it('refuses while the attendance correction window is still open', async () => {
-    // Issuing at COMPLETED cuts the 48-hour correction window to zero, because
-    // CERTIFIED locks attendance.
+  it('refuses an event that has not finished yet', async () => {
     const now = Date.now();
     const { event } = await aCertifiableEvent({
-      startsAt: new Date(now - 4 * HOUR),
-      endsAt: new Date(now - 2 * HOUR),
+      status: 'ONGOING',
+      startsAt: new Date(now - HOUR),
+      endsAt: new Date(now + HOUR),
     });
     const admin = await loginAsAdmin(app);
 
     const res = await issue(admin.sessionCookie, event.id);
 
     expect(res.status).toBe(422);
-    expect(res.body.detail).toBe(
-      'Certificates are issued once the attendance correction window has closed.',
-    );
+    expect(res.body.detail).toBe('That event has not finished yet.');
     expect(await prisma.certificate.count({ where: { eventId: event.id } })).toBe(0);
   });
 
-  it('refuses a club Lead, because spec 6.1 ticks nobody but Admin', async () => {
-    const { lead, event } = await aCertifiableEvent();
+  it.each(CORE_TEAM)('lets the club %s issue', async (role) => {
+    const { club, event, lead } = await aCertifiableEvent();
+    // A club holds one active Lead (club_team_appointment_one_active_lead),
+    // and the fixture already appointed it.
+    const officer = role === 'LEAD' ? lead : await makeActiveOfficer(app, club.id, role);
 
-    const res = await issue(lead.sessionCookie, event.id);
+    const res = await issue(officer.sessionCookie, event.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ issued: 1, total: 1 });
+  });
+
+  it('refuses a Lead of a different club', async () => {
+    // Catches an unscoped rule: a club role anywhere must not reach this club.
+    const { event } = await aCertifiableEvent();
+    const elsewhere = await makeClub();
+    const stranger = await makeActiveLead(app, elsewhere.id);
+
+    const res = await issue(stranger.sessionCookie, event.id);
 
     expect(res.status).toBe(403);
-    expect(res.body.detail).toBe('You do not have permission to do that.');
     expect(await prisma.certificate.count({ where: { eventId: event.id } })).toBe(0);
     const denied = await prisma.auditLog.findMany({ where: { outcome: 'DENIED' } });
     expect(denied[0]?.reason).toBe('certificate:manage');
   });
+
+  it('refuses a student with no role in the club', async () => {
+    const { event, attendee } = await aCertifiableEvent();
+
+    const res = await issue(attendee.sessionCookie, event.id);
+
+    expect(res.status).toBe(403);
+  });
 });
 
-describe('the lifecycle sweep', () => {
-  it('is what actually issues, because completion and issuance are 48 hours apart', async () => {
-    // No status advance is ever also an issuance, since the two are 48 hours
-    // apart. Catches a sweep with no clause for events already sitting in
-    // COMPLETED: certificates would appear only when somebody opened the page.
-    const { event } = await aCertifiableEvent();
+describe('nothing issues on its own', () => {
+  // Attendance stays correctable until issuance, so issuance is a decision
+  // somebody takes, never a side effect of time passing or of a page view.
+  it('the lifecycle sweep leaves a finished event uncertified', async () => {
+    const { event } = await aCertifiableEvent({}, 20 * DAY);
 
     const res = await request(app.getHttpServer())
       .post(`${API_PREFIX}/internal/lifecycle-sweep`)
       .set(SWEEP_SECRET_HEADER, process.env.LIFECYCLE_SWEEP_SECRET ?? EXAMPLE_LIFECYCLE_SWEEP_SECRET);
 
     expect(res.status).toBe(200);
-    expect(res.body.certificatesIssued).toBe(1);
-    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe('CERTIFIED');
+    expect(await prisma.certificate.count({ where: { eventId: event.id } })).toBe(0);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe('COMPLETED');
+  });
+
+  it('opening a finished event issues nothing', async () => {
+    const { event, lead } = await aCertifiableEvent({}, 20 * DAY);
+
+    const res = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/events/${event.id}`)
+      .set('Cookie', lead.sessionCookie);
+
+    expect(res.status).toBe(200);
+    expect(await prisma.certificate.count({ where: { eventId: event.id } })).toBe(0);
   });
 });
 
@@ -404,6 +433,34 @@ describe('POST /certificates/:id/reissue', () => {
     expect((await verify(res.body.verificationCode)).body.status).toBe('ACTIVE');
     // The old row's snapshot still says what it always said.
     expect((await verify(old.verificationCode)).body.holderName).toBe('Amina Hassan');
+  });
+
+  it("lets the club Marketing officer reissue, and refuses another club's Lead", async () => {
+    // Certificate-scoped: the guard resolves the club through the certificate,
+    // so a Lead elsewhere holds nothing here.
+    const { club, event } = await aCertifiableEvent();
+    const admin = await loginAsAdmin(app);
+    await issue(admin.sessionCookie, event.id);
+    const old = await prisma.certificate.findFirstOrThrow({ where: { eventId: event.id } });
+    const marketing = await makeActiveOfficer(app, club.id, 'MARKETING');
+    const stranger = await makeActiveLead(app, (await makeClub()).id);
+
+    const refused = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/certificates/${old.id}/reissue`)
+      .set('Cookie', stranger.sessionCookie)
+      .send({ reason: 'Not my club' });
+    expect(refused.status).toBe(403);
+    const revokeRefused = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/certificates/${old.id}/revoke`)
+      .set('Cookie', stranger.sessionCookie)
+      .send({ reason: 'Not my club' });
+    expect(revokeRefused.status).toBe(403);
+
+    const res = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/certificates/${old.id}/reissue`)
+      .set('Cookie', marketing.sessionCookie)
+      .send({ reason: 'Holder name corrected in the registry' });
+    expect(res.status).toBe(200);
   });
 
   it('tells the holder about the replacement, not only about the revocation', async () => {

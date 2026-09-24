@@ -84,7 +84,6 @@ No default. The process will not start without them.
 | `LIFECYCLE_SWEEP_SECRET` | example value | Shared secret for `POST /internal/lifecycle-sweep`. Minimum 16 characters |
 | `QR_SIGNING_SECRET` | example value | Signs every QR pass. Minimum 32 characters |
 | `NOTIFICATION_SWEEP_SECRET` | example value | Shared secret for `POST /internal/notification-sweep`. Minimum 16 characters |
-| `ATTENDANCE_CORRECTION_WINDOW_HOURS` | `48` | Hours after an event ends during which Operations and Lead may correct attendance. Also gates issuance: certificates go out once it closes |
 | `PUBLIC_WEB_ORIGIN` | `http://localhost:3000` | Where the QR printed on a certificate points, for `/verify/{code}`. Set it to the real web origin or issued certificates carry a QR nobody can scan |
 | `BREVO_FROM` | `Majlis <notifications@majlis.invalid>` | From address on outbound email. Must be an address verified as a sender in Brevo |
 | `BREVO_API_KEY` | unset | Turns email on. See below |

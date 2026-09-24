@@ -130,7 +130,7 @@ export class EventLifecycleService {
    * touches, so this only catches events nobody looked at. Each advances in its
    * own transaction, so one bad row cannot roll back the rest.
    */
-  async sweep(now = new Date()): Promise<Omit<SweepResult, 'certificatesIssued'>> {
+  async sweep(now = new Date()): Promise<SweepResult> {
     const rows = await this.host.tx.event.findMany({
       where: {
         status: { in: ['PUBLISHED', 'REGISTRATION_CLOSED', 'ONGOING'] },

@@ -25,8 +25,6 @@ import { CERTIFICATE_BUCKET, certificatePdfPath } from '../storage/image-kinds';
 import { serialNumber, verificationCode } from './certificate-codes';
 import { renderCertificate } from './certificate-pdf';
 
-const HOUR_MS = 60 * 60 * 1000;
-
 /** Eligibility per `attendance_policy` (spec 7.6). A later policy gets its
  *  own entry here rather than an `if`. */
 const ELIGIBLE = {
@@ -36,9 +34,6 @@ const ELIGIBLE = {
 /** A code collision is astronomically unlikely and still has to be
  *  survivable: retried with fresh codes rather than answering 500. */
 const INSERT_ATTEMPTS = 3;
-
-/** A sweep that found more than this has a bigger problem than a slow run. */
-const ISSUE_SWEEP_LIMIT = 500;
 
 /** Long enough to follow the URL, short enough that one leaked through a
  *  history entry or a referrer header is already dead. */
@@ -94,7 +89,6 @@ function toCertificate(row: CertificateRow): Certificate {
 
 @Injectable()
 export class CertificatesService {
-  private readonly correctionWindowMs: number;
   private readonly webOrigin: string;
 
   constructor(
@@ -104,52 +98,12 @@ export class CertificatesService {
     private readonly notifications: NotificationService,
     config: ConfigService<Env, true>,
   ) {
-    this.correctionWindowMs = config.get('ATTENDANCE_CORRECTION_WINDOW_HOURS', { infer: true }) * HOUR_MS;
     this.webOrigin = config.get('PUBLIC_WEB_ORIGIN', { infer: true }).replace(/\/+$/, '');
   }
 
-  /**
-   * The lazy path, called after `advance()` on every single-event read.
-   * Silent about an event that is not ready, because most never will be.
-   *
-   * Depends on nothing in `events/` beyond the transition function, so
-   * EventsService can call it without a cycle. There is no queue.
-   */
-  async issueForEvent(eventId: string): Promise<CertificateIssueResult> {
-    const event = await this.host.tx.event.findUnique({
-      where: { id: eventId },
-      select: EVENT_FOR_ISSUE,
-    });
-    if (!event || this.notIssuableReason(event)) return { issued: 0, total: 0 };
-    return this.issueCore(event);
-  }
-
-  /**
-   * The path that actually issues: an event reaches COMPLETED when check-in
-   * shuts but cannot issue until the correction window closes 48 hours
-   * later, so no status advance is ever also an issuance. The opportunistic
-   * path only fires if somebody happens to open the event after that.
-   */
-  async issueDue(now = new Date()): Promise<number> {
-    const rows = await this.host.tx.event.findMany({
-      where: {
-        status: 'COMPLETED',
-        certificateEnabled: true,
-        endsAt: { lt: new Date(now.getTime() - this.correctionWindowMs) },
-      },
-      select: { id: true },
-      take: ISSUE_SWEEP_LIMIT,
-    });
-
-    let issued = 0;
-    // One transaction per event, like the lifecycle sweep: one unexpected
-    // event must not roll back everybody else's certificates.
-    for (const row of rows) issued += (await this.issueForEvent(row.id)).issued;
-    return issued;
-  }
-
-  /** Same work, but an Admin who pressed the button is told why nothing
-   *  happened. */
+  /** The only issuance path: somebody presses the button. Nothing issues on
+   *  a timer or a page view, because attendance stays correctable until it
+   *  does (ruled 2026-09-24). */
   async issue(eventId: string): Promise<CertificateIssueResult> {
     const event = await this.host.tx.event.findUnique({
       where: { id: eventId },
@@ -166,18 +120,13 @@ export class CertificatesService {
    * CERTIFIED is NOT a refusal: issuance is idempotent (spec 7.6), so a
    * second press must be a no-op rather than an error.
    *
-   * The clock gate is `endsAt` plus the correction window, not COMPLETED.
-   * Issuing on completion would cut spec 7.5's 48 correction hours to zero,
-   * and 7.6 locks attendance at CERTIFIED: the two rules only coexist if
-   * issuance waits.
+   * No clock gate: COMPLETED is enough. Attendance corrections are open until
+   * CERTIFIED rather than for a fixed window, so waiting protects nothing.
    */
   private notIssuableReason(event: IssuableEvent): string | null {
     if (!event.certificateEnabled) return 'That event does not issue certificates.';
     if (event.status === 'CERTIFIED') return null;
     if (event.status !== 'COMPLETED') return 'That event has not finished yet.';
-    if (Date.now() <= event.endsAt.getTime() + this.correctionWindowMs) {
-      return 'Certificates are issued once the attendance correction window has closed.';
-    }
     return null;
   }
 

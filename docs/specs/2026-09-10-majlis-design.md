@@ -320,7 +320,7 @@ An effective permission for an action is derived per request from all three, plu
 | View attendee personal data | ✔ | ✔ | ✔ | **✘ by default** | ✘ | ✔ for assigned event | — | own only |
 | Scan QR / check in | override | ✔ | — | — | — | ✔ | — | — |
 | Correct attendance | override | ✔ | — | — | — | ✔ within window | — | — |
-| Issue / revoke certificate | ✔ / system | — | — | — | — | — | — | — |
+| Issue / revoke / reissue certificate (own club, ruled 2026-09-24) | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — |
 | Register for an event | as student | as student | as student | as student | as student | as student | ✔ | ✔ |
 | Read audit log | ✔ | own club, scoped | — | — | — | — | — | — |
 
@@ -434,15 +434,15 @@ Results the scanner must render distinctly and unambiguously: **checked in** (wi
 
 A failure never reveals data about an unrelated student. The unique index on `registration_id` makes double check-in impossible even under two operators scanning simultaneously.
 
-**Manual check-in** requires a student search, a reason, and an audit record. **Attendance corrections** are restricted to Operations and Lead, are time-bound to **48 hours after `ends_at`** (configurable; an Admin may correct after that with a reason), and always write before/after to the audit log. Once the event reaches `CERTIFIED`, attendance is locked and only an Admin override can change it.
+**Manual check-in** requires a student search, a reason, and an audit record. **Attendance corrections** are restricted to Operations and Lead, are open until certificates issue (ruled 2026-09-24; this was a configurable 48-hour window), and always write before/after to the audit log. Once the event reaches `CERTIFIED`, attendance is locked and only an Admin override, with a reason, can change it.
 
 ### 7.6 Certificates
 
-Issuance begins only once an event reaches `COMPLETED` and attendance is locked, and only if `certificate_enabled`.
+Issuance is possible once an event reaches `COMPLETED`, and only if `certificate_enabled`. It happens only when a core-team member of the club or an Admin presses Issue (ruled 2026-09-24).
 
 `CertificateService.issueForEvent(eventId)` is **idempotent**: it selects registrations eligible under the event's `attendance_policy` (currently `CHECK_IN_ONLY` → status `CHECKED_IN` or `ATTENDED`), and inserts one certificate per registration. The partial unique index on `registration_id WHERE status = 'ACTIVE'` means running it twice cannot produce a duplicate — the second run's conflicting inserts are absorbed, not errors. A `NO_SHOW` never receives one. The event then transitions to `CERTIFIED`.
 
-It is invoked by the same two paths as the lifecycle: opportunistically when a completed event is touched, and by the sweep. No queue.
+~~It is invoked by the same two paths as the lifecycle: opportunistically when a completed event is touched, and by the sweep.~~ Withdrawn 2026-09-24: nothing issues on its own. No queue.
 
 The **PDF is rendered lazily on first download** (`@react-pdf/renderer`), uploaded to Supabase Storage, and `pdf_url` is filled in. This keeps issuance cheap enough to run inline and avoids rendering thousands of PDFs nobody asks for.
 
@@ -2069,3 +2069,43 @@ excluded from the middleware matcher: it is fetched by the decoder rather than b
 navigation, so a redirect to `/login` arrives as a failed instantiation and breaks the
 fallback on precisely the devices it exists for. That was caught by asking the dev server
 for the file and reading a 307.
+
+### Certificates become a core-team decision, issued by hand (2026-09-24)
+
+Reported by the product owner: certificate management could not be found, and an Admin
+pressing Issue was refused with "Certificates are issued once the attendance correction
+window has closed". Three rulings followed, each reversing a recorded decision.
+
+1. **Every club core-team role issues, revokes and reissues** for its own club: Lead, Vice
+   Lead, Marketing, CTO, Operations. `certificate:manage` gains the club column, and every
+   route carrying it is now scoped: `issue` and the per-event list by event, `revoke` and
+   `reissue` by a new `certificate` scope that resolves the club through the certificate's
+   event. The list moved from `registration:read` to the same key, because Marketing and CTO
+   hold no roster permission to borrow. Event assignees (`EVENT_LEAD`, `OPERATIONS` by
+   assignment) lose the certificate list: assignment grants the door, not the record.
+2. **Nothing issues on its own.** The opportunistic issuance on reading a completed event
+   and the sweep's `issueDue()` are deleted, and `certificatesIssued` leaves the sweep
+   result. Issuance needs `COMPLETED` and nothing else.
+3. **Attendance is correctable until certificates issue**, not for 48 hours.
+   `ATTENDANCE_CORRECTION_WINDOW_HOURS` is removed. `CERTIFIED` still locks attendance
+   behind an Admin override with a reason.
+
+The three hang together: with corrections open until issuance, automatic issuance would
+lock attendance the moment an event ended, so issuance had to become a decision somebody
+takes. The cost is that an event nobody presses Issue on never certifies.
+
+**Where it is found.** A `Certificates` event action on a finished certifying event's own
+page, for the core team and Admins, at `/events/{id}/certificates`. Admins also get the
+section on `/manage/{club}/events/{id}`, where the events overview lands them, and keep the
+club workspace tab. All three render one `EventCertificates` component.
+
+**Also this session:** the scan verdict is a card over the paused viewfinder that returns to
+scanning by itself (2 s on success, 3.5 s on a refusal, "Scan next" to skip), because a
+queue does not wait for the operator; and the date-range popover scrolls inside itself, since
+a phone keyboard shrinks React Aria's computed max-height and the content was spilling over
+the field beneath.
+
+**Unverified in this environment:** the Playwright suite, for the reason §13 already
+records (the dev database lacks the seed personas, and it is the remote Supabase instance, so
+the seed refuses to run without `ALLOW_REMOTE_SEED`). The verdict and the popover were
+checked on a throwaway render route, since deleted.

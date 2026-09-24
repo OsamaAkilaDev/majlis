@@ -30,15 +30,17 @@ export class CertificatesController {
    */
   @Post('events/:eventId/certificates/issue')
   @HttpCode(200)
-  @RequirePermission('certificate:manage')
+  @RequirePermission('certificate:manage', { scope: 'event', from: 'params.eventId' })
   @ApiResponse({ status: 404, description: 'No such event.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That event is not ready to issue certificates.', type: ProblemDetailsDto })
   issue(@Param('eventId') eventId: string): Promise<CertificateIssueResult> {
     return this.certificates.issue(eventId);
   }
 
+  // The same key as issuing: whoever may issue must see what went out, and
+  // Marketing and CTO hold no roster permission to borrow.
   @Get('events/:eventId/certificates')
-  @RequirePermission('registration:read', { scope: 'event', from: 'params.eventId' })
+  @RequirePermission('certificate:manage', { scope: 'event', from: 'params.eventId' })
   forEvent(
     @Param('eventId') eventId: string,
     @Query() query: CertificateListQueryDto,
@@ -66,7 +68,7 @@ export class CertificatesController {
 
   @Post('certificates/:id/revoke')
   @HttpCode(200)
-  @RequirePermission('certificate:manage')
+  @RequirePermission('certificate:manage', { scope: 'certificate', from: 'params.id' })
   @ApiResponse({ status: 404, description: 'No such certificate.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That certificate is already revoked.', type: ProblemDetailsDto })
   revoke(
@@ -79,7 +81,7 @@ export class CertificatesController {
 
   @Post('certificates/:id/reissue')
   @HttpCode(200)
-  @RequirePermission('certificate:manage')
+  @RequirePermission('certificate:manage', { scope: 'certificate', from: 'params.id' })
   @ApiResponse({ status: 404, description: 'No such certificate.', type: ProblemDetailsDto })
   @ApiResponse({ status: 422, description: 'That certificate is already revoked.', type: ProblemDetailsDto })
   reissue(

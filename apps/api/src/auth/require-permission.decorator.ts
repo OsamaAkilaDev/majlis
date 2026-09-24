@@ -11,7 +11,7 @@ import type { Permission } from './permissions';
  * ownership claim carried on the request itself.
  */
 export interface ScopeSpec {
-  scope: 'club' | 'event';
+  scope: 'club' | 'event' | 'certificate';
   from: string;
 }
 

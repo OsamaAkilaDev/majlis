@@ -6,6 +6,7 @@ import type {
 } from '@majlis/contracts';
 import type { Metadata } from 'next';
 import { EventAttendees } from '@/components/event/EventAttendees';
+import { EventCertificates } from '@/components/event/EventCertificates';
 import { EventForm } from '@/components/event/EventForm';
 import { PAGE } from '@/lib/page-size';
 import { serverFetch } from '@/lib/server-api';
@@ -50,6 +51,13 @@ export default async function EventEditorPage({
         initialRoster={roster}
         initialAttendance={attendance}
       />
+      {/* Where an Admin arriving from the events overview looks for them. */}
+      {event?.certificateEnabled && (event.status === 'COMPLETED' || event.status === 'CERTIFIED') ? (
+        <section className="flex flex-col gap-4">
+          <h2 className="font-display text-h1 text-ink">Certificates</h2>
+          <EventCertificates eventId={eventId} />
+        </section>
+      ) : null}
     </div>
   );
 }
